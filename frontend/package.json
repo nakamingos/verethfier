@@ -18,8 +18,13 @@
     "@angular/platform-browser": "^17.1.0",
     "@angular/platform-browser-dynamic": "^17.1.0",
     "@angular/router": "^17.1.0",
+    "@wagmi/connectors": "^4.3.3",
+    "@wagmi/core": "^2.9.1",
+    "@web3modal/wagmi": "^4.1.11",
+    "react": "^18.3.1",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
+    "viem": "^2.10.1",
     "zone.js": "~0.14.3"
   },
   "devDependencies": {
