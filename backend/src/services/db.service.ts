@@ -46,12 +46,11 @@ export class DbService {
     let { data: userData, error: fetchError } = await supabase
       .from('verifier_users')
       .select('servers')
-      .eq('user_id', userId)
-      .single();
+      .eq('user_id', userId);
   
     if (fetchError) throw fetchError;
   
-    const servers = userData.servers || {};
+    const servers = userData[0].servers || {};
     servers[serverId] = role;
   
     const { data, error } = await supabase
