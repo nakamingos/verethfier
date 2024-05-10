@@ -65,13 +65,14 @@ export class VerifyComponent {
     );
 
     // Set connected state to local state
-    this.walletSvc.connectedState$.subscribe((account) => {
-      console.log({ account });
-      this.setState({
-        walletConnecting: account.isConnecting,
-        walletConnected: account.isConnected,
-      });
-    });
+    this.walletSvc.connectedState$.pipe(
+      tap((account) => {
+        this.setState({
+          walletConnecting: account.isConnecting,
+          walletConnected: account.isConnected,
+        });
+      })
+    ).subscribe();
   }
 
   /**
@@ -153,6 +154,7 @@ export class VerifyComponent {
       types,
       domain,
       message,
+      primaryType: 'Verification',
     };
 
     const { signature, address } = await this.walletSvc.signTypedMessage(typedData);

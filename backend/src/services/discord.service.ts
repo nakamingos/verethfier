@@ -15,6 +15,8 @@ export class DiscordService {
 
   private client: Client | null = null;
   private rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
+
+  tempMessages: any = {};
   
   constructor(
     @Inject(NonceService) private nonceSvc: NonceService,
@@ -134,19 +136,20 @@ export class DiscordService {
       if (!role) throw new Error('Role not found');
 
       // Check if user is already verified
-      const userServers = await this.dbSvc.getUserServers(interaction.user.id);
-      if (userServers?.servers?.[guild.id]) {
-        await interaction.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle('Verification Request')
-              .setDescription('You have already been verified in this server.')
-              .setColor('#FF0000')
-          ],
-          ephemeral: true,
-        });
-        return;
-      }
+      // const userServers = await this.dbSvc.getUserServers(interaction.user.id);
+      // if (userServers?.servers?.[guild.id]) {
+      //   await interaction.reply({
+      //     embeds: [
+      //       new EmbedBuilder()
+      //         .setTitle('Verification Request')
+      //         .setDescription('You have already been verified in this server.')
+      //         .setColor('#FF0000')
+      //     ],
+      //     ephemeral: true,
+      //   });
+        
+      //   return;
+      // }
 
       // Create a nonce
       const expiry = Math.floor((Date.now() + EXPIRY) / 1000);
@@ -172,7 +175,7 @@ export class DiscordService {
       const url = `${process.env.BASE_URL}/verify/${encoded}`;
 
       // Reply to the interaction
-      await interaction.reply({
+      const tempMessage = await interaction.reply({
         embeds: [
           new EmbedBuilder()
             .setTitle('Wallet Verification')
@@ -192,6 +195,9 @@ export class DiscordService {
         ephemeral: true,
       });
 
+      // Store the temp message
+      this.tempMessages[nonce] = tempMessage;
+
       Logger.debug(`Sent verification link to ${interaction.user.tag}`);
     } catch (error) {
       console.error(error);
@@ -209,7 +215,8 @@ export class DiscordService {
   async addUserRole(
     userId: string, 
     roleId: string,
-    guildId: string
+    guildId: string,
+    nonce: string
   ): Promise<void> {
     if (!this.client) throw new Error('Discord bot not initialized');
 
@@ -232,8 +239,6 @@ export class DiscordService {
         guildId, 
         role.name
       );
-
-      Logger.debug(`Role added to user ${userId}`);
   
       member.send({
         embeds: [
@@ -254,6 +259,13 @@ export class DiscordService {
             .setColor('#FF0000')
         ]
       });
+    } finally {
+      // Delete the temp message
+      const tempMessage = this.tempMessages[nonce];
+      if (tempMessage) {
+        tempMessage.delete();
+        delete this.tempMessages[nonce];
+      }
     }
   }
 

@@ -58,10 +58,13 @@ export class WalletService {
       chains: [mainnet],
       transports: {
         [1]: http(env.rpcHttpProvider),
-        // 6969696969: http(environment.magmaRpcHttpProvider)
       },
       connectors: [
-        walletConnect({ projectId, metadata, showQrModal: false }),
+        walletConnect({
+          projectId,
+          metadata,
+          showQrModal: false,
+        }),
         injected({ shimDisconnect: true }),
         coinbaseWallet({
           appName: metadata.name,
@@ -102,23 +105,14 @@ export class WalletService {
     }
   }
 
-  async signTypedMessage(data: {
-    types: Record<string, any>;
-    domain: Record<string, any>;
-    message: Record<string, any>;
-  }): Promise<{
+  async signTypedMessage(typedData: any): Promise<{
     signature: `0x${string}`;
     address: `0x${string}`;
   }> {
     const account = getAccount(this.config);
     if (!account.isConnected) throw new Error('Wallet not connected');
 
-    const signature = await signTypedData(this.config, {
-      domain: data.domain,
-      types: data.types,
-      primaryType: 'Verification',
-      message: data.message,
-    });
+    const signature = await signTypedData(this.config, typedData);
 
     return {
       signature,

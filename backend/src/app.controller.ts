@@ -31,7 +31,12 @@ export class AppController {
       Logger.log(`Verification successful for address: ${recoveredAddress}`);
   
       // Add the role to the user
-      await this.discordSvc.addUserRole(data.data.userId, data.data.role, data.data.discordId);
+      await this.discordSvc.addUserRole(
+        data.data.userId, 
+        data.data.role, 
+        data.data.discordId,
+        data.data.nonce
+      );
       Logger.log(`Role added to user ${data.data.userId}`);
       
       return {

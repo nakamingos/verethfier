@@ -2,7 +2,12 @@
   <div class="user-info-wrapper">
 
     <div class="avatar-wrapper">
-      <img [src]="data.avatar" />
+      <div class="server-avatar">
+        <img [src]="data.discordIconURL" />
+      </div>
+      <div class="user-avatar">
+        <img [src]="data.avatar" />
+      </div>
     </div>
 
     <div class="user-tag">

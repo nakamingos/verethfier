@@ -40,23 +40,32 @@ export class DbService {
     return data[0];
   }
 
-  async addServerToUser(
-    userId: string, 
-    serverId: string,
-    role: string
-  ): Promise<any> {
+  async addServerToUser(userId: string, serverId: string, role: string) {
+  
+    // Step 1: Retrieve the current user data with the servers JSONB object
+    let { data: userData, error: fetchError } = await supabase
+      .from('verifier_users')
+      .select('servers')
+      .eq('user_id', userId)
+      .single();
+  
+    if (fetchError) throw fetchError;
+  
+    const servers = userData.servers || {};
+    servers[serverId] = role;
+  
     const { data, error } = await supabase
       .from('verifier_users')
       .upsert({
         user_id: userId,
-        servers: {
-          [serverId]: role
-        }
+        servers: servers
+      }, {
+        onConflict: 'user_id'
       });
-
+  
     if (error) throw error;
     return data;
-  }
+  }  
 
   async getServerRole(serverId: string): Promise<any> {
     const { data, error } = await supabase

@@ -26,7 +26,6 @@ export class WalletService {
 
     // Fetch the nonce for the user
     const userNonce = await this.nonceSvc.validateNonce(data.userId, data.nonce);
-    console.log('userNonce', userNonce);
     if (!userNonce) throw new Error('Invalid or expired nonce.');
 
     // Check if verification has expired
