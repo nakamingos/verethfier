@@ -59,7 +59,6 @@ export class DiscordService {
     await this.registerSlashCommands();
 
     this.client.on('interactionCreate', async (interaction) => {
-
       // Handle command interactions (admin)
       if (interaction.isChatInputCommand()) {
         const { commandName } = interaction;
@@ -67,7 +66,7 @@ export class DiscordService {
           await this.handleSetup(interaction);
         }
       }
-      
+
       // Handle button interactions (user)
       if (interaction.isButton()) {
         if (interaction.customId === 'requestVerification') {
@@ -88,6 +87,16 @@ export class DiscordService {
 
       if (!channel) throw new Error('Channel not found');
       if (!roleId) throw new Error('Role not found');
+
+      // Check if the bot has permission to post in that channel
+      if (!channel.permissionsFor(interaction.guild.members.resolve(this.client.user.id))?.has('SendMessages')) {
+        throw new Error('Bot does not have permission to post in that channel');
+      }
+
+      // check if the user has permission to grant the role
+      if (!interaction.memberPermissions.has('SendMessages')) {
+        throw new Error('User does not have permission to grant the role');
+      }
 
       Logger.debug(`Setting up bot in channel ${channel.name}`);
 
@@ -121,6 +130,11 @@ export class DiscordService {
       });
     } catch (error) {
       console.error(error);
+
+      await interaction.reply({
+        content: `Error: ${error.message}`,
+        ephemeral: true
+      });
     }
   }
 
