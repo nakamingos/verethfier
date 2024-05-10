@@ -46,7 +46,8 @@ export class AppController {
         data.data.userId, 
         data.data.role, 
         data.data.discordId,
-        data.data.nonce
+        data.data.address,
+        data.data.nonce,
       );
       Logger.log(`Role added to user ${data.data.userId}`);
       

@@ -232,6 +232,7 @@ export class DiscordService {
     userId: string, 
     roleId: string,
     guildId: string,
+    address: string,
     nonce: string
   ): Promise<void> {
     if (!this.client) throw new Error('Discord bot not initialized');
@@ -258,7 +259,8 @@ export class DiscordService {
       await this.dbSvc.addServerToUser(
         userId, 
         guildId, 
-        role.name
+        role.name,
+        address
       );
 
       // Reply to the interaction

@@ -40,7 +40,12 @@ export class DbService {
     return data[0];
   }
 
-  async addServerToUser(userId: string, serverId: string, role: string) {
+  async addServerToUser(
+    userId: string, 
+    serverId: string, 
+    role: string,
+    address: string
+  ) {
   
     // Step 1: Retrieve the current user data with the servers JSONB object
     let { data: userData, error: fetchError } = await supabase
@@ -57,6 +62,7 @@ export class DbService {
       .from('verifier_users')
       .upsert({
         user_id: userId,
+        address: address?.toLowerCase(),
         servers: servers
       }, {
         onConflict: 'user_id'
