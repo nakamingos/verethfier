@@ -50,7 +50,7 @@ export class DbService {
   
     if (fetchError) throw fetchError;
   
-    const servers = userData[0].servers || {};
+    const servers = userData[0]?.servers || {};
     servers[serverId] = role;
   
     const { data, error } = await supabase
