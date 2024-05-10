@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
-import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, CacheType, ChannelType, ChatInputCommandInteraction, Client, EmbedBuilder, Events, GatewayIntentBits, GuildTextBasedChannel, PermissionFlagsBits, REST, Routes, SlashCommandBuilder } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, CacheType, ChannelType, ChatInputCommandInteraction, Client, EmbedBuilder, Events, GatewayIntentBits, GuildTextBasedChannel, InteractionResponse, PermissionFlagsBits, REST, Routes, SlashCommandBuilder } from 'discord.js';
 
 import { NonceService } from '@/services/nonce.service';
 import { DbService } from '@/services/db.service';
@@ -16,7 +16,9 @@ export class DiscordService {
   private client: Client | null = null;
   private rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
 
-  tempMessages: any = {};
+  tempMessages: {
+    [nonce: string]: ButtonInteraction<CacheType>;
+  } = {};
   
   constructor(
     @Inject(NonceService) private nonceSvc: NonceService,
@@ -189,7 +191,7 @@ export class DiscordService {
       const url = `${process.env.BASE_URL}/verify/${encoded}`;
 
       // Reply to the interaction
-      const tempMessage = await interaction.reply({
+      await interaction.reply({
         embeds: [
           new EmbedBuilder()
             .setTitle('Wallet Verification')
@@ -210,7 +212,7 @@ export class DiscordService {
       });
 
       // Store the temp message
-      this.tempMessages[nonce] = tempMessage;
+      this.tempMessages[nonce] = interaction;
 
       Logger.debug(`Sent verification link to ${interaction.user.tag}`);
     } catch (error) {
@@ -245,6 +247,11 @@ export class DiscordService {
     const role = guild.roles.cache.get(roleId);
     if (!role) throw new Error('Role not found');
     // console.log({role});
+      
+    const storedInteraction = this.tempMessages[nonce];
+    if (!storedInteraction) {
+      throw new Error('No stored interaction found for this nonce');
+    }
 
     try {
       await member.roles.add(role);
@@ -253,33 +260,34 @@ export class DiscordService {
         guildId, 
         role.name
       );
-  
-      member.send({
+
+      // Reply to the interaction
+      await storedInteraction.editReply({
         embeds: [
           new EmbedBuilder()
             .setTitle('Verification Successful')
-            .setDescription(`You have been successfully verified and added to the role ${role.name}`)
+            .setDescription(`You have been successfully verified in ${guild.name}.`)
             .setColor('#00FF00')
-        ]
+        ],
       });
+      
     } catch (error) {
       console.error(error);
 
-      member.send({
+      // Reply to the interaction
+      await storedInteraction.editReply({
         embeds: [
           new EmbedBuilder()
             .setTitle('Verification Failed')
-            .setDescription('An error occurred while adding the role. Please try again later.')
+            .setDescription(`An error occurred while verifying your identity. Please try again later.`)
             .setColor('#FF0000')
-        ]
+        ],
       });
+
     } finally {
+      
       // Delete the temp message
-      const tempMessage = this.tempMessages[nonce];
-      if (tempMessage) {
-        tempMessage.delete();
-        delete this.tempMessages[nonce];
-      }
+      delete this.tempMessages[nonce];
     }
   }
 
@@ -319,6 +327,34 @@ export class DiscordService {
       Logger.debug('Successfully reloaded application /slash commands.', `${commands.length} commands`);
     } catch (error) {
       console.error(error);
+    }
+  }
+
+  /**
+   * Throws an error to the user in Discord.
+   * @param discordId - The Discord ID of the user.
+   * @param error - The error message to send.
+   */
+  async throwError(nonce: string, message: string): Promise<void> {
+    const storedInteraction = this.tempMessages[nonce];
+    if (!storedInteraction) {
+      throw new Error('No stored interaction found for this nonce');
+    }
+
+    try {
+      await storedInteraction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('Verification Failed')
+            .setDescription(`${message}`)
+            .setColor('#FF0000')
+        ],
+      });
+    } catch (error) {
+      console.error(error);
+    } finally {
+      // Delete the temp message
+      delete this.tempMessages[nonce];
     }
   }
 }

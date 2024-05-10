@@ -5,6 +5,7 @@ import { NonceService } from '@/services/nonce.service';
 import { DiscordService } from '@/services/discord.service';
 
 import { DecodedData } from '@/models/app.interface';
+import { DataService } from './services/data.service';
 
 @Controller()
 export class AppController {
@@ -13,6 +14,7 @@ export class AppController {
     private readonly walletSvc: WalletService,
     private readonly nonceSvc: NonceService,
     private readonly discordSvc: DiscordService,
+    private readonly dataSvc: DataService,
   ) {}
 
   @Post('verify-signature')
@@ -28,7 +30,16 @@ export class AppController {
       Logger.log(`Nonce deleted for userId: ${data.data.userId}`);
 
       // Check if the address owns the asset associated to the server and role
-      Logger.log(`Verification successful for address: ${recoveredAddress}`);
+      const assets = await this.dataSvc.checkAssetOwnership(recoveredAddress);
+      if (!assets) {
+        this.discordSvc.throwError(
+          data.data.nonce, 
+          'Your address does not own the asset required for this role.'
+        );
+        throw new Error('Address does not own the asset');
+      }
+
+      Logger.log(`Verification successful for address: ${recoveredAddress}`, `Assets: ${assets}`);
   
       // Add the role to the user
       await this.discordSvc.addUserRole(
