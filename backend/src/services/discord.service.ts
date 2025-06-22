@@ -1,25 +1,44 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from "@nestjs/common";
 
-import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, CacheType, ChannelType, ChatInputCommandInteraction, Client, EmbedBuilder, Events, GatewayIntentBits, GuildTextBasedChannel, InteractionResponse, PermissionFlagsBits, REST, Routes, SlashCommandBuilder } from 'discord.js';
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonInteraction,
+  ButtonStyle,
+  CacheType,
+  ChannelType,
+  ChatInputCommandInteraction,
+  Client,
+  EmbedBuilder,
+  Events,
+  GatewayIntentBits,
+  GuildTextBasedChannel,
+  InteractionResponse,
+  PermissionFlagsBits,
+  REST,
+  Routes,
+  SlashCommandBuilder,
+} from "discord.js";
 
-import { NonceService } from '@/services/nonce.service';
-import { DbService } from '@/services/db.service';
+import { NonceService } from "@/services/nonce.service";
+import { DbService } from "@/services/db.service";
 
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 dotenv.config();
 
 const EXPIRY = Number(process.env.NONCE_EXPIRY);
 
-Injectable()
+Injectable();
 export class DiscordService {
-
   private client: Client | null = null;
-  private rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
+  private rest = new REST({ version: "10" }).setToken(
+    process.env.DISCORD_BOT_TOKEN,
+  );
 
   tempMessages: {
     [nonce: string]: ButtonInteraction<CacheType>;
   } = {};
-  
+
   constructor(
     @Inject(NonceService) private nonceSvc: NonceService,
     private readonly dbSvc: DbService,
@@ -27,7 +46,7 @@ export class DiscordService {
     if (Number(process.env.DISCORD)) {
       this.initializeBot()
         .then(() => this.createSlashCommands())
-        .catch((error) => Logger.error('Failed to initialize bot', error));
+        .catch((error) => Logger.error("Failed to initialize bot", error));
     }
   }
 
@@ -42,14 +61,13 @@ export class DiscordService {
       this.client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
       this.client.on(Events.ClientReady, (readyClient) => {
-        Logger.debug('Discord bot initialized.', readyClient.user.tag);
+        Logger.debug("Discord bot initialized.", readyClient.user.tag);
         resolve();
       });
 
       this.client.login(process.env.DISCORD_BOT_TOKEN);
-    })
+    });
   }
-
 
   /**
    * Creates slash commands for the bot.
@@ -60,18 +78,18 @@ export class DiscordService {
   async createSlashCommands(): Promise<void> {
     await this.registerSlashCommands();
 
-    this.client.on('interactionCreate', async (interaction) => {
+    this.client.on("interactionCreate", async (interaction) => {
       // Handle command interactions (admin)
       if (interaction.isChatInputCommand()) {
         const { commandName } = interaction;
-        if (commandName === 'setup') {
+        if (commandName === "setup") {
           await this.handleSetup(interaction);
         }
       }
 
       // Handle button interactions (user)
       if (interaction.isButton()) {
-        if (interaction.customId === 'requestVerification') {
+        if (interaction.customId === "requestVerification") {
           await this.requestVerification(interaction);
         }
       }
@@ -82,22 +100,32 @@ export class DiscordService {
    * Handles the setup process for the bot when a command interaction is received.
    * @param interaction - The command interaction object.
    */
-  async handleSetup(interaction: ChatInputCommandInteraction<CacheType>): Promise<void> {
+  async handleSetup(
+    interaction: ChatInputCommandInteraction<CacheType>,
+  ): Promise<void> {
     try {
-      const channel = interaction.options.getChannel('channel') as GuildTextBasedChannel;
-      const roleId = interaction.options.getRole('role')?.id;
+      const channel = interaction.options.getChannel(
+        "channel",
+      ) as GuildTextBasedChannel;
+      const roleId = interaction.options.getRole("role")?.id;
 
-      if (!channel) throw new Error('Channel not found');
-      if (!roleId) throw new Error('Role not found');
+      if (!channel) throw new Error("Channel not found");
+      if (!roleId) throw new Error("Role not found");
 
       // Check if the bot has permission to post in that channel
-      if (!channel.permissionsFor(interaction.guild.members.resolve(this.client.user.id))?.has('SendMessages')) {
-        throw new Error('Bot does not have permission to post in that channel');
+      if (
+        !channel
+          .permissionsFor(
+            interaction.guild.members.resolve(this.client.user.id),
+          )
+          ?.has("SendMessages")
+      ) {
+        throw new Error("Bot does not have permission to post in that channel");
       }
 
       // check if the user has permission to grant the role
-      if (!interaction.memberPermissions.has('SendMessages')) {
-        throw new Error('User does not have permission to grant the role');
+      if (!interaction.memberPermissions.has("SendMessages")) {
+        throw new Error("User does not have permission to grant the role");
       }
 
       Logger.debug(`Setting up bot in channel ${channel.name}`);
@@ -105,29 +133,30 @@ export class DiscordService {
       await channel.send({
         embeds: [
           new EmbedBuilder()
-            .setTitle('Request Verification')
-            .setDescription('Click the button below to initiate the verification process.')
-            .setColor('#C3FF00')
+            .setTitle("Request Verification")
+            .setDescription(
+              "Click the button below to initiate the verification process.",
+            )
+            .setColor("#C3FF00"),
         ],
         components: [
-          new ActionRowBuilder<ButtonBuilder>()
-            .setComponents(
-              new ButtonBuilder()
-                .setCustomId('requestVerification')
-                .setLabel('Request Verification')
-                .setStyle(ButtonStyle.Primary)
-            )
-        ]
+          new ActionRowBuilder<ButtonBuilder>().setComponents(
+            new ButtonBuilder()
+              .setCustomId("requestVerification")
+              .setLabel("Request Verification")
+              .setStyle(ButtonStyle.Primary),
+          ),
+        ],
       });
 
       await this.dbSvc.addUpdateServer(
         channel.guild.id,
         channel.guild.name,
-        roleId
+        roleId,
       );
 
       await interaction.reply({
-        content: 'Bot setup successfully',
+        content: "Bot setup successfully",
         ephemeral: true,
       });
     } catch (error) {
@@ -135,7 +164,7 @@ export class DiscordService {
 
       await interaction.reply({
         content: `Error: ${error.message}`,
-        ephemeral: true
+        ephemeral: true,
       });
     }
   }
@@ -144,12 +173,14 @@ export class DiscordService {
    * Requests verification from the user by sending a verification link.
    * @param interaction - The button interaction triggered by the user.
    */
-  async requestVerification(interaction: ButtonInteraction<CacheType>): Promise<void> {
+  async requestVerification(
+    interaction: ButtonInteraction<CacheType>,
+  ): Promise<void> {
     try {
       const guild = interaction.guild;
       const roleId = await this.dbSvc.getServerRole(guild.id);
       const role = guild.roles.cache.get(roleId);
-      if (!role) throw new Error('Role not found');
+      if (!role) throw new Error("Role not found");
 
       // Check if user is already verified
       // const userServers = await this.dbSvc.getUserServers(interaction.user.id);
@@ -163,16 +194,14 @@ export class DiscordService {
       //     ],
       //     ephemeral: true,
       //   });
-        
+
       //   return;
       // }
 
       // Create a nonce
       const expiry = Math.floor((Date.now() + EXPIRY) / 1000);
-      const nonce = await this.nonceSvc.createNonce(
-        interaction.user.id
-      );
-      
+      const nonce = await this.nonceSvc.createNonce(interaction.user.id);
+
       // Encode the payload
       const payloadArr = [
         interaction.user.id,
@@ -186,26 +215,29 @@ export class DiscordService {
         nonce,
         expiry,
       ];
-      
-      const encoded = Buffer.from(JSON.stringify(payloadArr)).toString('base64');
+
+      const encoded = Buffer.from(JSON.stringify(payloadArr)).toString(
+        "base64",
+      );
       const url = `${process.env.BASE_URL}/verify/${encoded}`;
 
       // Reply to the interaction
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
-            .setTitle('Wallet Verification')
-            .setDescription(`Verify your identity using your EVM wallet by clicking the unique link below. This link is personal and expires <t:${expiry}:R>.`)
-            .setColor('#00FF00')
+            .setTitle("Wallet Verification")
+            .setDescription(
+              `Verify your identity using your EVM wallet by clicking the unique link below. This link is personal and expires <t:${expiry}:R>.`,
+            )
+            .setColor("#00FF00"),
         ],
         components: [
-          new ActionRowBuilder<ButtonBuilder>()
-            .setComponents(
-              new ButtonBuilder()
-                .setLabel('Verify Now')
-                .setURL(url)
-                .setStyle(ButtonStyle.Link)
-            )
+          new ActionRowBuilder<ButtonBuilder>().setComponents(
+            new ButtonBuilder()
+              .setLabel("Verify Now")
+              .setURL(url)
+              .setStyle(ButtonStyle.Link),
+          ),
         ],
         // This is a private message !important
         ephemeral: true,
@@ -222,57 +254,53 @@ export class DiscordService {
 
   /**
    * Adds a role to a user in a guild.
-   * 
+   *
    * @param userId - The ID of the user.
    * @param roleId - The ID of the role to be added.
    * @param guildId - The ID of the guild.
    * @throws Error if the Discord bot is not initialized, guild is not found, or member is not found.
    */
   async addUserRole(
-    userId: string, 
+    userId: string,
     roleId: string,
     guildId: string,
     address: string,
-    nonce: string
+    nonce: string,
   ): Promise<void> {
-    if (!this.client) throw new Error('Discord bot not initialized');
+    if (!this.client) throw new Error("Discord bot not initialized");
 
     const guild = this.client.guilds.cache.get(guildId);
-    if (!guild) throw new Error('Guild not found');
+    if (!guild) throw new Error("Guild not found");
     // console.log({guild});
 
     const member = await guild.members.fetch(userId);
-    if (!member) throw new Error('Member not found');
+    if (!member) throw new Error("Member not found");
     // console.log({member});
 
     const role = guild.roles.cache.get(roleId);
-    if (!role) throw new Error('Role not found');
+    if (!role) throw new Error("Role not found");
     // console.log({role});
-      
+
     const storedInteraction = this.tempMessages[nonce];
     if (!storedInteraction) {
-      throw new Error('No stored interaction found for this nonce');
+      throw new Error("No stored interaction found for this nonce");
     }
 
     try {
       await member.roles.add(role);
-      await this.dbSvc.addServerToUser(
-        userId, 
-        guildId, 
-        role.name,
-        address
-      );
+      await this.dbSvc.addServerToUser(userId, guildId, role.name, address);
 
       // Reply to the interaction
       await storedInteraction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle('Verification Successful')
-            .setDescription(`You have been successfully verified in ${guild.name}.`)
-            .setColor('#00FF00')
+            .setTitle("Verification Successful")
+            .setDescription(
+              `You have been successfully verified in ${guild.name}.`,
+            )
+            .setColor("#00FF00"),
         ],
       });
-      
     } catch (error) {
       console.error(error);
 
@@ -280,14 +308,14 @@ export class DiscordService {
       await storedInteraction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle('Verification Failed')
-            .setDescription(`An error occurred while verifying your identity. Please try again later.`)
-            .setColor('#FF0000')
+            .setTitle("Verification Failed")
+            .setDescription(
+              `An error occurred while verifying your identity. Please try again later.`,
+            )
+            .setColor("#FF0000"),
         ],
       });
-
     } finally {
-      
       // Delete the temp message
       delete this.tempMessages[nonce];
     }
@@ -301,32 +329,38 @@ export class DiscordService {
   async registerSlashCommands(): Promise<void> {
     const commands = [
       new SlashCommandBuilder()
-        .setName('setup')
-        .setDescription('Setup the bot for the first time')
+        .setName("setup")
+        .setDescription("Setup the bot for the first time")
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addChannelOption((option) => 
+        .addChannelOption((option) =>
           option
-            .setName('channel')
-            .setDescription('The channel to setup the bot in')
+            .setName("channel")
+            .setDescription("The channel to setup the bot in")
             .addChannelTypes(ChannelType.GuildText)
-            .setRequired(true)
+            .setRequired(true),
         )
         .addRoleOption((option) =>
           option
-            .setName('role')
-            .setDescription('The role to assign to verified users')
-            .setRequired(true)
-        )
+            .setName("role")
+            .setDescription("The role to assign to verified users")
+            .setRequired(true),
+        ),
     ];
-  
-    Logger.debug('Reloading application /slash commands.', `${commands.length} commands`);
+
+    Logger.debug(
+      "Reloading application /slash commands.",
+      `${commands.length} commands`,
+    );
 
     try {
       await this.rest.put(
         Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
         { body: commands },
       );
-      Logger.debug('Successfully reloaded application /slash commands.', `${commands.length} commands`);
+      Logger.debug(
+        "Successfully reloaded application /slash commands.",
+        `${commands.length} commands`,
+      );
     } catch (error) {
       console.error(error);
     }
@@ -340,16 +374,16 @@ export class DiscordService {
   async throwError(nonce: string, message: string): Promise<void> {
     const storedInteraction = this.tempMessages[nonce];
     if (!storedInteraction) {
-      throw new Error('No stored interaction found for this nonce');
+      throw new Error("No stored interaction found for this nonce");
     }
 
     try {
       await storedInteraction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle('Verification Failed')
+            .setTitle("Verification Failed")
             .setDescription(`${message}`)
-            .setColor('#FF0000')
+            .setColor("#FF0000"),
         ],
       });
     } catch (error) {
