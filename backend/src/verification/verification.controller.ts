@@ -5,6 +5,17 @@ import { DiscordService } from '@/services/discord.service';
 import { WalletService } from '@/services/wallet.service';
 import { DecodedData } from '@/models/app.interface';
 
+interface VerifySignatureRequest {
+  data: DecodedData;
+  signature: string;
+  channelId: string;
+}
+
+interface VerifySignatureResponse {
+  success: boolean;
+  reason?: string;
+}
+
 @Controller('verification')
 export class VerificationController {
   constructor(
@@ -15,26 +26,61 @@ export class VerificationController {
   ) {}
 
   @Post('verify-signature')
-  async verifySignature(@Body() body: { data: DecodedData; signature: string; channelId: string }) {
-    const { data, signature, channelId } = body;
-    // 1. Validate the wallet signature & nonce
-    let address: string;
-    try {
-      address = await this.walletService.verifySignature(data, signature);
-    } catch (err) {
+  async verifySignature(
+    @Body() request: VerifySignatureRequest
+  ): Promise<VerifySignatureResponse> {
+    const { data: decodedData, signature, channelId } = request;
+
+    const userAddress = await this.getVerifiedAddress(decodedData, signature);
+    if (!userAddress) {
       throw new BadRequestException('Invalid signature or nonce');
     }
-    // 2. Get mapping by channel
-    const mapping = await this.settingsService.getMappingByChannel(channelId);
-    if (!mapping) throw new BadRequestException('No mapping found for this channel');
-    // 3. Check asset ownership
-    const owns = await this.dataService.checkAssetOwnership(address, mapping.collectionSlug);
-    if (owns > 0) {
-      // 4. Add user role
-      await this.discordService.addUserRole(data.userId, mapping.roleId, mapping.serverId, address, data.nonce);
-      return { success: true };
-    } else {
+
+    const channelMapping = await this.getChannelMapping(channelId);
+    if (!channelMapping) {
+      throw new BadRequestException('No mapping found for this channel');
+    }
+
+    const ownsAsset = await this.hasAssetOwnership(userAddress, channelMapping.collectionSlug);
+    if (!ownsAsset) {
       return { success: false, reason: 'No asset ownership' };
     }
+
+    await this.assignDiscordRole(
+      decodedData.userId,
+      channelMapping.roleId,
+      channelMapping.serverId,
+      userAddress,
+      decodedData.nonce,
+    );
+
+    return { success: true };
+  }
+
+  private async getVerifiedAddress(decodedData: DecodedData, signature: string): Promise<string | null> {
+    try {
+      return await this.walletService.verifySignature(decodedData, signature);
+    } catch {
+      return null;
+    }
+  }
+
+  private async getChannelMapping(channelId: string): Promise<{ collectionSlug: string; roleId: string; serverId: string } | null> {
+    return await this.settingsService.getMappingByChannel(channelId);
+  }
+
+  private async hasAssetOwnership(address: string, collectionSlug: string): Promise<boolean> {
+    const assetCount = await this.dataService.checkAssetOwnership(address, collectionSlug);
+    return assetCount > 0;
+  }
+
+  private async assignDiscordRole(
+    userId: string,
+    roleId: string,
+    serverId: string,
+    address: string,
+    nonce: string,
+  ): Promise<void> {
+    await this.discordService.addUserRole(userId, roleId, serverId, address, nonce);
   }
 }

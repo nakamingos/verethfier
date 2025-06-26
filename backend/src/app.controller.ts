@@ -1,4 +1,4 @@
-import { Body, Controller, Logger, Post } from '@nestjs/common';
+import { Body, Controller, Post } from '@nestjs/common';
 
 import { WalletService } from '@/services/wallet.service';
 import { NonceService } from '@/services/nonce.service';
@@ -8,71 +8,55 @@ import { SettingsService } from '@/verification/settings.service';
 import { DecodedData } from '@/models/app.interface';
 import { DataService } from './services/data.service';
 
+interface VerifySignatureRequest {
+  data: DecodedData;
+  signature: string;
+}
+
+interface VerifySignatureResponse {
+  message: string;
+  address?: string;
+  error?: string;
+}
+
 @Controller()
 export class AppController {
-
   constructor(
-    private readonly walletSvc: WalletService,
-    private readonly nonceSvc: NonceService,
-    private readonly discordSvc: DiscordService,
-    private readonly settingsSvc: SettingsService,
-    private readonly dataSvc: DataService,
+    private readonly walletService: WalletService,
+    private readonly nonceService: NonceService,
+    private readonly discordService: DiscordService,
+    private readonly settingsService: SettingsService,
+    private readonly dataService: DataService,
   ) {}
 
   @Post('verify-signature')
-  async verify(@Body() data: { data: DecodedData; signature: string }) {
+  async verify(
+    @Body() request: VerifySignatureRequest
+  ): Promise<VerifySignatureResponse> {
     try {
-      // 1. Verify the wallet signature
-      const recoveredAddress = await this.walletSvc.verifySignature(
-        data.data,
-        data.signature,
-      );
+      const recoveredAddress = await this.verifyWalletSignature(request.data, request.signature);
+      await this.invalidateUserNonce(request.data.userId);
 
-      // 2. Invalidate the nonce
-      await this.nonceSvc.invalidateNonce(data.data.userId);
-      Logger.log(`Nonce deleted for userId: ${data.data.userId}`);
-
-      // 3. Fetch the collection-role mapping for this channel
-      const mapping = await this.settingsSvc.getMappingByChannel(
-        data.data.channelId,
-      );
+      const mapping = await this.getChannelMapping(request.data.channelId);
       if (!mapping) {
-        this.discordSvc.throwError(
-          data.data.nonce,
-          'This channel is not set up for any collection.',
-        );
+        await this.handleDiscordError(request.data.nonce, 'This channel is not set up for any collection.');
         throw new Error('Channel not set up for verification');
       }
 
-      // 4. Check asset ownership using the collection slug
-      const assets = await this.dataSvc.checkAssetOwnership(
-        recoveredAddress,
-        mapping.collectionSlug,
-      );
-      if (!assets) {
-        this.discordSvc.throwError(
-          data.data.nonce,
-          'Your address does not own the asset required for this role.',
-        );
+      const ownsAsset = await this.checkUserAssetOwnership(recoveredAddress, mapping.collectionSlug);
+      if (!ownsAsset) {
+        await this.handleDiscordError(request.data.nonce, 'Your address does not own the asset required for this role.');
         throw new Error('Address does not own the asset');
       }
 
-      Logger.log(
-        `Verification successful for address: ${recoveredAddress}`,
-        `Assets: ${assets}`,
-      );
-
-      // 5. Assign the role to the user
-      await this.discordSvc.addUserRole(
-        data.data.userId,
+      await this.assignUserRole(
+        request.data.userId,
         mapping.roleId,
-        data.data.discordId,
-        data.data.address,
-        data.data.nonce,
+        request.data.discordId,
+        recoveredAddress,
+        request.data.nonce,
       );
-      Logger.log(`Role added to user ${data.data.userId}`);
 
-      // 6. Return success
       return {
         message: 'Verification successful',
         address: recoveredAddress,
@@ -83,5 +67,36 @@ export class AppController {
         error: error.message,
       };
     }
+  }
+
+  private async verifyWalletSignature(decodedData: DecodedData, signature: string): Promise<string> {
+    return await this.walletService.verifySignature(decodedData, signature);
+  }
+
+  private async invalidateUserNonce(userId: string): Promise<void> {
+    await this.nonceService.invalidateNonce(userId);
+  }
+
+  private async getChannelMapping(channelId: string) {
+    return await this.settingsService.getMappingByChannel(channelId);
+  }
+
+  private async checkUserAssetOwnership(address: string, collectionSlug: string): Promise<boolean> {
+    const assetCount = await this.dataService.checkAssetOwnership(address, collectionSlug);
+    return assetCount > 0;
+  }
+
+  private async handleDiscordError(nonce: string, message: string): Promise<void> {
+    await this.discordService.throwError(nonce, message);
+  }
+
+  private async assignUserRole(
+    userId: string,
+    roleId: string,
+    discordId: string,
+    address: string,
+    nonce: string,
+  ): Promise<void> {
+    await this.discordService.addUserRole(userId, roleId, discordId, address, nonce);
   }
 }
