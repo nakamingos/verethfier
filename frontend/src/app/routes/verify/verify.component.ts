@@ -99,6 +99,7 @@ export class VerifyComponent {
       roleName: arr[7],
       nonce: arr[8],
       expiry: arr[9],
+      channelId: arr[10],
     } as DecodedData;
   }
 

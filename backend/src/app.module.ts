@@ -10,16 +10,17 @@ import { NonceService } from '@/services/nonce.service';
 import { WalletService } from '@/services/wallet.service';
 import { DbService } from '@/services/db.service';
 import { DataService } from './services/data.service';
+import { VerificationModule } from './verification/verification.module';
 
 @Module({
   imports: [
     // HttpModule,
     CacheModule.register(),
+    VerificationModule
   ],
   controllers: [AppController],
   providers: [
     AppService,
-    DiscordService,
     NonceService,
     WalletService,
     DbService,

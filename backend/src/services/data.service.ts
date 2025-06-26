@@ -12,21 +12,19 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 @Injectable()
 export class DataService {
   
-  async checkAssetOwnership(address: string): Promise<any> {
+  async checkAssetOwnership(address: string, slug: string): Promise<number> {
     address = address.toLowerCase();
-    const marketAddress = '0xd3418772623be1a3cc6b6d45cb46420cedd9154a'.toLowerCase();
-
     let query = supabase
       .from('ethscriptions')
-      .select('hashId, owner, prevOwner')
-      .or(`owner.eq.${address},and(owner.eq.${marketAddress},prevOwner.eq.${address})`);
+      .select('hashId', { count: 'exact' })
+      .eq('slug', slug)
+      .or(`owner.eq.${address},prevOwner.eq.${address}`);
 
-    const { data, error } = await query;
-      
+    const { count, error } = await query;
     if (error) {
       throw new Error(error.message);
     }
-    return data.length;
+    return count || 0;
   }
 
 }

@@ -2,6 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
 
+console.log('NONCE_EXPIRY=', process.env.NONCE_EXPIRY)
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 

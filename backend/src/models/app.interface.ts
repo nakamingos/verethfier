@@ -10,4 +10,6 @@ export interface DecodedData {
   roleName: string;
   nonce: string;
   expiry: number;
+  channelId:  string;
+  guildId: string;
 };
