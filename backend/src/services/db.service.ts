@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const supabaseUrl = 'https://cpwubaszhjdtqlvfdlbx.supabase.co';  // 'https://gqccibjxbgyuclehqtmk.supabase.co';
+const supabaseUrl = 'https://cpwubaszhjdtqlvfdlbx.supabase.co'; // 'https://gqccibjxbgyuclehqtmk.supabase.co';
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -80,6 +80,64 @@ export class DbService {
 
     if (error) throw error;
     return data[0]?.role_id;
+  }
+
+  // New methods for v2:
+  async addRoleMapping(
+    serverId: string,
+    serverName: string,
+    channelId: string,
+    slug: string,
+    roleId: string,
+    attrKey: string,
+    attrVal: string,
+    minItems: number
+  ): Promise<any> {
+    const { data, error } = await supabase
+      .from('verifier_role_mappings')
+      .insert({
+        server_id: serverId,
+        server_name: serverName,
+        channel_id: channelId,
+        slug: slug,
+        role_id: roleId,
+        attr_key: attrKey,
+        attr_val: attrVal,
+        min_items: minItems
+      });
+    if (error) throw error;
+    return data;
+  }
+
+  async getRoleMappings(serverId: string, channelId: string): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('verifier_role_mappings')
+      .select('*')
+      .eq('server_id', serverId)
+      .eq('channel_id', channelId);
+    if (error) throw error;
+    return data;
+  }
+
+  async deleteRoleMapping(ruleId: string): Promise<void> {
+    const { error } = await supabase
+      .from('verifier_role_mappings')
+      .delete()
+      .eq('id', ruleId);
+    if (error) throw error;
+  }
+
+  async logUserRole(userId: string, serverId: string, roleId: string, address: string): Promise<void> {
+    const { error } = await supabase
+      .from('verifier_user_roles')
+      .insert({
+        user_id: userId,
+        server_id: serverId,
+        role_id: roleId,
+        address: address?.toLowerCase(),
+        timestamp: new Date().toISOString()
+      });
+    if (error) throw error;
   }
 
 }
