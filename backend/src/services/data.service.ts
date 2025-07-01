@@ -38,4 +38,25 @@ export class DataService {
     return Array.from(new Set((data || []).map(r => r.slug)));
   }
 
+  async getDetailedAssets(address: string): Promise<AssetWithAttrs[]> {
+    const { data, error } = await supabase
+      .from('ethscriptions')
+      .select('slug, values')
+      .eq('owner', address.toLowerCase());
+
+    if (error) {
+      throw new Error(`Failed to fetch detailed assets: ${error.message}`);
+    }
+
+    return (data ?? []).map(row => ({
+      slug: row.slug,
+      attributes: row.values as Record<string, string | number>,
+    }));
+  }
+
 }
+
+export type AssetWithAttrs = {
+  slug: string;
+  attributes: Record<string, string | number>;
+};
