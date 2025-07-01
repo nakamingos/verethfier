@@ -5,8 +5,8 @@ export interface DecodedData {
   discordId: string;
   discordName: string;
   discordIconURL: string;
-  role: string;
-  roleName: string;
+  role: string; // TODO(v3): deprecated, remove when legacy buttons are phased out
+  roleName: string; // TODO(v3): deprecated, remove when legacy buttons are phased out
   nonce: string;
   expiry: number;
 };
