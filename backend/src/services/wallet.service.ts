@@ -46,8 +46,8 @@ export class WalletService {
         { name: 'UserTag', type: 'string' },
         { name: 'ServerID', type: 'string' },
         { name: 'ServerName', type: 'string' },
-        { name: 'RoleID', type: 'string' },
-        { name: 'RoleName', type: 'string' },
+        { name: 'RoleID', type: 'string' }, // TODO(v3): deprecated, remove when legacy buttons are phased out
+        { name: 'RoleName', type: 'string' }, // TODO(v3): deprecated, remove when legacy buttons are phased out
         { name: 'Nonce', type: 'string' },
         { name: 'Expiry', type: 'uint256' },
       ]
@@ -58,8 +58,8 @@ export class WalletService {
       UserTag: data.userTag,
       ServerID: data.discordId,
       ServerName: data.discordName,
-      RoleID: data.role,
-      RoleName: data.roleName,
+      RoleID: data.role, // TODO(v3): deprecated, remove when legacy buttons are phased out
+      RoleName: data.roleName, // TODO(v3): deprecated, remove when legacy buttons are phased out
       Nonce: data.nonce,
       Expiry: data.expiry,
     };

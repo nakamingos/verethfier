@@ -181,8 +181,8 @@ export class DiscordService {
         interaction.guild.id,
         interaction.guild.name,
         interaction.guild.iconURL(),
-        role.id,
-        role.name,
+        role.id, // TODO(v3): deprecated, remove when legacy buttons are phased out
+        role.name, // TODO(v3): deprecated, remove when legacy buttons are phased out
         nonce,
         expiry,
       ];
