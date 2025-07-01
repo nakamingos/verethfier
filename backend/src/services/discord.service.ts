@@ -84,55 +84,74 @@ export class DiscordService {
    */
   async handleSetup(interaction: ChatInputCommandInteraction<CacheType>): Promise<void> {
     try {
-      const channel = interaction.options.getChannel('channel') as GuildTextBasedChannel;
-      const roleId = interaction.options.getRole('role')?.id;
-
-      if (!channel) throw new Error('Channel not found');
-      if (!roleId) throw new Error('Role not found');
-
-      // Check if the bot has permission to post in that channel
-      if (!channel.permissionsFor(interaction.guild.members.resolve(this.client.user.id))?.has('SendMessages')) {
-        throw new Error('Bot does not have permission to post in that channel');
+      // Legacy no-arg /setup
+      if (!interaction.options.getSubcommand(false)) {
+        await interaction.reply({
+          content: '⚠️ The legacy /setup command is deprecated. Please use /setup add-rule, remove-rule, or list-rules.',
+          ephemeral: true
+        });
+        return;
       }
-
-      // check if the user has permission to grant the role
-      if (!interaction.memberPermissions.has('SendMessages')) {
-        throw new Error('User does not have permission to grant the role');
+      const sub = interaction.options.getSubcommand();
+      if (sub === 'add-rule') {
+        const channel = interaction.options.getChannel('channel');
+        const role = interaction.options.getRole('role');
+        const slug = interaction.options.getString('slug') || null;
+        const attrKey = interaction.options.getString('attribute_key') || null;
+        const attrVal = interaction.options.getString('attribute_value') || null;
+        const minItems = interaction.options.getInteger('min_items') || null;
+        const rule = await this.dbSvc.addRoleMapping(
+          interaction.guild.id,
+          interaction.guild.name,
+          channel.id,
+          slug,
+          role.id,
+          attrKey,
+          attrVal,
+          minItems
+        );
+        await interaction.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('Rule Added')
+              .setDescription(`Rule for <#${channel.id}> and <@&${role.id}> added.`)
+              .setColor('#00FF00')
+          ],
+          ephemeral: true
+        });
+      } else if (sub === 'remove-rule') {
+        const ruleId = interaction.options.getInteger('rule_id');
+        await this.dbSvc.deleteRoleMapping(String(ruleId));
+        await interaction.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('Rule Removed')
+              .setDescription(`Rule ID ${ruleId} removed.`)
+              .setColor('#FF0000')
+          ],
+          ephemeral: true
+        });
+      } else if (sub === 'list-rules') {
+        const channel = interaction.options.getChannel('channel');
+        const rules = await this.dbSvc.getRoleMappings(
+          interaction.guild.id,
+          channel ? channel.id : null
+        );
+        let desc = rules.length
+          ? rules.map(r => `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attr_key || '-'}=${r.attr_val || '-'} | Min: ${r.min_items || 0}`).join('\n')
+          : 'No rules found.';
+        await interaction.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('Verification Rules')
+              .setDescription(desc)
+              .setColor('#C3FF00')
+          ],
+          ephemeral: true
+        });
       }
-
-      Logger.debug(`Setting up bot in channel ${channel.name}`);
-
-      await channel.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle('Request Verification')
-            .setDescription('Click the button below to initiate the verification process.')
-            .setColor('#C3FF00')
-        ],
-        components: [
-          new ActionRowBuilder<ButtonBuilder>()
-            .setComponents(
-              new ButtonBuilder()
-                .setCustomId('requestVerification')
-                .setLabel('Request Verification')
-                .setStyle(ButtonStyle.Primary)
-            )
-        ]
-      });
-
-      await this.dbSvc.addUpdateServer(
-        channel.guild.id,
-        channel.guild.name,
-        roleId
-      );
-
-      await interaction.reply({
-        content: 'Bot setup successfully',
-        ephemeral: true,
-      });
     } catch (error) {
       console.error(error);
-
       await interaction.reply({
         content: `Error: ${error.message}`,
         ephemeral: true
@@ -302,25 +321,29 @@ export class DiscordService {
     const commands = [
       new SlashCommandBuilder()
         .setName('setup')
-        .setDescription('Setup the bot for the first time')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addChannelOption((option) => 
-          option
-            .setName('channel')
-            .setDescription('The channel to setup the bot in')
-            .addChannelTypes(ChannelType.GuildText)
-            .setRequired(true)
+        .setDescription('Setup the bot for the first time or manage rules')
+        .addSubcommand(sc =>
+          sc.setName('add-rule')
+            .setDescription('Add a new verification rule')
+            .addChannelOption(option => option.setName('channel').setDescription('Channel').setRequired(true))
+            .addRoleOption(option => option.setName('role').setDescription('Role').setRequired(true))
+            .addStringOption(option => option.setName('slug').setDescription('Asset slug (optional)'))
+            .addStringOption(option => option.setName('attribute_key').setDescription('Attribute key (optional)'))
+            .addStringOption(option => option.setName('attribute_value').setDescription('Attribute value (optional)'))
+            .addIntegerOption(option => option.setName('min_items').setDescription('Minimum items (optional)'))
         )
-        .addRoleOption((option) =>
-          option
-            .setName('role')
-            .setDescription('The role to assign to verified users')
-            .setRequired(true)
+        .addSubcommand(sc =>
+          sc.setName('remove-rule')
+            .setDescription('Remove a verification rule')
+            .addIntegerOption(option => option.setName('rule_id').setDescription('Rule ID').setRequired(true))
+        )
+        .addSubcommand(sc =>
+          sc.setName('list-rules')
+            .setDescription('List all rules for a channel')
+            .addChannelOption(option => option.setName('channel').setDescription('Channel').setRequired(false))
         )
     ];
-  
     Logger.debug('Reloading application /slash commands.', `${commands.length} commands`);
-
     try {
       await this.rest.put(
         Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
