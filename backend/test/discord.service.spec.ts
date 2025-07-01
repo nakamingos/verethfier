@@ -3,6 +3,24 @@ import { DiscordService } from '../src/services/discord.service';
 import { DbService } from '../src/services/db.service';
 import { NonceService } from '../src/services/nonce.service';
 
+jest.mock('discord.js', () => {
+  const actual = jest.requireActual('discord.js');
+  return {
+    ...actual,
+    REST: jest.fn().mockImplementation(() => ({
+      setToken: jest.fn().mockReturnThis(),
+    })),
+    Client: jest.fn().mockImplementation(() => ({
+      on: jest.fn(),
+      login: jest.fn(),
+      guilds: { cache: new Map() },
+      user: {},
+    })),
+    ClientUser: jest.fn(),
+    // Add more mocks as needed
+  };
+});
+
 const mockDbService = {
   addRoleMapping: jest.fn(),
   deleteRoleMapping: jest.fn(),
