@@ -10,6 +10,7 @@ import { NonceService } from '@/services/nonce.service';
 import { WalletService } from '@/services/wallet.service';
 import { DbService } from '@/services/db.service';
 import { DataService } from './services/data.service';
+import { VerifyService } from './services/verify.service';
 
 @Module({
   imports: [
@@ -23,7 +24,8 @@ import { DataService } from './services/data.service';
     NonceService,
     WalletService,
     DbService,
-    DataService
+    DataService,
+    VerifyService
   ],
 })
 export class AppModule {}
