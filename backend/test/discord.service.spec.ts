@@ -1,12 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DiscordService } from '../src/services/discord.service';
 import { DbService } from '../src/services/db.service';
+import { NonceService } from '../src/services/nonce.service';
 
 const mockDbService = {
   addRoleMapping: jest.fn(),
   deleteRoleMapping: jest.fn(),
   getRoleMappings: jest.fn()
 };
+const mockNonceService = {};
 
 describe('DiscordService', () => {
   let service: DiscordService;
@@ -15,6 +17,7 @@ describe('DiscordService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DiscordService,
+        { provide: NonceService, useValue: mockNonceService },
         { provide: DbService, useValue: mockDbService },
       ],
     }).compile();
