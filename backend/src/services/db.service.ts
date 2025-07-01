@@ -94,7 +94,7 @@ export class DbService {
     minItems: number
   ): Promise<any> {
     const { data, error } = await supabase
-      .from('verifier_role_mappings')
+      .from('verifier_rules')
       .insert({
         server_id: serverId,
         server_name: serverName,
@@ -111,7 +111,7 @@ export class DbService {
 
   async getRoleMappings(serverId: string, channelId: string): Promise<any[]> {
     const { data, error } = await supabase
-      .from('verifier_role_mappings')
+      .from('verifier_rules')
       .select('*')
       .eq('server_id', serverId)
       .eq('channel_id', channelId);
@@ -121,7 +121,7 @@ export class DbService {
 
   async deleteRoleMapping(ruleId: string): Promise<void> {
     const { error } = await supabase
-      .from('verifier_role_mappings')
+      .from('verifier_rules')
       .delete()
       .eq('id', ruleId);
     if (error) throw error;
