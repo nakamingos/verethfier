@@ -54,6 +54,14 @@ export class DataService {
     }));
   }
 
+  async getAllSlugs(): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('collections')
+      .select('slug');
+    if (error) throw new Error(error.message);
+    const slugs = Array.from(new Set((data || []).map(r => r.slug)));
+    return ['all-collections', ...slugs];
+  }
 }
 
 export type AssetWithAttrs = {
