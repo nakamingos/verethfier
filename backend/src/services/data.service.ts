@@ -29,4 +29,13 @@ export class DataService {
     return data.length;
   }
 
+  async getOwnedSlugs(address: string): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('ethscriptions')
+      .select('slug')
+      .eq('owner', address.toLowerCase());
+    if (error) throw new Error(error.message);
+    return Array.from(new Set((data || []).map(r => r.slug)));
+  }
+
 }
