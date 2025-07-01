@@ -135,7 +135,7 @@ export class DbService {
         server_id: serverId,
         role_id: roleId,
         address: address?.toLowerCase(),
-        timestamp: new Date().toISOString()
+        assigned_at: new Date().toISOString()
       });
     if (error) throw error;
   }
