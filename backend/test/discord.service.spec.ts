@@ -23,15 +23,15 @@ describe('DiscordService', () => {
   });
 
   it('add-rule calls addRoleMapping', async () => {
-    await service.dbSvc.addRoleMapping('g', 'n', 'c', 's', 'r', 'k', 'v', 1);
+    await service['dbSvc'].addRoleMapping('g', 'n', 'c', 's', 'r', 'k', 'v', 1);
     expect(mockDbService.addRoleMapping).toHaveBeenCalled();
   });
   it('remove-rule calls deleteRoleMapping', async () => {
-    await service.dbSvc.deleteRoleMapping('1');
+    await service['dbSvc'].deleteRoleMapping('1');
     expect(mockDbService.deleteRoleMapping).toHaveBeenCalledWith('1');
   });
   it('list-rules calls getRoleMappings', async () => {
-    await service.dbSvc.getRoleMappings('g', 'c');
+    await service['dbSvc'].getRoleMappings('g', 'c');
     expect(mockDbService.getRoleMappings).toHaveBeenCalledWith('g', 'c');
   });
 });
