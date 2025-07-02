@@ -17,8 +17,8 @@ describe('matchesRule', () => {
     expect(matchesRule({ slug: 'ALL' }, [{ slug: 'foo', attributes: {} }])).toBe(true);
   });
   it('matches trait', () => {
-    expect(matchesRule({ attr_key: 'foo', attr_val: 'bar' }, [{ slug: 'x', attributes: { foo: 'bar' } }])).toBe(true);
-    expect(matchesRule({ attr_key: 'foo', attr_val: 'baz' }, [{ slug: 'x', attributes: { foo: 'bar' } }])).toBe(false);
+    expect(matchesRule({ attribute_key: 'foo', attribute_value: 'bar' }, [{ slug: 'x', attributes: { foo: 'bar' } }])).toBe(true);
+    expect(matchesRule({ attribute_key: 'foo', attribute_value: 'baz' }, [{ slug: 'x', attributes: { foo: 'bar' } }])).toBe(false);
   });
   it('matches min_items', () => {
     expect(matchesRule({ min_items: 2 }, [{}, {}])).toBe(true);

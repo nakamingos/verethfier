@@ -17,10 +17,8 @@ export function matchesRule(
 
   // trait match: only enforced if both key+value set
   let attrMatch = true;
-  if (rule.attr_key && rule.attr_val != null) {
-    attrMatch = assets.some(
-      (a) => a.attributes?.[rule.attr_key] == rule.attr_val
-    );
+  if (rule.attribute_key && rule.attribute_value != null) {
+    attrMatch = assets.some(a => a.attributes?.[rule.attribute_key] == rule.attribute_value);
   }
 
   // min_items: if specified…

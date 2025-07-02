@@ -101,8 +101,8 @@ export class DbService {
         channel_id: channelId,
         slug: slug,
         role_id: roleId,
-        attr_key: attrKey,
-        attr_val: attrVal,
+        attribute_key: attrKey,
+        attribute_value: attrVal,
         min_items: minItems
       });
     if (error) throw error;
