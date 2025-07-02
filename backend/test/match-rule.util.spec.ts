@@ -36,7 +36,7 @@ describe('matchesRule', () => {
   });
 
   it('rejects if trait key/value missing', () => {
-    const rule = { ...baseRule, attr_key: 'missing', attr_val: 'nope' };
+    const rule = { ...baseRule, attribute_key: 'missing', attribute_value: 'nope' };
     expect(matchesRule(rule, assets)).toBe(false);
   });
 
