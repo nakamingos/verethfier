@@ -15,10 +15,14 @@ export function matchesRule(
     rule.channel_id == null /* null or undefined */ ||
     rule.channel_id === channelId;
 
-  // trait match: only enforced if both key+value set
+  // trait match: only enforced if both attribute_key+attribute_value set
   let attrMatch = true;
-  if (rule.attribute_key && rule.attribute_value != null) {
-    attrMatch = assets.some(a => a.attributes?.[rule.attribute_key] == rule.attribute_value);
+  const key = rule.attribute_key;
+  const val = rule.attribute_value;
+  if (key && val != null) {
+    attrMatch = assets.some(
+      (a) => a.attributes?.[key] == val
+    );
   }
 
   // min_items: if specified…
