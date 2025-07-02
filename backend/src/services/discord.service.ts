@@ -138,7 +138,7 @@ export class DiscordService {
           channel ? channel.id : null
         );
         let desc = rules.length
-          ? rules.map(r => `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attr_key || '-'}=${r.attr_val || '-'} | Min: ${r.min_items || 0}`).join('\n')
+          ? rules.map(r => `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attribute_key || '-'}=${r.attribute_value || '-'} | Min: ${r.min_items || 0}`).join('\n')
           : 'No rules found.';
         await interaction.reply({
           embeds: [

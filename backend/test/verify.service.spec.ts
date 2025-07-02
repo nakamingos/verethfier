@@ -51,8 +51,8 @@ describe('VerifyService', () => {
   it('handles multi-rule path', async () => {
     mockWalletService.verifySignature.mockResolvedValue('0xabc');
     mockDbService.getRoleMappings.mockResolvedValue([
-      { id: 1, slug: null, channel_id: null, attr_key: null, attr_val: null, min_items: null, role_id: 'r1' },
-      { id: 2, slug: 'ALL', channel_id: null, attr_key: null, attr_val: null, min_items: null, role_id: 'r2' },
+      { id: 1, slug: null, channel_id: null, attribute_key: null, attribute_value: null, min_items: null, role_id: 'r1' },
+      { id: 2, slug: 'ALL', channel_id: null, attribute_key: null, attribute_value: null, min_items: null, role_id: 'r2' },
     ]);
     mockDataService.getDetailedAssets.mockResolvedValue([{ slug: 'foo', attributes: {} }]);
     const payload = { userId: 'u', discordId: 'g', nonce: 'n' };

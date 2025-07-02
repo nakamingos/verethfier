@@ -3,8 +3,8 @@ export function matchesRule(rule: any, assets: any[], channelId?: string): boole
   const slugMatch = !rule.slug || rule.slug === 'ALL' || assets.some(a => a.slug === rule.slug);
   const channelMatch = !rule.channel_id || rule.channel_id === channelId;
   let attrMatch = true;
-  if (rule.attr_key && rule.attr_val != null) {
-    attrMatch = assets.some(a => a.attributes?.[rule.attr_key] == rule.attr_val);
+  if (rule.attribute_key && rule.attribute_value != null) {
+    attrMatch = assets.some(a => a.attributes?.[rule.attribute_key] == rule.attribute_value);
   }
   let minItemsMatch = true;
   if (rule.min_items != null) {
