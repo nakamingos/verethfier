@@ -1,24 +1,21 @@
 import { Injectable } from '@nestjs/common';
-
-import { createClient } from '@supabase/supabase-js';
-
+import { SupabaseClient, createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 dotenv.config();
 
 const supabaseUrl = 'https://cpwubaszhjdtqlvfdlbx.supabase.co'; // 'https://gqccibjxbgyuclehqtmk.supabase.co';
 const supabaseKey = process.env.SUPABASE_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 @Injectable()
 export class DbService {
+  constructor(private readonly supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey)) {}
 
   async addUpdateServer(
     serverId: string, 
     serverName: string,
     roleId: string
   ): Promise<any> {
-
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_servers')
       .upsert({
         id: serverId,
@@ -31,7 +28,7 @@ export class DbService {
   }
   
   async getUserServers(userId: string): Promise<any> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_users')
       .select('*')
       .eq('user_id', userId);
@@ -48,7 +45,7 @@ export class DbService {
   ) {
   
     // Step 1: Retrieve the current user data with the servers JSONB object
-    let { data: userData, error: fetchError } = await supabase
+    let { data: userData, error: fetchError } = await this.supabase
       .from('verifier_users')
       .select('servers')
       .eq('user_id', userId);
@@ -58,7 +55,7 @@ export class DbService {
     const servers = userData[0]?.servers || {};
     servers[serverId] = role;
   
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_users')
       .upsert({
         user_id: userId,
@@ -73,7 +70,7 @@ export class DbService {
   }  
 
   async getServerRole(serverId: string): Promise<any> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_servers')
       .select('role_id')
       .eq('id', serverId);
@@ -93,7 +90,7 @@ export class DbService {
     attrVal: string,
     minItems: number
   ): Promise<any> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_rules')
       .insert({
         server_id: serverId,
@@ -110,7 +107,7 @@ export class DbService {
   }
 
   async getRoleMappings(serverId: string, channelId: string): Promise<any[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_rules')
       .select('*')
       .eq('server_id', serverId)
@@ -120,7 +117,7 @@ export class DbService {
   }
 
   async deleteRoleMapping(ruleId: string): Promise<void> {
-    const { error } = await supabase
+    const { error } = await this.supabase
       .from('verifier_rules')
       .delete()
       .eq('id', ruleId);
@@ -128,7 +125,7 @@ export class DbService {
   }
 
   async logUserRole(userId: string, serverId: string, roleId: string, address: string): Promise<void> {
-    const { error } = await supabase
+    const { error } = await this.supabase
       .from('verifier_user_roles')
       .insert({
         user_id: userId,

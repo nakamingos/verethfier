@@ -1,22 +1,20 @@
 import { Injectable } from '@nestjs/common';
-
-import { createClient } from '@supabase/supabase-js';
-
+import { SupabaseClient, createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 dotenv.config();
 
 const supabaseUrl = 'https://kcbuycbhynlmsrvoegzp.supabase.co';
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 @Injectable()
 export class DataService {
-  
+  constructor(private readonly supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey)) {}
+
   async checkAssetOwnership(address: string): Promise<any> {
     address = address.toLowerCase();
     const marketAddress = '0xd3418772623be1a3cc6b6d45cb46420cedd9154a'.toLowerCase();
 
-    let query = supabase
+    let query = this.supabase
       .from('ethscriptions')
       .select('hashId, owner, prevOwner')
       .or(`owner.eq.${address},and(owner.eq.${marketAddress},prevOwner.eq.${address})`);
@@ -30,7 +28,7 @@ export class DataService {
   }
 
   async getOwnedSlugs(address: string): Promise<string[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('ethscriptions')
       .select('slug')
       .eq('owner', address.toLowerCase());
@@ -39,7 +37,7 @@ export class DataService {
   }
 
   async getDetailedAssets(address: string): Promise<AssetWithAttrs[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('ethscriptions')
       .select('slug, values')
       .eq('owner', address.toLowerCase());
@@ -55,12 +53,12 @@ export class DataService {
   }
 
   async getAllSlugs(): Promise<string[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('collections')
       .select('slug');
     if (error) throw new Error(error.message);
     const slugs = Array.from(new Set((data || []).map(r => r.slug)));
-    return ['all-collections', ...slugs];
+    return slugs;
   }
 }
 
