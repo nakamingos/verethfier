@@ -82,21 +82,15 @@ export class DiscordService {
    * Handles the setup process for the bot when a command interaction is received.
    * @param interaction - The command interaction object.
    */
-  async handleSetup(interaction: ChatInputCommandInteraction<CacheType>): Promise<void> {
+  async handleSetup(interaction: ChatInputCommandInteraction): Promise<void> {
     try {
-      // Legacy no-arg /setup
-      if (!interaction.options.getSubcommand(false)) {
-        await interaction.reply({
-          content: '⚠️ The legacy /setup command is deprecated. Please use /setup add-rule, remove-rule, or list-rules.',
-          flags: MessageFlags.Ephemeral
-        });
-        return;
-      }
       const sub = interaction.options.getSubcommand();
+      
       if (sub === 'add-rule') {
-        // Prevent adding new rule if legacy rule exists
-        const { data: legacyRoles, error } = await this.dbSvc.getLegacyRoles(interaction.guild.id);
-        if (error) throw error;
+        // Check if there are legacy roles that need to be migrated
+        const legacyRolesResult = await this.dbSvc.getLegacyRoles(interaction.guild.id);
+        const legacyRoles = legacyRolesResult.data;
+        
         if (legacyRoles && legacyRoles.length > 0) {
           await interaction.reply({
             content: 'You must migrate or remove the legacy rule(s) for this server before adding new rules. Use /setup migrate-legacy-rule or /setup remove-legacy-rule.',
@@ -104,6 +98,7 @@ export class DiscordService {
           });
           return;
         }
+        
         const channel = interaction.options.getChannel('channel');
         if (!channel) {
           await interaction.reply({
@@ -112,6 +107,7 @@ export class DiscordService {
           });
           return;
         }
+        
         const role = interaction.options.getRole('role');
         if (!role) {
           await interaction.reply({
@@ -120,10 +116,15 @@ export class DiscordService {
           });
           return;
         }
+        
         const slug = interaction.options.getString('slug') || null;
         const attrKey = interaction.options.getString('attribute_key') || null;
         const attrVal = interaction.options.getString('attribute_value') || null;
         const minItems = interaction.options.getInteger('min_items') || null;
+        
+        // Defer the reply early to prevent timeout
+        await interaction.deferReply({ ephemeral: true });
+        
         const rule = await this.dbSvc.addRoleMapping(
           interaction.guild.id,
           interaction.guild.name,
@@ -134,8 +135,10 @@ export class DiscordService {
           attrVal,
           minItems
         );
+        
         Logger.debug('addRoleMapping result:', rule);
         const newRule = rule;
+        
         // Check for existing Verify Now message in the channel
         let existingMessage = null;
         try {
@@ -143,12 +146,14 @@ export class DiscordService {
         } catch (err) {
           Logger.error('Error checking for existing Verify Now message', err);
         }
+        
         if (!existingMessage) {
           // Send the original embed+button to the channel
           const verifyEmbed = new EmbedBuilder()
             .setTitle('Wallet Verification')
             .setDescription('Verify your identity using your EVM wallet by clicking the button below.')
             .setColor('#00FF00');
+            
           const verifyButton = new ActionRowBuilder<ButtonBuilder>()
             .setComponents(
               new ButtonBuilder()
@@ -156,76 +161,84 @@ export class DiscordService {
                 .setLabel('Verify Now')
                 .setStyle(ButtonStyle.Primary)
             );
+            
           try {
             if (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement) {
-              await interaction.reply({
-                content: 'Selected channel is not a text or announcement channel.',
-                flags: MessageFlags.Ephemeral
+              await interaction.editReply({
+                content: 'Selected channel is not a text or announcement channel.'
               });
               return;
             }
+            
             const sentMessage = await (channel as GuildTextBasedChannel).send({
               embeds: [verifyEmbed],
               components: [verifyButton],
             });
+            
             // Wait for DB update to complete before replying
             await this.dbSvc.updateRuleMessageId(newRule.id, sentMessage.id);
+            
             // Optionally, add a short delay to ensure DB consistency
             await new Promise(res => setTimeout(res, 100));
-            await interaction.reply({
+            
+            await interaction.editReply({
               embeds: [
                 new EmbedBuilder()
                   .setTitle('Rule Added')
                   .setDescription(`Rule for <#${channel.id}> and <@&${role.id}> added.`)
                   .setColor('#00FF00')
-              ],
-              flags: MessageFlags.Ephemeral
+              ]
             });
           } catch (err) {
             Logger.error('Failed to send Verify Now message', err);
-            await interaction.reply({
-              content: 'Failed to send Verify Now message. Please check my permissions and try again.',
-              flags: MessageFlags.Ephemeral
+            await interaction.editReply({
+              content: 'Failed to send Verify Now message. Please check my permissions and try again.'
             });
             return;
           }
         } else {
           // Just update the new rule with the existing message_id
           await this.dbSvc.updateRuleMessageId(newRule.id, existingMessage.message_id);
+          await interaction.editReply({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle('Rule Added')
+                .setDescription(`Rule for <#${channel.id}> and <@&${role.id}> added.`)
+                .setColor('#00FF00')
+            ]
+          });
         }
-        await interaction.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle('Rule Added')
-              .setDescription(`Rule for <#${channel.id}> and <@&${role.id}> added.`)
-              .setColor('#00FF00')
-          ],
-          flags: MessageFlags.Ephemeral
-        });
       } else if (sub === 'remove-rule') {
         const ruleId = interaction.options.getInteger('rule_id');
+        
+        // Defer the reply early to prevent timeout
+        await interaction.deferReply({ ephemeral: true });
+        
         try {
           await this.dbSvc.deleteRoleMapping(String(ruleId), interaction.guild.id);
-          await interaction.reply({
+          await interaction.editReply({
             embeds: [
               new EmbedBuilder()
                 .setTitle('Rule Removed')
                 .setDescription(`Rule ID ${ruleId} removed.`)
                 .setColor('#FF0000')
-            ],
-            flags: MessageFlags.Ephemeral
+            ]
           });
         } catch (err) {
-          await interaction.reply({
-            content: `Error: ${err.message}`,
-            flags: MessageFlags.Ephemeral
+          await interaction.editReply({
+            content: `Error: ${err.message}`
           });
         }
       } else if (sub === 'list-rules') {
         // No channel option: list all rules for the server
+        
+        // Defer the reply early to prevent timeout
+        await interaction.deferReply({ ephemeral: true });
+        
         const rules = await this.dbSvc.getAllRulesWithLegacy(
           interaction.guild.id
         );
+        
         let desc = rules.length
           ? rules.map(r =>
               r.legacy
@@ -233,50 +246,69 @@ export class DiscordService {
                 : `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attribute_key || '-'}=${r.attribute_value || '-'} | Min: ${r.min_items || 0}`
             ).join('\n')
           : 'No rules found.';
+          
         if (rules.some(r => r.legacy)) {
           desc +=
             '\n\n⚠️ [LEGACY] rules are from the old setup and may assign outdated roles. Please migrate to the new rules system and remove legacy rules.';
         }
-        await interaction.reply({
+        
+        await interaction.editReply({
           embeds: [
             new EmbedBuilder()
               .setTitle('Verification Rules')
               .setDescription(desc)
               .setColor('#C3FF00')
-          ],
-          flags: MessageFlags.Ephemeral
+          ]
         });
       } else if (sub === 'remove-legacy-rule') {
         // Remove all legacy roles for this guild using DbService
-        const { removed } = await this.dbSvc.removeAllLegacyRoles(interaction.guild.id);
-        if (!removed.length) {
-          await interaction.reply({
-            content: 'No legacy rules found for this server.',
-            flags: MessageFlags.Ephemeral
+        
+        // Defer the reply early to prevent timeout
+        await interaction.deferReply({ ephemeral: true });
+        
+        const legacyRolesResult = await this.dbSvc.getLegacyRoles(interaction.guild.id);
+        const legacyRoles = legacyRolesResult.data;
+        
+        if (!legacyRoles || legacyRoles.length === 0) {
+          await interaction.editReply({
+            content: 'No legacy roles found for this server. Nothing to remove.'
           });
           return;
         }
-        const removedRoles = removed.map(r => `<@&${r.role_id}>`).join(', ');
-        await interaction.reply({
-          content: `Removed legacy rule(s): ${removedRoles}`,
-          flags: MessageFlags.Ephemeral
+        
+        await this.dbSvc.removeAllLegacyRoles(interaction.guild.id);
+        
+        await interaction.editReply({
+          content: `Removed ${legacyRoles.length} legacy rule(s).`
         });
       } else if (sub === 'migrate-legacy-rule') {
-        // Migrate legacy role to a new rule for this guild
         const channel = interaction.options.getChannel('channel');
-        // Get legacy roles for this guild
-        const { data: legacyRoles, error } = await this.dbSvc.getLegacyRoles(interaction.guild.id);
-        if (error) throw error;
-        if (!legacyRoles || legacyRoles.length === 0) {
+        if (!channel) {
           await interaction.reply({
-            content: 'No legacy rules found for this server.',
+            content: 'Channel not found or not specified.',
             flags: MessageFlags.Ephemeral
           });
           return;
         }
+        
+        // Defer the reply early to prevent timeout
+        await interaction.deferReply({ ephemeral: true });
+        
+        // Get legacy roles
+        const legacyRolesResult = await this.dbSvc.getLegacyRoles(interaction.guild.id);
+        const legacyRoles = legacyRolesResult.data;
+        
+        if (!legacyRoles || legacyRoles.length === 0) {
+          await interaction.editReply({
+            content: 'No legacy roles found for this server. Nothing to migrate.'
+          });
+          return;
+        }
+        
         // For each legacy role, create a new rule in verifier_rules
         const created = [];
         const alreadyPresent = [];
+        
         for (const legacy of legacyRoles) {
           const exists = await this.dbSvc.ruleExists(
             interaction.guild.id,
@@ -284,10 +316,12 @@ export class DiscordService {
             legacy.role_id,
             'ALL'
           );
+          
           if (exists) {
             alreadyPresent.push(`<@&${legacy.role_id}>`);
             continue;
           }
+          
           try {
             await this.dbSvc.addRoleMapping(
               interaction.guild.id,
@@ -302,24 +336,38 @@ export class DiscordService {
             created.push(`<@&${legacy.role_id}>`);
           } catch (e) {
             // Optionally handle per-role errors
+            Logger.error(`Error migrating role ${legacy.role_id}:`, e);
           }
         }
+        
         await this.dbSvc.removeAllLegacyRoles(interaction.guild.id);
+        
         let msg = '';
         if (created.length) msg += `Migrated legacy rule(s) to new rule(s) for channel <#${channel.id}>: ${created.join(', ')}. `;
         if (alreadyPresent.length) msg += `Legacy rule(s) already exist as new rule(s) for channel <#${channel.id}>: ${alreadyPresent.join(', ')}. `;
         msg += 'Removed legacy rule(s).';
-        await interaction.reply({
-          content: msg,
-          flags: MessageFlags.Ephemeral
+        
+        await interaction.editReply({
+          content: msg
         });
       }
     } catch (error) {
       console.error(error);
-      await interaction.reply({
-        content: `Error: ${error.message}`,
-        ephemeral: true
-      });
+      // Check if we've already replied or deferred
+      if (interaction.deferred) {
+        await interaction.editReply({
+          content: `Error: ${error.message}`
+        });
+      } else {
+        try {
+          await interaction.reply({
+            content: `Error: ${error.message}`,
+            flags: MessageFlags.Ephemeral
+          });
+        } catch (replyError) {
+          Logger.error('Failed to reply with error:', replyError);
+        }
+      }
     }
   }
 
@@ -329,44 +377,55 @@ export class DiscordService {
    */
   async requestVerification(interaction: ButtonInteraction<CacheType>): Promise<void> {
     try {
+      // Defer the reply early to prevent timeout
+      await interaction.deferReply({ ephemeral: true });
+      
       const guild = interaction.guild;
       if (!guild) throw new Error('Guild not found');
+      
       const channel = interaction.channel;
       if (!channel || !('id' in channel)) throw new Error('Channel not found');
-      // Find the rule by message id (new system)
-      let rule = null;
+      
+      // Try to get the correct roleId (legacy or new)
+      let roleId: string | null = null;
       try {
-        rule = await this.dbSvc.findRuleByMessageId(guild.id, channel.id, interaction.message.id);
+        roleId = await this.getVerificationRoleId(guild.id, channel.id, interaction.message.id);
       } catch (err) {
-        Logger.error('Error fetching rule by message id', err);
+        Logger.error('Error fetching verification roleId', err);
       }
-      if (!rule) throw new Error('Verification rule not found for this message.');
-      const role = guild.roles.cache.get(rule.role_id);
+      
+      Logger.debug('requestVerification: resolved roleId:', roleId);
+      if (!roleId) throw new Error('Verification role not found for this message.');
+      
+      const role = guild.roles.cache.get(roleId);
       if (!role) throw new Error('Role not found');
 
       // Check if user is already verified
       // const userServers = await this.dbSvc.getUserServers(interaction.user.id);
       // if (userServers?.servers?.[guild.id]) {
-      //   await interaction.reply({
+      //   await interaction.editReply({
       //     embeds: [
       //       new EmbedBuilder()
       //         .setTitle('Verification Request')
       //         .setDescription('You have already been verified in this server.')
       //         .setColor('#FF0000')
-      //     ],
-      //     ephemeral: true,
+      //     ]
       //   });
-        
+      //   
       //   return;
       // }
 
-      // Create a nonce
+      // Create a nonce with message and channel info
       const expiry = Math.floor((Date.now() + EXPIRY) / 1000);
       const nonce = await this.nonceSvc.createNonce(
-        interaction.user.id
+        interaction.user.id,
+        interaction.message.id,
+        channel.id
       );
       
-      // Encode the payload
+      Logger.debug(`Created nonce with messageId: ${interaction.message.id}, channelId: ${channel.id}`);
+      
+      // Encode the payload (keeping legacy format for compatibility)
       const payloadArr = [
         interaction.user.id,
         interaction.user.tag,
@@ -384,7 +443,7 @@ export class DiscordService {
       const url = `${process.env.BASE_URL}/verify/${encoded}`;
 
       // Reply to the interaction
-      await interaction.reply({
+      await interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setTitle('Wallet Verification')
@@ -399,8 +458,7 @@ export class DiscordService {
                 .setURL(url)
                 .setStyle(ButtonStyle.Link)
             )
-        ],
-        flags: MessageFlags.Ephemeral,
+        ]
       });
 
       // Store the temp message
@@ -409,10 +467,20 @@ export class DiscordService {
       Logger.debug(`Sent verification link to ${interaction.user.tag}`);
     } catch (error) {
       console.error(error);
-      await interaction.reply({
-        content: `Error: ${error.message}`,
-        ephemeral: true
-      });
+      if (interaction.deferred) {
+        await interaction.editReply({
+          content: `Error: ${error.message}`
+        });
+      } else {
+        try {
+          await interaction.reply({
+            content: `Error: ${error.message}`,
+            flags: MessageFlags.Ephemeral
+          });
+        } catch (replyError) {
+          Logger.error('Failed to reply with error:', replyError);
+        }
+      }
     }
   }
 
@@ -435,15 +503,15 @@ export class DiscordService {
 
     const guild = this.client.guilds.cache.get(guildId);
     if (!guild) throw new Error('Guild not found');
-    // console.log({guild});
+
+    Logger.debug('addUserRole: roleId from payload:', roleId);
+    Logger.debug('addUserRole: guild roles:', guild.roles.cache.map(r => ({ id: r.id, name: r.name })));
 
     const member = await guild.members.fetch(userId);
     if (!member) throw new Error('Member not found');
-    // console.log({member});
 
     const role = guild.roles.cache.get(roleId);
     if (!role) throw new Error('Role not found');
-    // console.log({role});
       
     const storedInteraction = this.tempMessages[nonce];
     if (!storedInteraction) {
@@ -541,17 +609,24 @@ export class DiscordService {
   }
 
   /**
-   * Throws an error to the user in Discord.
-   * @param discordId - The Discord ID of the user.
-   * @param error - The error message to send.
+   * Throws an error by editing the stored interaction with an error message.
+   * @param nonce - The nonce associated with the stored interaction.
+   * @param message - The error message to display.
    */
   async throwError(nonce: string, message: string): Promise<void> {
     const storedInteraction = this.tempMessages[nonce];
     if (!storedInteraction) {
-      throw new Error('No stored interaction found for this nonce');
+      Logger.warn(`No stored interaction found for nonce: ${nonce}`);
+      return;
     }
 
     try {
+      // Check if interaction is still valid
+      if (!storedInteraction.isRepliable()) {
+        Logger.warn(`Interaction for nonce ${nonce} is no longer repliable`);
+        return;
+      }
+      
       await storedInteraction.editReply({
         embeds: [
           new EmbedBuilder()
@@ -561,10 +636,23 @@ export class DiscordService {
         ],
       });
     } catch (error) {
-      console.error(error);
+      Logger.error(`Failed to edit reply for nonce ${nonce}:`, error);
     } finally {
-      // Delete the temp message
+      // Clean up the stored interaction
       delete this.tempMessages[nonce];
     }
+  }
+
+  /**
+   * Helper to get the correct roleId for verification, supporting both legacy and new rules.
+   */
+  async getVerificationRoleId(guildId: string, channelId: string, messageId: string): Promise<string | null> {
+    // Try legacy first
+    const legacyRoleId = await this.dbSvc.getServerRole(guildId);
+    if (legacyRoleId) return legacyRoleId;
+    // Try new rules
+    const rule = await this.dbSvc.findRuleByMessageId(guildId, channelId, messageId);
+    if (rule && rule.role_id) return rule.role_id;
+    return null;
   }
 }

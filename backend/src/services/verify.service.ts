@@ -18,12 +18,47 @@ export class VerifyService {
   ) {}
 
   async verifySignatureFlow(
-    payload: DecodedData & { channelId?: string },
+    payload: DecodedData & { address?: string },
     signature: string
   ) {
     const address = await this.walletSvc.verifySignature(payload, signature);
+    
+    // Get the message data associated with the nonce
+    const { messageId, channelId } = await this.nonceSvc.getNonceData(payload.userId);
+    
+    // Invalidate the nonce after retrieving the data
     await this.nonceSvc.invalidateNonce(payload.userId);
     Logger.log(`Nonce deleted for userId: ${payload.userId}`);
+
+    // --- Message-based verification (takes precedence if messageId is present) ---
+    if (messageId && channelId) {
+      Logger.log(`Message-based verification for messageId: ${messageId}, channelId: ${channelId}`);
+      const roleId = await this.discordSvc.getVerificationRoleId(
+        payload.discordId,
+        channelId,
+        messageId
+      );
+      
+      if (roleId) {
+        Logger.log(`Role ID resolved from message: ${roleId}`);
+        await this.discordSvc.addUserRole(
+          payload.userId,
+          roleId,
+          payload.discordId,
+          address,
+          payload.nonce
+        );
+        await this.dbSvc.logUserRole(
+          payload.userId,
+          payload.discordId,
+          roleId,
+          address
+        );
+        return { message: 'Verification successful (message-based)', address };
+      } else {
+        Logger.warn(`No role found for messageId: ${messageId}, channelId: ${channelId}`);
+      }
+    }
 
     // --- Legacy path ---
     if (payload.role) {
@@ -50,7 +85,7 @@ export class VerifyService {
     const rules  = await this.dbSvc.getRoleMappings(
       payload.discordId
     );
-    const matched = rules.filter(r => matchesRule(r, assets, payload.channelId));
+    const matched = rules.filter(r => matchesRule(r, assets, channelId));
     if (!matched.length) {
       await this.discordSvc.throwError(payload.nonce, 'No matching assets');
       throw new Error('No matching assets');

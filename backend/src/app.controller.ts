@@ -11,7 +11,7 @@ export class AppController {
   @Post('verify-signature')
   verify(
     @Body() body: {
-      data: DecodedData & { channelId?: string };
+      data: DecodedData & { address?: string };
       signature: string;
     }
   ) {
