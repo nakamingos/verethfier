@@ -224,7 +224,7 @@ export class DiscordService {
               legacy.role_id,
               null, // attribute_key
               null, // attribute_value
-              null  // min_items
+              1    // min_items (set to 1 for migration)
             );
             created.push(`<@&${legacy.role_id}>`);
           } catch (e) {

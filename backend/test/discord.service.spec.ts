@@ -28,6 +28,7 @@ const mockDbService = {
   getAllRulesWithLegacy: jest.fn(),
   removeAllLegacyRoles: jest.fn(),
   getLegacyRoles: jest.fn(),
+  ruleExists: jest.fn(), // Add mock for ruleExists
 };
 const mockNonceService = {};
 
@@ -91,10 +92,10 @@ describe('DiscordService', () => {
     mockDbService.removeAllLegacyRoles.mockResolvedValue({ removed: [{ role_id: 'r' }] });
     await service.handleSetup(mockInteraction);
     expect(mockDbService.getLegacyRoles).toHaveBeenCalledWith('g');
-    expect(mockDbService.addRoleMapping).toHaveBeenCalledWith('g', 'Guild', 'c', null, 'r', null, null, null);
+    expect(mockDbService.addRoleMapping).toHaveBeenCalledWith('g', 'Guild', 'c', 'ALL', 'r', null, null, null);
     expect(mockDbService.removeAllLegacyRoles).toHaveBeenCalledWith('g');
     expect(mockInteraction.reply).toHaveBeenCalledWith({
-      content: 'Migrated legacy rule(s) to new rule(s) for channel <#c>: <@&r>',
+      content: 'Migrated legacy rule(s) to new rule(s) for channel <#c>: <@&r>. Removed legacy rule(s).',
       flags: expect.any(Number)
     });
   });
