@@ -140,6 +140,40 @@ export class DbService {
     if (error) throw error;
   }
 
+  // Returns both new rules and legacy role (if present) for a server
+  async getAllRulesWithLegacy(serverId: string, channelId: string): Promise<any[]> {
+    // Get new rules
+    const { data: rules, error: rulesError } = await supabase
+      .from('verifier_rules')
+      .select('*')
+      .eq('server_id', serverId)
+      .eq('channel_id', channelId);
+    if (rulesError) throw rulesError;
+
+    // Get legacy role (if any)
+    const { data: legacy, error: legacyError } = await supabase
+      .from('verifier_servers')
+      .select('role_id, name')
+      .eq('id', serverId);
+    if (legacyError) throw legacyError;
+
+    // If legacy role exists, add as a pseudo-rule with LEGACY marker
+    let all = [...rules];
+    if (legacy && legacy[0]?.role_id) {
+      all.push({
+        id: 'LEGACY',
+        channel_id: '-',
+        role_id: legacy[0].role_id,
+        slug: null,
+        attribute_key: null,
+        attribute_value: null,
+        min_items: null,
+        legacy: true,
+        server_name: legacy[0].name,
+      });
+    }
+    return all;
+  }
 }
 
 // create table

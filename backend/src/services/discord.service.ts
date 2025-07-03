@@ -133,13 +133,22 @@ export class DiscordService {
         });
       } else if (sub === 'list-rules') {
         const channel = interaction.options.getChannel('channel');
-        const rules = await this.dbSvc.getRoleMappings(
+        // Use new method to get both rules and legacy
+        const rules = await this.dbSvc.getAllRulesWithLegacy(
           interaction.guild.id,
           channel ? channel.id : null
         );
         let desc = rules.length
-          ? rules.map(r => `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attribute_key || '-'}=${r.attribute_value || '-'} | Min: ${r.min_items || 0}`).join('\n')
+          ? rules.map(r =>
+              r.legacy
+                ? `[LEGACY] Role: <@&${r.role_id}> (from legacy setup, please migrate or remove)`
+                : `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attribute_key || '-'}=${r.attribute_value || '-'} | Min: ${r.min_items || 0}`
+            ).join('\n')
           : 'No rules found.';
+        if (rules.some(r => r.legacy)) {
+          desc +=
+            '\n\n⚠️ [LEGACY] rules are from the old setup and may assign outdated roles. Please migrate to the new rules system and remove legacy roles.';
+        }
         await interaction.reply({
           embeds: [
             new EmbedBuilder()
