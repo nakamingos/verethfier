@@ -99,7 +99,7 @@ export class DiscordService {
         if (error) throw error;
         if (legacyRoles && legacyRoles.length > 0) {
           await interaction.reply({
-            content: 'You must migrate or remove the legacy rule(s) for this server before adding new rules. Use /setup migrate-legacy-role or /setup remove-legacy-role.',
+            content: 'You must migrate or remove the legacy rule(s) for this server before adding new rules. Use /setup migrate-legacy-rule or /setup remove-legacy-rule.',
             flags: MessageFlags.Ephemeral
           });
           return;
@@ -156,13 +156,13 @@ export class DiscordService {
         let desc = rules.length
           ? rules.map(r =>
               r.legacy
-                ? `[LEGACY] Role: <@&${r.role_id}> (from legacy setup, please migrate or remove)`
+                ? `[LEGACY] Rule: <@&${r.role_id}> (from legacy setup, please migrate or remove)`
                 : `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attribute_key || '-'}=${r.attribute_value || '-'} | Min: ${r.min_items || 0}`
             ).join('\n')
           : 'No rules found.';
         if (rules.some(r => r.legacy)) {
           desc +=
-            '\n\n⚠️ [LEGACY] rules are from the old setup and may assign outdated roles. Please migrate to the new rules system and remove legacy roles.';
+            '\n\n⚠️ [LEGACY] rules are from the old setup and may assign outdated roles. Please migrate to the new rules system and remove legacy rules.';
         }
         await interaction.reply({
           embeds: [
@@ -173,22 +173,22 @@ export class DiscordService {
           ],
           flags: MessageFlags.Ephemeral
         });
-      } else if (sub === 'remove-legacy-role') {
+      } else if (sub === 'remove-legacy-rule') {
         // Remove all legacy roles for this guild using DbService
         const { removed } = await this.dbSvc.removeAllLegacyRoles(interaction.guild.id);
         if (!removed.length) {
           await interaction.reply({
-            content: 'No legacy roles found for this server.',
+            content: 'No legacy rules found for this server.',
             flags: MessageFlags.Ephemeral
           });
           return;
         }
         const removedRoles = removed.map(r => `<@&${r.role_id}>`).join(', ');
         await interaction.reply({
-          content: `Removed legacy role(s): ${removedRoles}`,
+          content: `Removed legacy rule(s): ${removedRoles}`,
           flags: MessageFlags.Ephemeral
         });
-      } else if (sub === 'migrate-legacy-role') {
+      } else if (sub === 'migrate-legacy-rule') {
         // Migrate legacy role to a new rule for this guild
         const channel = interaction.options.getChannel('channel');
         // Get legacy roles for this guild
@@ -196,14 +196,25 @@ export class DiscordService {
         if (error) throw error;
         if (!legacyRoles || legacyRoles.length === 0) {
           await interaction.reply({
-            content: 'No legacy roles found for this server.',
+            content: 'No legacy rules found for this server.',
             flags: MessageFlags.Ephemeral
           });
           return;
         }
         // For each legacy role, create a new rule in verifier_rules
-        const results = [];
+        const created = [];
+        const alreadyPresent = [];
         for (const legacy of legacyRoles) {
+          const exists = await this.dbSvc.ruleExists(
+            interaction.guild.id,
+            channel.id,
+            legacy.role_id,
+            'ALL'
+          );
+          if (exists) {
+            alreadyPresent.push(`<@&${legacy.role_id}>`);
+            continue;
+          }
           try {
             await this.dbSvc.addRoleMapping(
               interaction.guild.id,
@@ -215,16 +226,18 @@ export class DiscordService {
               null, // attribute_value
               null  // min_items
             );
-            results.push(`<@&${legacy.role_id}>`);
+            created.push(`<@&${legacy.role_id}>`);
           } catch (e) {
             // Optionally handle per-role errors
           }
         }
         await this.dbSvc.removeAllLegacyRoles(interaction.guild.id);
+        let msg = '';
+        if (created.length) msg += `Migrated legacy rule(s) to new rule(s) for channel <#${channel.id}>: ${created.join(', ')}. `;
+        if (alreadyPresent.length) msg += `Legacy rule(s) already exist as new rule(s) for channel <#${channel.id}>: ${alreadyPresent.join(', ')}. `;
+        msg += 'Removed legacy rule(s).';
         await interaction.reply({
-          content: results.length
-            ? `Migrated legacy role(s) to new rule(s) for channel <#${channel.id}>: ${results.join(', ')}`
-            : 'No legacy roles were migrated.',
+          content: msg,
           flags: MessageFlags.Ephemeral
         });
       }
@@ -419,12 +432,12 @@ export class DiscordService {
             .setDescription('List all verification rules')
         )
         .addSubcommand(sc =>
-          sc.setName('remove-legacy-role')
+          sc.setName('remove-legacy-rule')
             .setDescription('Remove all legacy roles for this server (if any)')
         )
         .addSubcommand(sc =>
-          sc.setName('migrate-legacy-role')
-            .setDescription('Migrate a legacy role to a new rule (prompts for channel)')
+          sc.setName('migrate-legacy-rule')
+            .setDescription('Migrate a legacy rule to a new rule (prompts for channel)')
             .addChannelOption(option => option.setName('channel').setDescription('Channel for the new rule').setRequired(true))
         )
     ];

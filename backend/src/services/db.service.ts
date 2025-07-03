@@ -212,6 +212,19 @@ export class DbService {
       .eq('id', serverId);
     return { data, error };
   }
+
+  // Check if a rule already exists for server, channel, role, and slug
+  async ruleExists(serverId: string, channelId: string, roleId: string, slug: string): Promise<boolean> {
+    const { data, error } = await supabase
+      .from('verifier_rules')
+      .select('id')
+      .eq('server_id', serverId)
+      .eq('channel_id', channelId)
+      .eq('role_id', roleId)
+      .eq('slug', slug);
+    if (error) throw error;
+    return !!(data && data.length > 0);
+  }
 }
 
 // create table

@@ -58,9 +58,9 @@ describe('DiscordService', () => {
     await service['dbSvc'].getRoleMappings('g', 'c');
     expect(mockDbService.getRoleMappings).toHaveBeenCalledWith('g', 'c');
   });
-  it('remove-legacy-role calls removeAllLegacyRoles and replies with removed roles', async () => {
+  it('remove-legacy-rule calls removeAllLegacyRoles and replies with removed roles', async () => {
     const mockInteraction = {
-      options: { getSubcommand: () => 'remove-legacy-role' },
+      options: { getSubcommand: () => 'remove-legacy-rule' },
       guild: { id: 'g' },
       reply: jest.fn(),
       isChatInputCommand: () => true,
@@ -70,15 +70,15 @@ describe('DiscordService', () => {
     await service.handleSetup(mockInteraction);
     expect(mockDbService.removeAllLegacyRoles).toHaveBeenCalledWith('g');
     expect(mockInteraction.reply).toHaveBeenCalledWith({
-      content: 'Removed legacy role(s): <@&r>',
+      content: 'Removed legacy rule(s): <@&r>',
       flags: expect.any(Number)
     });
   });
 
-  it('migrate-legacy-role migrates legacy roles and removes them', async () => {
+  it('migrate-legacy-rule migrates legacy roles and removes them', async () => {
     const mockInteraction = {
       options: {
-        getSubcommand: () => 'migrate-legacy-role',
+        getSubcommand: () => 'migrate-legacy-rule',
         getChannel: () => ({ id: 'c' })
       },
       guild: { id: 'g', name: 'Guild' },
@@ -94,7 +94,7 @@ describe('DiscordService', () => {
     expect(mockDbService.addRoleMapping).toHaveBeenCalledWith('g', 'Guild', 'c', null, 'r', null, null, null);
     expect(mockDbService.removeAllLegacyRoles).toHaveBeenCalledWith('g');
     expect(mockInteraction.reply).toHaveBeenCalledWith({
-      content: 'Migrated legacy role(s) to new rule(s) for channel <#c>: <@&r>',
+      content: 'Migrated legacy rule(s) to new rule(s) for channel <#c>: <@&r>',
       flags: expect.any(Number)
     });
   });
