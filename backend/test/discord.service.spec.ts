@@ -24,7 +24,10 @@ jest.mock('discord.js', () => {
 const mockDbService = {
   addRoleMapping: jest.fn(),
   deleteRoleMapping: jest.fn(),
-  getRoleMappings: jest.fn()
+  getRoleMappings: jest.fn(),
+  getAllRulesWithLegacy: jest.fn(),
+  removeAllLegacyRoles: jest.fn(),
+  getLegacyRoles: jest.fn(),
 };
 const mockNonceService = {};
 
@@ -54,5 +57,45 @@ describe('DiscordService', () => {
   it('list-rules calls getRoleMappings', async () => {
     await service['dbSvc'].getRoleMappings('g', 'c');
     expect(mockDbService.getRoleMappings).toHaveBeenCalledWith('g', 'c');
+  });
+  it('remove-legacy-role calls removeAllLegacyRoles and replies with removed roles', async () => {
+    const mockInteraction = {
+      options: { getSubcommand: () => 'remove-legacy-role' },
+      guild: { id: 'g' },
+      reply: jest.fn(),
+      isChatInputCommand: () => true,
+      isButton: () => false,
+    } as any;
+    mockDbService.removeAllLegacyRoles.mockResolvedValue({ removed: [{ role_id: 'r' }] });
+    await service.handleSetup(mockInteraction);
+    expect(mockDbService.removeAllLegacyRoles).toHaveBeenCalledWith('g');
+    expect(mockInteraction.reply).toHaveBeenCalledWith({
+      content: 'Removed legacy role(s): <@&r>',
+      flags: expect.any(Number)
+    });
+  });
+
+  it('migrate-legacy-role migrates legacy roles and removes them', async () => {
+    const mockInteraction = {
+      options: {
+        getSubcommand: () => 'migrate-legacy-role',
+        getChannel: () => ({ id: 'c' })
+      },
+      guild: { id: 'g', name: 'Guild' },
+      reply: jest.fn(),
+      isChatInputCommand: () => true,
+      isButton: () => false,
+    } as any;
+    mockDbService.getLegacyRoles.mockResolvedValue({ data: [{ role_id: 'r', name: 'Role' }], error: null });
+    mockDbService.addRoleMapping.mockResolvedValue({});
+    mockDbService.removeAllLegacyRoles.mockResolvedValue({ removed: [{ role_id: 'r' }] });
+    await service.handleSetup(mockInteraction);
+    expect(mockDbService.getLegacyRoles).toHaveBeenCalledWith('g');
+    expect(mockDbService.addRoleMapping).toHaveBeenCalledWith('g', 'Guild', 'c', null, 'r', null, null, null);
+    expect(mockDbService.removeAllLegacyRoles).toHaveBeenCalledWith('g');
+    expect(mockInteraction.reply).toHaveBeenCalledWith({
+      content: 'Migrated legacy role(s) to new rule(s) for channel <#c>: <@&r>',
+      flags: expect.any(Number)
+    });
   });
 });
