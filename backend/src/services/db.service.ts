@@ -141,13 +141,12 @@ export class DbService {
   }
 
   // Returns both new rules and legacy role (if present) for a server
-  async getAllRulesWithLegacy(serverId: string, channelId: string): Promise<any[]> {
-    // Get new rules
+  async getAllRulesWithLegacy(serverId: string): Promise<any[]> {
+    // Get new rules (all channels)
     const { data: rules, error: rulesError } = await supabase
       .from('verifier_rules')
       .select('*')
-      .eq('server_id', serverId)
-      .eq('channel_id', channelId);
+      .eq('server_id', serverId);
     if (rulesError) throw rulesError;
 
     // Get legacy role (if any)

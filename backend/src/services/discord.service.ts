@@ -132,11 +132,9 @@ export class DiscordService {
           ephemeral: true
         });
       } else if (sub === 'list-rules') {
-        const channel = interaction.options.getChannel('channel');
-        // Use new method to get both rules and legacy
+        // No channel option: list all rules for the server
         const rules = await this.dbSvc.getAllRulesWithLegacy(
-          interaction.guild.id,
-          channel ? channel.id : null
+          interaction.guild.id
         );
         let desc = rules.length
           ? rules.map(r =>
@@ -348,8 +346,7 @@ export class DiscordService {
         )
         .addSubcommand(sc =>
           sc.setName('list-rules')
-            .setDescription('List all rules for a channel')
-            .addChannelOption(option => option.setName('channel').setDescription('Channel').setRequired(false))
+            .setDescription('List all verification rules')
         )
     ];
     Logger.debug('Reloading application /slash commands.', `${commands.length} commands`);
