@@ -105,7 +105,21 @@ export class DiscordService {
           return;
         }
         const channel = interaction.options.getChannel('channel');
+        if (!channel) {
+          await interaction.reply({
+            content: 'Channel not found or not specified.',
+            flags: MessageFlags.Ephemeral
+          });
+          return;
+        }
         const role = interaction.options.getRole('role');
+        if (!role) {
+          await interaction.reply({
+            content: 'Role not found or not specified.',
+            flags: MessageFlags.Ephemeral
+          });
+          return;
+        }
         const slug = interaction.options.getString('slug') || null;
         const attrKey = interaction.options.getString('attribute_key') || null;
         const attrVal = interaction.options.getString('attribute_value') || null;
@@ -120,6 +134,65 @@ export class DiscordService {
           attrVal,
           minItems
         );
+        Logger.debug('addRoleMapping result:', rule);
+        const newRule = rule;
+        // Check for existing Verify Now message in the channel
+        let existingMessage = null;
+        try {
+          existingMessage = await this.dbSvc.findRuleWithMessage(interaction.guild.id, channel.id);
+        } catch (err) {
+          Logger.error('Error checking for existing Verify Now message', err);
+        }
+        if (!existingMessage) {
+          // Send the original embed+button to the channel
+          const verifyEmbed = new EmbedBuilder()
+            .setTitle('Wallet Verification')
+            .setDescription('Verify your identity using your EVM wallet by clicking the button below.')
+            .setColor('#00FF00');
+          const verifyButton = new ActionRowBuilder<ButtonBuilder>()
+            .setComponents(
+              new ButtonBuilder()
+                .setCustomId('requestVerification')
+                .setLabel('Verify Now')
+                .setStyle(ButtonStyle.Primary)
+            );
+          try {
+            if (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement) {
+              await interaction.reply({
+                content: 'Selected channel is not a text or announcement channel.',
+                flags: MessageFlags.Ephemeral
+              });
+              return;
+            }
+            const sentMessage = await (channel as GuildTextBasedChannel).send({
+              embeds: [verifyEmbed],
+              components: [verifyButton],
+            });
+            // Wait for DB update to complete before replying
+            await this.dbSvc.updateRuleMessageId(newRule.id, sentMessage.id);
+            // Optionally, add a short delay to ensure DB consistency
+            await new Promise(res => setTimeout(res, 100));
+            await interaction.reply({
+              embeds: [
+                new EmbedBuilder()
+                  .setTitle('Rule Added')
+                  .setDescription(`Rule for <#${channel.id}> and <@&${role.id}> added.`)
+                  .setColor('#00FF00')
+              ],
+              flags: MessageFlags.Ephemeral
+            });
+          } catch (err) {
+            Logger.error('Failed to send Verify Now message', err);
+            await interaction.reply({
+              content: 'Failed to send Verify Now message. Please check my permissions and try again.',
+              flags: MessageFlags.Ephemeral
+            });
+            return;
+          }
+        } else {
+          // Just update the new rule with the existing message_id
+          await this.dbSvc.updateRuleMessageId(newRule.id, existingMessage.message_id);
+        }
         await interaction.reply({
           embeds: [
             new EmbedBuilder()
@@ -257,8 +330,18 @@ export class DiscordService {
   async requestVerification(interaction: ButtonInteraction<CacheType>): Promise<void> {
     try {
       const guild = interaction.guild;
-      const roleId = await this.dbSvc.getServerRole(guild.id);
-      const role = guild.roles.cache.get(roleId);
+      if (!guild) throw new Error('Guild not found');
+      const channel = interaction.channel;
+      if (!channel || !('id' in channel)) throw new Error('Channel not found');
+      // Find the rule by message id (new system)
+      let rule = null;
+      try {
+        rule = await this.dbSvc.findRuleByMessageId(guild.id, channel.id, interaction.message.id);
+      } catch (err) {
+        Logger.error('Error fetching rule by message id', err);
+      }
+      if (!rule) throw new Error('Verification rule not found for this message.');
+      const role = guild.roles.cache.get(rule.role_id);
       if (!role) throw new Error('Role not found');
 
       // Check if user is already verified
@@ -326,6 +409,10 @@ export class DiscordService {
       Logger.debug(`Sent verification link to ${interaction.user.tag}`);
     } catch (error) {
       console.error(error);
+      await interaction.reply({
+        content: `Error: ${error.message}`,
+        ephemeral: true
+      });
     }
   }
 

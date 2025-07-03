@@ -9,6 +9,8 @@ const supabaseUrl = 'https://cpwubaszhjdtqlvfdlbx.supabase.co'; // 'https://gqcc
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+import { VerifierRole } from '@/models/verifier-role.interface';
+
 @Injectable()
 export class DbService {
 
@@ -104,7 +106,9 @@ export class DbService {
         attribute_key: attrKey,
         attribute_value: attrVal,
         min_items: minItems
-      });
+      })
+      .select()
+      .single();
     if (error) throw error;
     return data;
   }
@@ -224,6 +228,47 @@ export class DbService {
       .eq('slug', slug);
     if (error) throw error;
     return !!(data && data.length > 0);
+  }
+
+  /**
+   * Finds the first rule with a non-null message_id for a given guild and channel.
+   */
+  async findRuleWithMessage(guildId: string, channelId: string): Promise<VerifierRole | null> {
+    const { data, error } = await supabase
+      .from('verifier_rules')
+      .select('*')
+      .eq('server_id', guildId)
+      .eq('channel_id', channelId)
+      .not('message_id', 'is', null)
+      .limit(1);
+    if (error) throw error;
+    return data && data.length > 0 ? data[0] as VerifierRole : null;
+  }
+
+  /**
+   * Updates the message_id for a specific rule.
+   */
+  async updateRuleMessageId(ruleId: number, messageId: string): Promise<void> {
+    const { error } = await supabase
+      .from('verifier_rules')
+      .update({ message_id: messageId })
+      .eq('id', ruleId);
+    if (error) throw error;
+  }
+
+  /**
+   * Finds a rule by message_id for a given guild and channel.
+   */
+  async findRuleByMessageId(guildId: string, channelId: string, messageId: string): Promise<VerifierRole | null> {
+    const { data, error } = await supabase
+      .from('verifier_rules')
+      .select('*')
+      .eq('server_id', guildId)
+      .eq('channel_id', channelId)
+      .eq('message_id', messageId)
+      .limit(1);
+    if (error) throw error;
+    return data && data.length > 0 ? data[0] as VerifierRole : null;
   }
 }
 
