@@ -199,7 +199,7 @@ export class DiscordService {
               interaction.guild.id,
               interaction.guild.name,
               channel.id,
-              null, // slug
+              'ALL', // slug
               legacy.role_id,
               null, // attribute_key
               null, // attribute_value
