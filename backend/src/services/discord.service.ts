@@ -94,6 +94,16 @@ export class DiscordService {
       }
       const sub = interaction.options.getSubcommand();
       if (sub === 'add-rule') {
+        // Prevent adding new rule if legacy rule exists
+        const { data: legacyRoles, error } = await this.dbSvc.getLegacyRoles(interaction.guild.id);
+        if (error) throw error;
+        if (legacyRoles && legacyRoles.length > 0) {
+          await interaction.reply({
+            content: 'You must migrate or remove the legacy rule(s) for this server before adding new rules. Use /setup migrate-legacy-role or /setup remove-legacy-role.',
+            flags: MessageFlags.Ephemeral
+          });
+          return;
+        }
         const channel = interaction.options.getChannel('channel');
         const role = interaction.options.getRole('role');
         const slug = interaction.options.getString('slug') || null;
