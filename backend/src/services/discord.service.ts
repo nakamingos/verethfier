@@ -121,16 +121,23 @@ export class DiscordService {
         });
       } else if (sub === 'remove-rule') {
         const ruleId = interaction.options.getInteger('rule_id');
-        await this.dbSvc.deleteRoleMapping(String(ruleId));
-        await interaction.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle('Rule Removed')
-              .setDescription(`Rule ID ${ruleId} removed.`)
-              .setColor('#FF0000')
-          ],
-          ephemeral: true
-        });
+        try {
+          await this.dbSvc.deleteRoleMapping(String(ruleId), interaction.guild.id);
+          await interaction.reply({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle('Rule Removed')
+                .setDescription(`Rule ID ${ruleId} removed.`)
+                .setColor('#FF0000')
+            ],
+            ephemeral: true
+          });
+        } catch (err) {
+          await interaction.reply({
+            content: `Error: ${err.message}`,
+            ephemeral: true
+          });
+        }
       } else if (sub === 'list-rules') {
         // No channel option: list all rules for the server
         const rules = await this.dbSvc.getAllRulesWithLegacy(

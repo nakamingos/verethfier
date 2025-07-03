@@ -109,21 +109,34 @@ export class DbService {
     return data;
   }
 
-  async getRoleMappings(serverId: string, channelId: string): Promise<any[]> {
-    const { data, error } = await supabase
+  async getRoleMappings(serverId: string, channelId?: string): Promise<any[]> {
+    let query = supabase
       .from('verifier_rules')
       .select('*')
-      .eq('server_id', serverId)
-      .eq('channel_id', channelId);
+      .eq('server_id', serverId);
+    if (channelId) {
+      query = query.eq('channel_id', channelId);
+    }
+    const { data, error } = await query;
     if (error) throw error;
     return data;
   }
 
-  async deleteRoleMapping(ruleId: string): Promise<void> {
+  async deleteRoleMapping(ruleId: string, serverId: string): Promise<void> {
+    // Only delete if rule belongs to this server
+    const { data, error: fetchError } = await supabase
+      .from('verifier_rules')
+      .select('server_id')
+      .eq('id', ruleId);
+    if (fetchError) throw fetchError;
+    if (!data || data.length === 0 || data[0].server_id !== serverId) {
+      throw new Error('Rule does not belong to this server');
+    }
     const { error } = await supabase
       .from('verifier_rules')
       .delete()
-      .eq('id', ruleId);
+      .eq('id', ruleId)
+      .eq('server_id', serverId);
     if (error) throw error;
   }
 

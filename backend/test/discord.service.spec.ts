@@ -48,8 +48,8 @@ describe('DiscordService', () => {
     expect(mockDbService.addRoleMapping).toHaveBeenCalled();
   });
   it('remove-rule calls deleteRoleMapping', async () => {
-    await service['dbSvc'].deleteRoleMapping('1');
-    expect(mockDbService.deleteRoleMapping).toHaveBeenCalledWith('1');
+    await service['dbSvc'].deleteRoleMapping('1', 'g');
+    expect(mockDbService.deleteRoleMapping).toHaveBeenCalledWith('1', 'g');
   });
   it('list-rules calls getRoleMappings', async () => {
     await service['dbSvc'].getRoleMappings('g', 'c');

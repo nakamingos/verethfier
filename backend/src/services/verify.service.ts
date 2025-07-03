@@ -46,9 +46,9 @@ export class VerifyService {
 
     // --- New multi-rule path ---
     const assets = await this.dataSvc.getDetailedAssets(address);
+    // Only get rules for the current guild
     const rules  = await this.dbSvc.getRoleMappings(
-      payload.discordId,
-      payload.channelId
+      payload.discordId
     );
     const matched = rules.filter(r => matchesRule(r, assets, payload.channelId));
     if (!matched.length) {
