@@ -163,6 +163,21 @@ export class DiscordService {
           ],
           ephemeral: true
         });
+      } else if (sub === 'remove-legacy-role') {
+        // Remove all legacy roles for this guild using DbService
+        const { removed } = await this.dbSvc.removeAllLegacyRoles(interaction.guild.id);
+        if (!removed.length) {
+          await interaction.reply({
+            content: 'No legacy roles found for this server.',
+            ephemeral: true
+          });
+          return;
+        }
+        const removedRoles = removed.map(r => `<@&${r.role_id}>`).join(', ');
+        await interaction.reply({
+          content: `Removed legacy role(s): ${removedRoles}`,
+          ephemeral: true
+        });
       }
     } catch (error) {
       console.error(error);
@@ -354,6 +369,10 @@ export class DiscordService {
         .addSubcommand(sc =>
           sc.setName('list-rules')
             .setDescription('List all verification rules')
+        )
+        .addSubcommand(sc =>
+          sc.setName('remove-legacy-role')
+            .setDescription('Remove all legacy roles for this server (if any)')
         )
     ];
     Logger.debug('Reloading application /slash commands.', `${commands.length} commands`);

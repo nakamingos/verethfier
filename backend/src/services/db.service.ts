@@ -186,6 +186,23 @@ export class DbService {
     }
     return all;
   }
+
+  // Remove all legacy roles for a guild (by guild/server id)
+  async removeAllLegacyRoles(serverId: string): Promise<{ removed: Array<{ role_id: string, name: string }> }> {
+    const { data: legacyRoles, error } = await supabase
+      .from('verifier_servers')
+      .select('role_id, name')
+      .eq('id', serverId);
+    if (error) throw error;
+    if (!legacyRoles || legacyRoles.length === 0) {
+      return { removed: [] };
+    }
+    await supabase
+      .from('verifier_servers')
+      .delete()
+      .eq('id', serverId);
+    return { removed: legacyRoles };
+  }
 }
 
 // create table
