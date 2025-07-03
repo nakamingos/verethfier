@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
-import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, CacheType, ChannelType, ChatInputCommandInteraction, Client, EmbedBuilder, Events, GatewayIntentBits, GuildTextBasedChannel, InteractionResponse, PermissionFlagsBits, REST, Routes, SlashCommandBuilder } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, CacheType, ChannelType, ChatInputCommandInteraction, Client, EmbedBuilder, Events, GatewayIntentBits, GuildTextBasedChannel, InteractionResponse, MessageFlags, PermissionFlagsBits, REST, Routes, SlashCommandBuilder } from 'discord.js';
 
 import { NonceService } from '@/services/nonce.service';
 import { DbService } from '@/services/db.service';
@@ -88,7 +88,7 @@ export class DiscordService {
       if (!interaction.options.getSubcommand(false)) {
         await interaction.reply({
           content: '⚠️ The legacy /setup command is deprecated. Please use /setup add-rule, remove-rule, or list-rules.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
         return;
       }
@@ -117,7 +117,7 @@ export class DiscordService {
               .setDescription(`Rule for <#${channel.id}> and <@&${role.id}> added.`)
               .setColor('#00FF00')
           ],
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       } else if (sub === 'remove-rule') {
         const ruleId = interaction.options.getInteger('rule_id');
@@ -130,12 +130,12 @@ export class DiscordService {
                 .setDescription(`Rule ID ${ruleId} removed.`)
                 .setColor('#FF0000')
             ],
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
           });
         } catch (err) {
           await interaction.reply({
             content: `Error: ${err.message}`,
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
           });
         }
       } else if (sub === 'list-rules') {
@@ -161,7 +161,7 @@ export class DiscordService {
               .setDescription(desc)
               .setColor('#C3FF00')
           ],
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       } else if (sub === 'remove-legacy-role') {
         // Remove all legacy roles for this guild using DbService
@@ -169,14 +169,53 @@ export class DiscordService {
         if (!removed.length) {
           await interaction.reply({
             content: 'No legacy roles found for this server.',
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
           });
           return;
         }
         const removedRoles = removed.map(r => `<@&${r.role_id}>`).join(', ');
         await interaction.reply({
           content: `Removed legacy role(s): ${removedRoles}`,
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
+        });
+      } else if (sub === 'migrate-legacy-role') {
+        // Migrate legacy role to a new rule for this guild
+        const channel = interaction.options.getChannel('channel');
+        // Get legacy roles for this guild
+        const { data: legacyRoles, error } = await this.dbSvc.getLegacyRoles(interaction.guild.id);
+        if (error) throw error;
+        if (!legacyRoles || legacyRoles.length === 0) {
+          await interaction.reply({
+            content: 'No legacy roles found for this server.',
+            flags: MessageFlags.Ephemeral
+          });
+          return;
+        }
+        // For each legacy role, create a new rule in verifier_rules
+        const results = [];
+        for (const legacy of legacyRoles) {
+          try {
+            await this.dbSvc.addRoleMapping(
+              interaction.guild.id,
+              interaction.guild.name,
+              channel.id,
+              null, // slug
+              legacy.role_id,
+              null, // attribute_key
+              null, // attribute_value
+              null  // min_items
+            );
+            results.push(`<@&${legacy.role_id}>`);
+          } catch (e) {
+            // Optionally handle per-role errors
+          }
+        }
+        await this.dbSvc.removeAllLegacyRoles(interaction.guild.id);
+        await interaction.reply({
+          content: results.length
+            ? `Migrated legacy role(s) to new rule(s) for channel <#${channel.id}>: ${results.join(', ')}`
+            : 'No legacy roles were migrated.',
+          flags: MessageFlags.Ephemeral
         });
       }
     } catch (error) {
@@ -255,8 +294,7 @@ export class DiscordService {
                 .setStyle(ButtonStyle.Link)
             )
         ],
-        // This is a private message !important
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
 
       // Store the temp message
@@ -373,6 +411,11 @@ export class DiscordService {
         .addSubcommand(sc =>
           sc.setName('remove-legacy-role')
             .setDescription('Remove all legacy roles for this server (if any)')
+        )
+        .addSubcommand(sc =>
+          sc.setName('migrate-legacy-role')
+            .setDescription('Migrate a legacy role to a new rule (prompts for channel)')
+            .addChannelOption(option => option.setName('channel').setDescription('Channel for the new rule').setRequired(true))
         )
     ];
     Logger.debug('Reloading application /slash commands.', `${commands.length} commands`);

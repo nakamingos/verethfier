@@ -203,6 +203,15 @@ export class DbService {
       .eq('id', serverId);
     return { removed: legacyRoles };
   }
+
+  // Get all legacy roles for a guild (by guild/server id)
+  async getLegacyRoles(serverId: string): Promise<{ data: Array<{ role_id: string, name: string }>, error: any }> {
+    const { data, error } = await supabase
+      .from('verifier_servers')
+      .select('role_id, name')
+      .eq('id', serverId);
+    return { data, error };
+  }
 }
 
 // create table
