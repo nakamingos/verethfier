@@ -4,9 +4,10 @@ export function matchesRule(
   assets: any[],
   channelId?: string
 ): boolean {
-  // slug wildcard: null/undefined or 'ALL'
+  // slug wildcard: empty string or 'ALL'
   const slugMatch =
     !rule.slug ||
+    rule.slug === '' ||
     rule.slug === 'ALL' ||
     assets.some((a) => a.slug === rule.slug);
 
@@ -19,19 +20,15 @@ export function matchesRule(
   let attrMatch = true;
   const key = rule.attribute_key;
   const val = rule.attribute_value;
-  if (key && val != null) {
+  if (key && key !== '' && val && val !== '') {
     attrMatch = assets.some(
       (a) => a.attributes?.[key] == val
     );
   }
 
-  // min_items: if specified…
+  // min_items: if specified and > 0
   let minItemsMatch = true;
-  if (rule.min_items != null) {
-    // reject zero or negative
-    if (rule.min_items < 1) {
-      return false;
-    }
+  if (rule.min_items != null && rule.min_items > 0) {
     minItemsMatch = assets.length >= rule.min_items;
   }
 

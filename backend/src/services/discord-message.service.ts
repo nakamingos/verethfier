@@ -78,15 +78,15 @@ export class DiscordMessageService {
    */
   async createVerificationMessage(channel: GuildTextBasedChannel): Promise<string> {
     const verifyEmbed = new EmbedBuilder()
-      .setTitle('Wallet Verification')
-      .setDescription('Verify your identity using your EVM wallet by clicking the button below.')
-      .setColor('#00FF00');
+      .setTitle('Request Verification')
+      .setDescription('Click the button below to initiate the verification process.')
+      .setColor('#c3ff00');
       
     const verifyButton = new ActionRowBuilder<ButtonBuilder>()
       .setComponents(
         new ButtonBuilder()
           .setCustomId('requestVerification')
-          .setLabel('Verify Now')
+          .setLabel('Request Verification')
           .setStyle(ButtonStyle.Primary)
       );
 

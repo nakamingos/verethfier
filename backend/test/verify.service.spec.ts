@@ -34,8 +34,8 @@ const mockDbService = {
     id: 1, 
     role_id: 'role-id', 
     slug: 'test-collection',
-    attribute_key: null,
-    attribute_value: null,
+    attribute_key: '',
+    attribute_value: '',
     min_items: 1
   })
 };
@@ -77,8 +77,8 @@ describe('VerifyService', () => {
     mockNonceService.getNonceData.mockResolvedValue({ messageId: null, channelId: null });
     mockWalletService.verifySignature.mockResolvedValue('0xabc');
     mockDbService.getRoleMappings.mockResolvedValue([
-      { id: 1, slug: null, channel_id: null, attribute_key: null, attribute_value: null, min_items: null, role_id: 'r1' },
-      { id: 2, slug: 'ALL', channel_id: null, attribute_key: null, attribute_value: null, min_items: null, role_id: 'r2' },
+      { id: 1, slug: 'ALL', channel_id: null, attribute_key: '', attribute_value: '', min_items: 0, role_id: 'r1' },
+      { id: 2, slug: 'ALL', channel_id: null, attribute_key: '', attribute_value: '', min_items: 0, role_id: 'r2' },
     ]);
     mockDataService.getDetailedAssets.mockResolvedValue([{ slug: 'foo', attributes: {} }]);
     const payload = { userId: 'u', discordId: 'g', nonce: 'n' };

@@ -94,8 +94,8 @@ export class DataService {
       .select('hashId, owner, prevOwner, slug')
       .or(`owner.eq.${address},and(owner.eq.${marketAddress},prevOwner.eq.${address})`);
 
-    // Filter by slug if specified
-    if (slug && slug !== 'all-collections') {
+    // Filter by slug if specified (skip filtering for 'ALL' which means any collection)
+    if (slug && slug !== 'ALL' && slug !== 'all-collections') {
       query = query.eq('slug', slug);
     }
 
@@ -106,7 +106,7 @@ export class DataService {
     }
 
     // If no attribute filtering needed, just check count
-    if (!attributeKey || !attributeValue) {
+    if (!attributeKey || !attributeValue || attributeKey === '' || attributeValue === '') {
       return data.length >= effectiveMinItems ? data.length : 0;
     }
 
@@ -121,7 +121,7 @@ export class DataService {
       .eq(`attributes.values->>${attributeKey}`, attributeValue);
 
     // Add slug filter to attribute query if specified
-    if (slug && slug !== 'all-collections') {
+    if (slug && slug !== 'ALL' && slug !== 'all-collections') {
       attributeQuery.eq('slug', slug);
     }
 

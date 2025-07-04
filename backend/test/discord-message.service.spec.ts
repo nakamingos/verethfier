@@ -185,7 +185,7 @@ describe('DiscordMessageService', () => {
         embeds: expect.arrayContaining([
           expect.objectContaining({
             data: expect.objectContaining({
-              title: 'Wallet Verification'
+              title: 'Request Verification'
             })
           })
         ]),
@@ -194,7 +194,7 @@ describe('DiscordMessageService', () => {
             components: expect.arrayContaining([
               expect.objectContaining({
                 data: expect.objectContaining({
-                  label: 'Verify Now',
+                  label: 'Request Verification',
                   custom_id: 'requestVerification'
                 })
               })

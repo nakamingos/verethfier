@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -96,12 +96,24 @@ export class DbService {
     attrVal: string,
     minItems: number
   ): Promise<any> {
-    // If no specific criteria are provided (no slug, attribute, or min_items), 
-    // set slug to 'ALL' to indicate this rule matches any asset
-    let finalSlug = slug;
-    if (!slug && !attrKey && !attrVal && !minItems) {
-      finalSlug = 'ALL';
-    }
+    // Use meaningful defaults instead of NULLs for better database constraints
+    const finalSlug = slug || 'ALL';
+    const finalAttrKey = attrKey || '';
+    const finalAttrVal = attrVal || '';
+    const finalMinItems = minItems || 0;
+
+    // Debug logging to help troubleshoot rule creation
+    Logger.debug('Inserting rule into database:', {
+      server_id: serverId,
+      server_name: serverName,
+      channel_id: channelId,
+      channel_name: channelName,
+      slug: finalSlug,
+      role_id: roleId,
+      attribute_key: finalAttrKey,
+      attribute_value: finalAttrVal,
+      min_items: finalMinItems
+    });
 
     const { data, error } = await supabase
       .from('verifier_rules')
@@ -112,9 +124,9 @@ export class DbService {
         channel_name: channelName,
         slug: finalSlug,
         role_id: roleId,
-        attribute_key: attrKey,
-        attribute_value: attrVal,
-        min_items: minItems
+        attribute_key: finalAttrKey,
+        attribute_value: finalAttrVal,
+        min_items: finalMinItems
       })
       .select()
       .single();
@@ -291,6 +303,39 @@ export class DbService {
       .eq('channel_id', channelId);
     if (error) throw error;
     return data || [];
+  }
+
+  async findConflictingRule(
+    serverId: string,
+    channelId: string,
+    roleId: string,
+    slug: string,
+    attrKey: string,
+    attrVal: string,
+    minItems: number
+  ): Promise<any> {
+    // Use the same defaults as addRoleMapping for consistent conflict detection
+    const finalSlug = slug || 'ALL';
+    const finalAttrKey = attrKey || '';
+    const finalAttrVal = attrVal || '';
+    const finalMinItems = minItems || 0;
+
+    const { data, error } = await supabase
+      .from('verifier_rules')
+      .select('*')
+      .eq('server_id', serverId)
+      .eq('channel_id', channelId)
+      .eq('role_id', roleId)
+      .eq('slug', finalSlug)
+      .eq('attribute_key', finalAttrKey)
+      .eq('attribute_value', finalAttrVal)
+      .eq('min_items', finalMinItems)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+      throw error;
+    }
+    return data;
   }
 }
 
