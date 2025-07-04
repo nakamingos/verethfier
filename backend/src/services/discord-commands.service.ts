@@ -274,4 +274,89 @@ export class DiscordCommandsService {
       content: msg
     });
   }
+
+  /**
+   * Recovers verification setup for a channel by creating a new message and updating orphaned rules
+   */
+  async handleRecoverVerification(interaction: ChatInputCommandInteraction): Promise<void> {
+    try {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      const channel = interaction.options.getChannel('channel');
+      if (!channel || channel.type !== ChannelType.GuildText) {
+        await interaction.editReply({
+          content: 'Please specify a valid text channel.'
+        });
+        return;
+      }
+
+      const textChannel = channel as GuildTextBasedChannel;
+
+      // Find orphaned rules for this channel (rules pointing to non-existent messages)
+      const channelRules = await this.dbSvc.getRulesByChannel(interaction.guild.id, channel.id);
+      const orphanedRules = [];
+
+      for (const rule of channelRules) {
+        if (rule.message_id) {
+          const messageExists = await this.messageSvc.verifyMessageExists(textChannel, rule.message_id);
+          if (!messageExists) {
+            orphanedRules.push(rule);
+          }
+        }
+      }
+
+      if (orphanedRules.length === 0) {
+        await interaction.editReply({
+          content: 'No orphaned verification rules found for this channel. All existing verification messages appear to be intact.'
+        });
+        return;
+      }
+
+      // Create a new verification message
+      const newMessageId = await this.messageSvc.createVerificationMessage(textChannel);
+
+      // Update all orphaned rules to point to the new message
+      let updatedCount = 0;
+      for (const rule of orphanedRules) {
+        try {
+          await this.dbSvc.updateRuleMessageId(rule.id, newMessageId);
+          updatedCount++;
+        } catch (error) {
+          Logger.error(`Failed to update rule ${rule.id}:`, error);
+        }
+      }
+
+      // Provide feedback to the admin
+      const embed = new EmbedBuilder()
+        .setTitle('Verification Recovery Complete')
+        .setDescription(`Successfully recovered verification setup for ${textChannel}`)
+        .addFields(
+          { name: 'New Message Created', value: `Message ID: ${newMessageId}`, inline: false },
+          { name: 'Rules Updated', value: `${updatedCount}/${orphanedRules.length} rules updated`, inline: true },
+          { name: 'Roles Affected', value: orphanedRules.map(r => `<@&${r.role_id}>`).join(', ') || 'None', inline: false }
+        )
+        .setColor('#00FF00')
+        .setTimestamp();
+
+      await interaction.editReply({
+        embeds: [embed]
+      });
+
+      Logger.debug(`Recovery completed for channel ${channel.id}: ${updatedCount} rules updated, new message ${newMessageId}`);
+
+    } catch (error) {
+      Logger.error('Error in handleRecoverVerification:', error);
+      
+      if (interaction.deferred) {
+        await interaction.editReply({
+          content: `Error during recovery: ${error.message}`
+        });
+      } else {
+        await interaction.reply({
+          content: `Error during recovery: ${error.message}`,
+          flags: MessageFlags.Ephemeral
+        });
+      }
+    }
+  }
 }

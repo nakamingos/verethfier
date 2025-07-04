@@ -13,11 +13,13 @@ const mockDbService = {
   removeAllLegacyRoles: jest.fn(),
   getAllRulesWithLegacy: jest.fn(),
   updateRuleMessageId: jest.fn(),
+  getRulesByChannel: jest.fn(),
 };
 
 const mockDiscordMessageService = {
   findExistingVerificationMessage: jest.fn(),
   createVerificationMessage: jest.fn(),
+  verifyMessageExists: jest.fn(),
 };
 
 describe('DiscordCommandsService', () => {
@@ -257,6 +259,84 @@ describe('DiscordCommandsService', () => {
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
         content: expect.stringContaining('Migrated legacy rule')
       });
+    });
+  });
+
+  describe('handleRecoverVerification', () => {
+    it('should recover verification setup for orphaned rules', async () => {
+      const mockChannel = {
+        id: 'channel-id',
+        type: 0, // ChannelType.GuildText
+        toString: () => '<#channel-id>'
+      };
+      
+      const mockInteraction = {
+        options: {
+          getChannel: jest.fn().mockReturnValue(mockChannel)
+        },
+        guild: { id: 'guild-id' },
+        deferReply: jest.fn(),
+        editReply: jest.fn()
+      };
+
+      // Mock orphaned rules (rules with deleted messages)
+      const orphanedRules = [
+        { id: 1, message_id: 'deleted-message-1', role_id: 'role-1' },
+        { id: 2, message_id: 'deleted-message-2', role_id: 'role-2' }
+      ];
+
+      mockDbService.getRulesByChannel.mockResolvedValue(orphanedRules);
+      mockDiscordMessageService.verifyMessageExists.mockResolvedValue(false); // Both messages are deleted
+      mockDiscordMessageService.createVerificationMessage.mockResolvedValue('new-message-id');
+      mockDbService.updateRuleMessageId.mockResolvedValue(undefined);
+
+      await service.handleRecoverVerification(mockInteraction as any);
+
+      expect(mockInteraction.deferReply).toHaveBeenCalledWith({ flags: expect.any(Number) });
+      expect(mockDbService.getRulesByChannel).toHaveBeenCalledWith('guild-id', 'channel-id');
+      expect(mockDiscordMessageService.verifyMessageExists).toHaveBeenCalledTimes(2);
+      expect(mockDiscordMessageService.createVerificationMessage).toHaveBeenCalledWith(mockChannel);
+      expect(mockDbService.updateRuleMessageId).toHaveBeenCalledTimes(2);
+      expect(mockDbService.updateRuleMessageId).toHaveBeenCalledWith(1, 'new-message-id');
+      expect(mockDbService.updateRuleMessageId).toHaveBeenCalledWith(2, 'new-message-id');
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        embeds: [expect.objectContaining({
+          data: expect.objectContaining({
+            title: 'Verification Recovery Complete'
+          })
+        })]
+      });
+    });
+
+    it('should handle case when no orphaned rules exist', async () => {
+      const mockChannel = {
+        id: 'channel-id',
+        type: 0, // ChannelType.GuildText
+      };
+      
+      const mockInteraction = {
+        options: {
+          getChannel: jest.fn().mockReturnValue(mockChannel)
+        },
+        guild: { id: 'guild-id' },
+        deferReply: jest.fn(),
+        editReply: jest.fn()
+      };
+
+      // Mock rules with existing messages
+      const existingRules = [
+        { id: 1, message_id: 'existing-message-1', role_id: 'role-1' }
+      ];
+
+      mockDbService.getRulesByChannel.mockResolvedValue(existingRules);
+      mockDiscordMessageService.verifyMessageExists.mockResolvedValue(true); // Message exists
+
+      await service.handleRecoverVerification(mockInteraction as any);
+
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        content: 'No orphaned verification rules found for this channel. All existing verification messages appear to be intact.'
+      });
+      expect(mockDiscordMessageService.createVerificationMessage).not.toHaveBeenCalled();
     });
   });
 });

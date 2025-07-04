@@ -270,6 +270,19 @@ export class DbService {
     if (error) throw error;
     return data && data.length > 0 ? data[0] as VerifierRole : null;
   }
+
+  /**
+   * Gets all rules for a specific channel in a guild.
+   */
+  async getRulesByChannel(guildId: string, channelId: string): Promise<VerifierRole[]> {
+    const { data, error } = await supabase
+      .from('verifier_rules')
+      .select('*')
+      .eq('server_id', guildId)
+      .eq('channel_id', channelId);
+    if (error) throw error;
+    return data || [];
+  }
 }
 
 // create table
