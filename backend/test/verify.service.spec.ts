@@ -23,12 +23,21 @@ const mockDiscordVerificationService = {
 };
 const mockDataService = { 
   getDetailedAssets: jest.fn(),
-  checkAssetOwnership: jest.fn().mockResolvedValue(1)
+  checkAssetOwnership: jest.fn().mockResolvedValue(1),
+  checkAssetOwnershipWithCriteria: jest.fn().mockResolvedValue(1)
 };
 const mockDbService = {
   getServerRole: jest.fn(),
   logUserRole: jest.fn(),
-  getRoleMappings: jest.fn()
+  getRoleMappings: jest.fn(),
+  findRuleByMessageId: jest.fn().mockResolvedValue({ 
+    id: 1, 
+    role_id: 'role-id', 
+    slug: 'test-collection',
+    attribute_key: null,
+    attribute_value: null,
+    min_items: 1
+  })
 };
 
 describe('VerifyService', () => {

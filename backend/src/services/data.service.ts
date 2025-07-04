@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -41,7 +41,10 @@ export class DataService {
   async getDetailedAssets(address: string): Promise<AssetWithAttrs[]> {
     const { data, error } = await supabase
       .from('ethscriptions')
-      .select('slug, values')
+      .select(`
+        slug,
+        attributes(values)
+      `)
       .eq('owner', address.toLowerCase());
 
     if (error) {
@@ -50,7 +53,7 @@ export class DataService {
 
     return (data ?? []).map(row => ({
       slug: row.slug,
-      attributes: row.values as Record<string, string | number>,
+      attributes: (row.attributes?.[0]?.values as Record<string, string | number>) || {},
     }));
   }
 
@@ -61,6 +64,75 @@ export class DataService {
     if (error) throw new Error(error.message);
     const slugs = Array.from(new Set((data || []).map(r => r.slug)));
     return ['all-collections', ...slugs];
+  }
+
+  /**
+   * Check asset ownership with specific criteria (slug, attributes, minimum count)
+   * 
+   * @param address - Wallet address to check
+   * @param slug - Collection slug to filter by (optional) 
+   * @param attributeKey - Attribute key to filter by (optional)
+   * @param attributeValue - Attribute value to filter by (optional)
+   * @param minItems - Minimum required assets (minimum 1, even if 0 is passed)
+   * @returns Number of matching assets, or 0 if requirements not met
+   */
+  async checkAssetOwnershipWithCriteria(
+    address: string,
+    slug?: string,
+    attributeKey?: string,
+    attributeValue?: string,
+    minItems: number = 1
+  ): Promise<number> {
+    // Ensure minimum 1 asset is always required (prevent min_items = 0 bypass)
+    const effectiveMinItems = Math.max(minItems, 1);
+    
+    address = address.toLowerCase();
+    const marketAddress = '0xd3418772623be1a3cc6b6d45cb46420cedd9154a'.toLowerCase();
+
+    let query = supabase
+      .from('ethscriptions')
+      .select('hashId, owner, prevOwner, slug')
+      .or(`owner.eq.${address},and(owner.eq.${marketAddress},prevOwner.eq.${address})`);
+
+    // Filter by slug if specified
+    if (slug && slug !== 'all-collections') {
+      query = query.eq('slug', slug);
+    }
+
+    const { data, error } = await query;
+      
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    // If no attribute filtering needed, just check count
+    if (!attributeKey || !attributeValue) {
+      return data.length >= effectiveMinItems ? data.length : 0;
+    }
+
+    // For attribute filtering, we need to join with attributes table and filter by JSONB
+    const attributeQuery = supabase
+      .from('ethscriptions')
+      .select(`
+        hashId,
+        attributes!inner(values)
+      `)
+      .or(`owner.eq.${address},and(owner.eq.${marketAddress},prevOwner.eq.${address})`)
+      .eq(`attributes.values->>${attributeKey}`, attributeValue);
+
+    // Add slug filter to attribute query if specified
+    if (slug && slug !== 'all-collections') {
+      attributeQuery.eq('slug', slug);
+    }
+
+    const { data: attributeData, error: attributeError } = await attributeQuery;
+
+    if (attributeError) {
+      throw new Error(attributeError.message);
+    }
+
+    const matchingCount = attributeData?.length || 0;
+    return matchingCount >= effectiveMinItems ? matchingCount : 0;
   }
 }
 
