@@ -3,6 +3,7 @@ import { DiscordCommandsService } from '../src/services/discord-commands.service
 import { DiscordMessageService } from '../src/services/discord-message.service';
 import { DbService } from '../src/services/db.service';
 import { MessageFlags, ChannelType } from 'discord.js';
+import { Logger } from '@nestjs/common';
 
 const mockDbService = {
   getLegacyRoles: jest.fn(),
@@ -14,6 +15,7 @@ const mockDbService = {
   getAllRulesWithLegacy: jest.fn(),
   updateRuleMessageId: jest.fn(),
   getRulesByChannel: jest.fn(),
+  findConflictingRule: jest.fn(),
 };
 
 const mockDiscordMessageService = {
@@ -67,7 +69,7 @@ describe('DiscordCommandsService', () => {
     });
 
     it('should create new rule successfully', async () => {
-      const mockChannel = { id: 'channel-id', type: ChannelType.GuildText };
+      const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
       const mockRole = { id: 'role-id' };
       const mockInteraction = {
         guild: {
@@ -90,6 +92,7 @@ describe('DiscordCommandsService', () => {
       } as any;
 
       mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+      mockDbService.findConflictingRule.mockResolvedValue(null); // No conflicting rule
       mockDbService.addRoleMapping.mockResolvedValue([{ id: 1 }]); // Returns array with new rule
       mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
       mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
@@ -101,6 +104,7 @@ describe('DiscordCommandsService', () => {
         'guild-id',
         'test-guild',
         'channel-id',
+        'test-channel',
         'test-collection',
         'role-id',
         null,
@@ -116,6 +120,84 @@ describe('DiscordCommandsService', () => {
           })
         ])
       });
+    });
+
+    it('should create rule with slug="ALL" when no criteria provided', async () => {
+      const mockInteraction = {
+        guild: { id: 'guild-id', name: 'test-guild' },
+        options: {
+          getChannel: () => ({ id: 'channel-id', name: 'test-channel', type: 0 }),
+          getRole: () => ({ id: 'role-id', name: 'test-role' }),
+          getString: jest.fn().mockReturnValue(null), // All criteria return null
+          getInteger: jest.fn().mockReturnValue(null),
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
+      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+      mockDbService.findConflictingRule.mockResolvedValue(null); // No conflicting rule
+      mockDbService.addRoleMapping.mockResolvedValue({ id: 1 });
+      mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
+      mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
+      mockDbService.updateRuleMessageId.mockResolvedValue({});
+
+      await service.handleAddRule(mockInteraction);
+
+      // The DbService.addRoleMapping is called with null values from the command, 
+      // but the DbService itself will convert them to defaults ('ALL', '', '', 0)
+      expect(mockDbService.addRoleMapping).toHaveBeenCalledWith(
+        'guild-id',
+        'test-guild',
+        'channel-id',
+        'test-channel',
+        null, // This will be converted to 'ALL' by DbService
+        'role-id',
+        null,
+        null,
+        null
+      );
+    });
+
+    it('should handle duplicate rule error gracefully', async () => {
+      // Clear all mocks to ensure clean state
+      jest.clearAllMocks();
+      
+      // Mock Logger.error to suppress error output during test
+      const loggerErrorSpy = jest.spyOn(Logger, 'error').mockImplementation(() => {});
+      
+      const mockInteraction = {
+        guild: { id: 'guild-id', name: 'test-guild' },
+        options: {
+          getChannel: () => ({ id: 'channel-id', name: 'test-channel', type: 0 }),
+          getRole: () => ({ id: 'role-id', name: 'test-role' }),
+          getString: jest.fn().mockReturnValue('test-collection'),
+          getInteger: jest.fn().mockReturnValue(null),
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
+      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+      mockDbService.findConflictingRule.mockResolvedValue(null); // No conflict found in pre-check
+      // Simulate a duplicate constraint error from the database
+      const dbError = new Error('duplicate key value violates unique constraint');
+      (dbError as any).code = '23505';
+      mockDbService.addRoleMapping.mockRejectedValue(dbError);
+
+      await service.handleAddRule(mockInteraction);
+
+      expect(mockInteraction.editReply).toHaveBeenCalled();
+      const call = mockInteraction.editReply.mock.calls[0][0];
+      expect(call.embeds).toBeDefined();
+      expect(call.embeds.length).toBeGreaterThan(0);
+      expect(call.embeds[0].data.title).toBe('Rule Already Exists');
+      expect(call.embeds[0].data.description).toContain('A rule with the same criteria already exists');
+      
+      // Cleanup
+      loggerErrorSpy.mockRestore();
     });
   });
 
@@ -249,6 +331,7 @@ describe('DiscordCommandsService', () => {
         'guild-id',
         'test-guild',
         'channel-id',
+        'test-channel',
         'ALL',
         'legacy-role',
         null,

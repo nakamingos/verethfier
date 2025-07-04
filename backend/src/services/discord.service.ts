@@ -107,10 +107,22 @@ export class DiscordService {
       }
     } catch (error) {
       Logger.error('Error in handleSetup:', error);
-      await interaction.reply({
-        content: 'An error occurred while processing your request.',
-        flags: MessageFlags.Ephemeral
-      });
+      
+      // Check if interaction has been deferred or replied to
+      try {
+        if (interaction.deferred) {
+          await interaction.editReply({
+            content: 'An error occurred while processing your request.'
+          });
+        } else if (!interaction.replied) {
+          await interaction.reply({
+            content: 'An error occurred while processing your request.',
+            flags: MessageFlags.Ephemeral
+          });
+        }
+      } catch (replyError) {
+        Logger.error('Failed to send error message to user:', replyError);
+      }
     }
   }
   /**

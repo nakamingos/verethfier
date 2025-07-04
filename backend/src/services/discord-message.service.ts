@@ -15,40 +15,47 @@ export class DiscordMessageService {
   constructor() {}
 
   /**
-   * Searches for existing Wallet Verification messages in a Discord channel.
-   * Looks for messages with "Wallet Verification" embed title and "Verify Now" button.
+   * Searches for ANY existing verification messages (legacy or new) in a Discord channel.
+   * Simple approach: any message from our bot that has buttons is likely a verification message.
+   * This prevents creating duplicate verification buttons regardless of format.
    * @param channel - The Discord channel to search in
-   * @returns The message ID of the existing verification message, or null if not found
+   * @returns The message ID of ANY existing verification message, or null if not found
    */
   async findExistingVerificationMessage(channel: GuildTextBasedChannel): Promise<string | null> {
     try {
+      // Check if client is properly initialized
+      const botUserId = this.client?.user?.id;
+      if (!botUserId) {
+        Logger.error('Discord client not properly initialized or bot user ID not available');
+        return null;
+      }
+
+      Logger.debug(`Searching for existing verification messages in channel ${channel.id}, bot user ID: ${botUserId}`);
+
       // Fetch recent messages from the channel (last 100 messages should be enough)
       const messages = await channel.messages.fetch({ limit: 100 });
+      Logger.debug(`Fetched ${messages.size} messages from channel ${channel.id}`);
       
+      let botMessagesCount = 0;
+      let botMessagesWithButtonsCount = 0;
+
       for (const [messageId, message] of messages) {
         // Check if message is from our bot
-        if (message.author.id !== this.client?.user?.id) continue;
+        if (message.author.id !== botUserId) continue;
+        botMessagesCount++;
         
-        // Check if message has embeds with "Wallet Verification" title
-        if (message.embeds.length > 0) {
-          const embed = message.embeds[0];
-          if (embed.title === 'Wallet Verification') {
-            // Check if message has components with "Verify Now" button
-            if (message.components.length > 0) {
-              const actionRow = message.components[0];
-              if (actionRow.type === 1 && 'components' in actionRow) { // ActionRowBuilder type
-                const components = actionRow.components;
-                if (components.length > 0) {
-                  const button = components[0];
-                  // Check if it's a button component and has the right properties
-                  if (button.type === 2) { // ButtonComponent type
-                    const buttonComponent = button as any; // Type assertion to access button properties
-                    if ((buttonComponent.customId === 'requestVerification' && buttonComponent.label === 'Verify Now') ||
-                        (buttonComponent.style === ButtonStyle.Link && buttonComponent.label === 'Verify Now')) {
-                      Logger.debug(`Found existing Wallet Verification message: ${messageId}`);
-                      return messageId;
-                    }
-                  }
+        // Simple check: if it's from our bot and has buttons, it's likely a verification message
+        if (message.components.length > 0) {
+          botMessagesWithButtonsCount++;
+          
+          // Check if there's at least one button component
+          for (const actionRow of message.components) {
+            if (actionRow.type === 1 && 'components' in actionRow) { // ActionRowBuilder type
+              const components = actionRow.components;
+              for (const component of components) {
+                if (component.type === 2) { // ButtonComponent type
+                  Logger.debug(`Found existing bot message with button: ${messageId}`);
+                  return messageId;
                 }
               }
             }
@@ -56,7 +63,7 @@ export class DiscordMessageService {
         }
       }
       
-      Logger.debug('No existing Wallet Verification message found in channel');
+      Logger.debug(`Search complete for channel ${channel.id}: found ${botMessagesCount} bot messages, ${botMessagesWithButtonsCount} with buttons, 0 returned as verification messages`);
       return null;
     } catch (error) {
       Logger.error('Error searching for existing verification message:', error);
@@ -71,15 +78,15 @@ export class DiscordMessageService {
    */
   async createVerificationMessage(channel: GuildTextBasedChannel): Promise<string> {
     const verifyEmbed = new EmbedBuilder()
-      .setTitle('Wallet Verification')
-      .setDescription('Verify your identity using your EVM wallet by clicking the button below.')
-      .setColor('#00FF00');
+      .setTitle('Request Verification')
+      .setDescription('Click the button below to initiate the verification process.')
+      .setColor('#c3ff00');
       
     const verifyButton = new ActionRowBuilder<ButtonBuilder>()
       .setComponents(
         new ButtonBuilder()
           .setCustomId('requestVerification')
-          .setLabel('Verify Now')
+          .setLabel('Request Verification')
           .setStyle(ButtonStyle.Primary)
       );
 

@@ -57,16 +57,87 @@ export class DiscordCommandsService {
     // Defer the reply early to prevent timeout
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     
-    const rule = await this.dbSvc.addRoleMapping(
-      interaction.guild.id,
-      interaction.guild.name,
-      channel.id,
+    // Debug logging to help troubleshoot rule creation
+    Logger.debug('Creating rule with parameters:', {
+      serverId: interaction.guild.id,
+      serverName: interaction.guild.name,
+      channelId: channel.id,
+      channelName: channel.name,
       slug,
-      role.id,
+      roleId: role.id,
       attrKey,
       attrVal,
       minItems
-    );
+    });
+    
+    // Check for existing rule with the same criteria before attempting to create
+    let finalSlug = slug;
+    if (!slug && !attrKey && !attrVal && !minItems) {
+      finalSlug = 'ALL';
+    }
+    
+    try {
+      const existingRule = await this.dbSvc.findConflictingRule(
+        interaction.guild.id,
+        channel.id,
+        role.id,
+        finalSlug,
+        attrKey,
+        attrVal,
+        minItems
+      );
+      
+      if (existingRule) {
+        Logger.debug('Found conflicting rule:', existingRule);
+        await interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('Rule Already Exists')
+              .setDescription(`A rule with the same criteria already exists for <#${channel.id}> and <@&${role.id}>.\n\n**Existing Rule:**\n- Slug: ${existingRule.slug || 'None'}\n- Attribute: ${existingRule.attribute_key ? `${existingRule.attribute_key}=${existingRule.attribute_value}` : 'None'}\n- Min Items: ${existingRule.min_items || 'None'}\n\nUse \`/setup list-rules\` to see all existing rules.`)
+              .setColor('#FF9900') // Orange color for warning
+          ]
+        });
+        return;
+      }
+    } catch (error) {
+      Logger.debug('Error checking for conflicting rule (this is normal if no conflict):', error);
+    }
+    
+    let rule;
+    try {
+      rule = await this.dbSvc.addRoleMapping(
+        interaction.guild.id,
+        interaction.guild.name,
+        channel.id,
+        channel.name,
+        slug,
+        role.id,
+        attrKey,
+        attrVal,
+        minItems
+      );
+    } catch (error) {
+      Logger.error('Error creating rule:', error);
+      
+      // Check for duplicate rule error (Supabase/PostgreSQL constraint violation)
+      if (error.code === '23505' || error.message?.includes('duplicate') || error.message?.includes('already exists')) {
+        await interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('Rule Already Exists')
+              .setDescription(`A rule with the same criteria already exists for <#${channel.id}> and <@&${role.id}>. Use \`/setup list-rules\` to see existing rules.`)
+              .setColor('#FF9900') // Orange color for warning
+          ]
+        });
+        return;
+      }
+      
+      // Generic error for other database issues
+      await interaction.editReply({
+        content: 'Failed to create rule. Please check your parameters and try again.'
+      });
+      return;
+    }
     
     Logger.debug('addRoleMapping result:', rule);
     const newRule = rule;
@@ -250,6 +321,7 @@ export class DiscordCommandsService {
           interaction.guild.id,
           interaction.guild.name,
           channel.id,
+          channel.name,
           'ALL', // slug
           legacy.role_id,
           null, // attribute_key

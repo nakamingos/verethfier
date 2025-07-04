@@ -69,7 +69,7 @@ describe('DiscordMessageService', () => {
   });
 
   describe('findExistingVerificationMessage', () => {
-    it('should find existing verification message', async () => {
+    it('should find existing verification message (any bot message with buttons)', async () => {
       mockChannel.messages.fetch.mockResolvedValue(mockMessagesCollection);
 
       const result = await service.findExistingVerificationMessage(mockChannel as any);
@@ -95,6 +95,16 @@ describe('DiscordMessageService', () => {
       expect(result).toBeNull();
     });
 
+    it('should return null when bot user ID not available', async () => {
+      const clientWithoutUserId = { user: null };
+      const serviceWithoutUserId = new DiscordMessageService();
+      serviceWithoutUserId.initialize(clientWithoutUserId as any);
+
+      const result = await serviceWithoutUserId.findExistingVerificationMessage(mockChannel as any);
+
+      expect(result).toBeNull();
+    });
+
     it('should handle messages from other bots', async () => {
       const otherBotMessage = {
         ...mockMessage,
@@ -110,34 +120,48 @@ describe('DiscordMessageService', () => {
       expect(result).toBeNull();
     });
 
-    it('should handle messages without embeds', async () => {
-      const messageWithoutEmbeds = {
+    it('should return null for bot messages without buttons', async () => {
+      const messageWithoutButtons = {
         ...mockMessage,
-        embeds: []
+        components: []
       };
-      const messagesWithoutEmbeds = new Map([
-        ['no-embed-message', messageWithoutEmbeds]
+      const messagesWithoutButtons = new Map([
+        ['no-button-message', messageWithoutButtons]
       ]);
-      mockChannel.messages.fetch.mockResolvedValue(messagesWithoutEmbeds);
+      mockChannel.messages.fetch.mockResolvedValue(messagesWithoutButtons);
 
       const result = await service.findExistingVerificationMessage(mockChannel as any);
 
       expect(result).toBeNull();
     });
 
-    it('should handle messages with wrong embed title', async () => {
-      const messageWithWrongTitle = {
-        ...mockMessage,
-        embeds: [{ title: 'Wrong Title' }]
+    it('should find bot message with any button (legacy or new)', async () => {
+      const legacyMessage = {
+        id: 'legacy-message-id',
+        author: { id: 'bot-user-id' },
+        embeds: [{ title: 'Different Title' }], // Different embed title
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 2,
+                customId: 'legacyVerify',
+                label: 'Legacy Verify',
+                style: ButtonStyle.Secondary
+              }
+            ]
+          }
+        ]
       };
-      const messagesWithWrongTitle = new Map([
-        ['wrong-title-message', messageWithWrongTitle]
+      const messagesWithLegacy = new Map([
+        ['legacy-message-id', legacyMessage]
       ]);
-      mockChannel.messages.fetch.mockResolvedValue(messagesWithWrongTitle);
+      mockChannel.messages.fetch.mockResolvedValue(messagesWithLegacy);
 
       const result = await service.findExistingVerificationMessage(mockChannel as any);
 
-      expect(result).toBeNull();
+      expect(result).toBe('legacy-message-id');
     });
 
     it('should handle fetch errors gracefully', async () => {
@@ -161,7 +185,7 @@ describe('DiscordMessageService', () => {
         embeds: expect.arrayContaining([
           expect.objectContaining({
             data: expect.objectContaining({
-              title: 'Wallet Verification'
+              title: 'Request Verification'
             })
           })
         ]),
@@ -170,7 +194,7 @@ describe('DiscordMessageService', () => {
             components: expect.arrayContaining([
               expect.objectContaining({
                 data: expect.objectContaining({
-                  label: 'Verify Now',
+                  label: 'Request Verification',
                   custom_id: 'requestVerification'
                 })
               })
