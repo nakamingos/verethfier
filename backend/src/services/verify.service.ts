@@ -35,26 +35,38 @@ export class VerifyService {
     // --- Message-based verification (takes precedence if messageId is present) ---
     if (messageId && channelId) {
       Logger.log(`Message-based verification for messageId: ${messageId}, channelId: ${channelId}`);
-      const roleId = await this.discordVerificationSvc.getVerificationRoleId(
+      
+      // Get the full rule to access verification criteria
+      const rule = await this.dbSvc.findRuleByMessageId(
         payload.discordId,
         channelId,
         messageId
       );
       
-      if (roleId) {
-        // Check if the user owns any assets in the collection
-        const assetCount = await this.dataSvc.checkAssetOwnership(address);
-        Logger.log(`Message-based verification: Address ${address} owns ${assetCount} assets`);
+      if (rule && rule.role_id) {
+        // Check asset ownership against the rule criteria
+        const matchingAssets = await this.dataSvc.checkAssetOwnershipWithCriteria(
+          address, 
+          rule.slug,
+          rule.attribute_key, 
+          rule.attribute_value,
+          rule.min_items || 1
+        );
         
-        if (!assetCount || assetCount === 0) {
-          await this.discordVerificationSvc.throwError(payload.nonce, 'Address does not own any assets in the collection');
+        Logger.log(`Message-based verification: Address ${address} owns ${matchingAssets} matching assets for rule ${rule.id}`);
+        
+        if (!matchingAssets || matchingAssets === 0) {
+          const errorMsg = rule.slug 
+            ? `Address does not own the required assets for collection: ${rule.slug}`
+            : 'Address does not own any assets in the collection';
+          await this.discordVerificationSvc.throwError(payload.nonce, errorMsg);
           throw new Error('No matching assets for message-based verification');
         }
         
-        Logger.log(`Role ID resolved from message: ${roleId}`);
+        Logger.log(`Role ID resolved from rule: ${rule.role_id}`);
         await this.discordVerificationSvc.addUserRole(
           payload.userId,
-          roleId,
+          rule.role_id,
           payload.discordId,
           address,
           payload.nonce
@@ -62,12 +74,12 @@ export class VerifyService {
         await this.dbSvc.logUserRole(
           payload.userId,
           payload.discordId,
-          roleId,
+          rule.role_id,
           address
         );
         return { message: 'Verification successful (message-based)', address };
       } else {
-        Logger.warn(`No role found for messageId: ${messageId}, channelId: ${channelId}`);
+        Logger.warn(`No rule found for messageId: ${messageId}, channelId: ${channelId}`);
       }
     }
 
