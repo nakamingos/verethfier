@@ -1,5 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DiscordService } from '../src/services/discord.service';
+import { DiscordMessageService } from '../src/services/discord-message.service';
+import { DiscordVerificationService } from '../src/services/discord-verification.service';
+import { DiscordCommandsService } from '../src/services/discord-commands.service';
 import { DbService } from '../src/services/db.service';
 import { NonceService } from '../src/services/nonce.service';
 
@@ -28,9 +31,41 @@ const mockDbService = {
   getAllRulesWithLegacy: jest.fn(),
   removeAllLegacyRoles: jest.fn(),
   getLegacyRoles: jest.fn(),
-  ruleExists: jest.fn(), // Add mock for ruleExists
+  ruleExists: jest.fn(),
+  insertRoleMapping: jest.fn(),
+  findRuleByMessageId: jest.fn(),
+  getServerRole: jest.fn(),
 };
-const mockNonceService = {};
+
+const mockNonceService = {
+  createNonce: jest.fn(),
+  getNonceData: jest.fn(),
+  invalidateNonce: jest.fn(),
+};
+
+const mockDiscordMessageService = {
+  initialize: jest.fn(),
+  findExistingVerificationMessage: jest.fn(),
+  createVerificationMessage: jest.fn(),
+  doesVerificationMessageExist: jest.fn(),
+};
+
+const mockDiscordVerificationService = {
+  initialize: jest.fn(),
+  requestVerification: jest.fn(),
+  addUserRole: jest.fn(),
+  throwError: jest.fn(),
+  getVerificationRoleId: jest.fn(),
+};
+
+const mockDiscordCommandsService = {
+  initialize: jest.fn(),
+  handleAddRule: jest.fn(),
+  handleRemoveRule: jest.fn(),
+  handleListRules: jest.fn(),
+  handleRemoveLegacyRule: jest.fn(),
+  handleMigrateLegacyRule: jest.fn(),
+};
 
 describe('DiscordService', () => {
   let service: DiscordService;
@@ -41,62 +76,100 @@ describe('DiscordService', () => {
         DiscordService,
         { provide: NonceService, useValue: mockNonceService },
         { provide: DbService, useValue: mockDbService },
+        { provide: DiscordMessageService, useValue: mockDiscordMessageService },
+        { provide: DiscordVerificationService, useValue: mockDiscordVerificationService },
+        { provide: DiscordCommandsService, useValue: mockDiscordCommandsService },
       ],
     }).compile();
     service = module.get<DiscordService>(DiscordService);
     jest.clearAllMocks();
   });
 
-  it('add-rule calls addRoleMapping', async () => {
-    await service['dbSvc'].addRoleMapping('g', 'n', 'c', 's', 'r', 'k', 'v', 1);
-    expect(mockDbService.addRoleMapping).toHaveBeenCalled();
+  it('add-rule delegates to DiscordCommandsService', async () => {
+    const mockInteraction = {
+      options: { getSubcommand: () => 'add-rule' },
+      guild: { id: 'g' },
+      isChatInputCommand: () => true,
+      isButton: () => false,
+    } as any;
+    
+    await service.handleSetup(mockInteraction);
+    expect(mockDiscordCommandsService.handleAddRule).toHaveBeenCalledWith(mockInteraction);
   });
-  it('remove-rule calls deleteRoleMapping', async () => {
-    await service['dbSvc'].deleteRoleMapping('1', 'g');
-    expect(mockDbService.deleteRoleMapping).toHaveBeenCalledWith('1', 'g');
+
+  it('remove-rule delegates to DiscordCommandsService', async () => {
+    const mockInteraction = {
+      options: { getSubcommand: () => 'remove-rule' },
+      guild: { id: 'g' },
+      isChatInputCommand: () => true,
+      isButton: () => false,
+    } as any;
+    
+    await service.handleSetup(mockInteraction);
+    expect(mockDiscordCommandsService.handleRemoveRule).toHaveBeenCalledWith(mockInteraction);
   });
-  it('list-rules calls getRoleMappings', async () => {
-    await service['dbSvc'].getRoleMappings('g', 'c');
-    expect(mockDbService.getRoleMappings).toHaveBeenCalledWith('g', 'c');
+
+  it('list-rules delegates to DiscordCommandsService', async () => {
+    const mockInteraction = {
+      options: { getSubcommand: () => 'list-rules' },
+      guild: { id: 'g' },
+      isChatInputCommand: () => true,
+      isButton: () => false,
+    } as any;
+    
+    await service.handleSetup(mockInteraction);
+    expect(mockDiscordCommandsService.handleListRules).toHaveBeenCalledWith(mockInteraction);
   });
-  it('remove-legacy-rule calls removeAllLegacyRoles and replies with removed roles', async () => {
+
+  it('remove-legacy-rule delegates to DiscordCommandsService', async () => {
     const mockInteraction = {
       options: { getSubcommand: () => 'remove-legacy-rule' },
       guild: { id: 'g' },
-      reply: jest.fn(),
       isChatInputCommand: () => true,
       isButton: () => false,
     } as any;
-    mockDbService.removeAllLegacyRoles.mockResolvedValue({ removed: [{ role_id: 'r' }] });
+    
     await service.handleSetup(mockInteraction);
-    expect(mockDbService.removeAllLegacyRoles).toHaveBeenCalledWith('g');
-    expect(mockInteraction.reply).toHaveBeenCalledWith({
-      content: 'Removed legacy rule(s): <@&r>',
-      flags: expect.any(Number)
-    });
+    expect(mockDiscordCommandsService.handleRemoveLegacyRule).toHaveBeenCalledWith(mockInteraction);
   });
 
-  it('migrate-legacy-rule migrates legacy roles and removes them', async () => {
+  it('migrate-legacy-rule delegates to DiscordCommandsService', async () => {
     const mockInteraction = {
-      options: {
-        getSubcommand: () => 'migrate-legacy-rule',
-        getChannel: () => ({ id: 'c' })
-      },
-      guild: { id: 'g', name: 'Guild' },
-      reply: jest.fn(),
+      options: { getSubcommand: () => 'migrate-legacy-rule' },
+      guild: { id: 'g' },
       isChatInputCommand: () => true,
       isButton: () => false,
     } as any;
-    mockDbService.getLegacyRoles.mockResolvedValue({ data: [{ role_id: 'r', name: 'Role' }], error: null });
-    mockDbService.addRoleMapping.mockResolvedValue({});
-    mockDbService.removeAllLegacyRoles.mockResolvedValue({ removed: [{ role_id: 'r' }] });
+    
     await service.handleSetup(mockInteraction);
-    expect(mockDbService.getLegacyRoles).toHaveBeenCalledWith('g');
-    expect(mockDbService.addRoleMapping).toHaveBeenCalledWith('g', 'Guild', 'c', 'ALL', 'r', null, null, null);
-    expect(mockDbService.removeAllLegacyRoles).toHaveBeenCalledWith('g');
-    expect(mockInteraction.reply).toHaveBeenCalledWith({
-      content: 'Migrated legacy rule(s) to new rule(s) for channel <#c>: <@&r>. Removed legacy rule(s).',
-      flags: expect.any(Number)
-    });
+    expect(mockDiscordCommandsService.handleMigrateLegacyRule).toHaveBeenCalledWith(mockInteraction);
+  });
+
+  it('requestVerification delegates to DiscordVerificationService', async () => {
+    const mockInteraction = {
+      customId: 'requestVerification',
+      guild: { id: 'g' },
+      isChatInputCommand: () => false,
+      isButton: () => true,
+    } as any;
+    
+    await service.requestVerification(mockInteraction);
+    expect(mockDiscordVerificationService.requestVerification).toHaveBeenCalledWith(mockInteraction);
+  });
+
+  it('addUserRole delegates to DiscordVerificationService', async () => {
+    await service.addUserRole('userId', 'roleId', 'guildId', 'address', 'nonce');
+    expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('userId', 'roleId', 'guildId', 'address', 'nonce');
+  });
+
+  it('throwError delegates to DiscordVerificationService', async () => {
+    await service.throwError('nonce', 'error message');
+    expect(mockDiscordVerificationService.throwError).toHaveBeenCalledWith('nonce', 'error message');
+  });
+
+  it('findExistingVerificationMessage delegates to DiscordMessageService', async () => {
+    const mockChannel = { id: 'channelId' } as any;
+    await service.findExistingVerificationMessage(mockChannel);
+    expect(mockDiscordMessageService.findExistingVerificationMessage).toHaveBeenCalledWith(mockChannel);
   });
 });
