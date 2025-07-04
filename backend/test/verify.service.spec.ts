@@ -95,7 +95,7 @@ describe('VerifyService', () => {
     mockDbService.getRoleMappings.mockResolvedValue([]);
     mockDataService.getDetailedAssets.mockResolvedValue([]);
     const payload = { userId: 'u', discordId: 'g', nonce: 'n' };
-    await expect(service.verifySignatureFlow(payload as any, 'sig')).rejects.toThrow('No matching assets');
+    await expect(service.verifySignatureFlow(payload as any, 'sig')).rejects.toThrow('Address does not own any assets in the collection');
     expect(mockDiscordVerificationService.throwError).toHaveBeenCalled();
   });
 });
