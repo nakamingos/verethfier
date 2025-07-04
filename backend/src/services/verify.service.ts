@@ -60,7 +60,7 @@ export class VerifyService {
             ? `Address does not own the required assets for collection: ${rule.slug}`
             : 'Address does not own any assets in the collection';
           await this.discordVerificationSvc.throwError(payload.nonce, errorMsg);
-          throw new Error('No matching assets for message-based verification');
+          throw new Error(errorMsg); // Use the same user-friendly message
         }
         
         Logger.log(`Role ID resolved from rule: ${rule.role_id}`);
@@ -90,8 +90,9 @@ export class VerifyService {
       Logger.log(`Legacy path: Address ${address} owns ${assetCount} assets`);
       
       if (!assetCount || assetCount === 0) {
-        await this.discordVerificationSvc.throwError(payload.nonce, 'Address does not own any assets in the collection');
-        throw new Error('No matching assets for legacy verification');
+        const errorMsg = 'Address does not own any assets in the collection';
+        await this.discordVerificationSvc.throwError(payload.nonce, errorMsg);
+        throw new Error(errorMsg);
       }
       
       const legacyRoleId = await this.dbSvc.getServerRole(payload.discordId);
@@ -117,8 +118,9 @@ export class VerifyService {
     // Verify the user owns at least one asset
     if (!assets || assets.length === 0) {
       Logger.log(`Multi-rule path: Address ${address} owns no assets`);
-      await this.discordVerificationSvc.throwError(payload.nonce, 'Address does not own any assets in the collection');
-      throw new Error('No matching assets');
+      const errorMsg = 'Address does not own any assets in the collection';
+      await this.discordVerificationSvc.throwError(payload.nonce, errorMsg);
+      throw new Error(errorMsg);
     }
     
     // Only get rules for the current guild
@@ -127,8 +129,9 @@ export class VerifyService {
     );
     const matched = rules.filter(r => matchesRule(r, assets, channelId));
     if (!matched.length) {
-      await this.discordVerificationSvc.throwError(payload.nonce, 'No matching assets');
-      throw new Error('No matching assets');
+      const errorMsg = 'No matching assets found for verification requirements';
+      await this.discordVerificationSvc.throwError(payload.nonce, errorMsg);
+      throw new Error(errorMsg);
     }
 
     for (const r of matched) {
