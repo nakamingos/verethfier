@@ -6,6 +6,9 @@ import { AppController } from '@/app.controller';
 import { AppService } from '@/app.service';
 
 import { DiscordService } from '@/services/discord.service';
+import { DiscordMessageService } from '@/services/discord-message.service';
+import { DiscordVerificationService } from '@/services/discord-verification.service';
+import { DiscordCommandsService } from '@/services/discord-commands.service';
 import { NonceService } from '@/services/nonce.service';
 import { WalletService } from '@/services/wallet.service';
 import { DbService } from '@/services/db.service';
@@ -21,6 +24,9 @@ import { VerifyService } from './services/verify.service';
   providers: [
     AppService,
     DiscordService,
+    DiscordMessageService,
+    DiscordVerificationService,
+    DiscordCommandsService,
     NonceService,
     WalletService,
     DbService,

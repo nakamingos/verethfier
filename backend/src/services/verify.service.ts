@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import { NonceService }  from './nonce.service';
 import { DiscordService } from './discord.service';
+import { DiscordVerificationService } from './discord-verification.service';
 import { DataService }   from './data.service';
 import { DbService }     from './db.service';
 import { DecodedData }   from '@/models/app.interface';
@@ -13,6 +14,7 @@ export class VerifyService {
     private readonly walletSvc: WalletService,
     private readonly nonceSvc: NonceService,
     private readonly discordSvc: DiscordService,
+    private readonly discordVerificationSvc: DiscordVerificationService,
     private readonly dataSvc: DataService,
     private readonly dbSvc: DbService,
   ) {}
@@ -33,7 +35,7 @@ export class VerifyService {
     // --- Message-based verification (takes precedence if messageId is present) ---
     if (messageId && channelId) {
       Logger.log(`Message-based verification for messageId: ${messageId}, channelId: ${channelId}`);
-      const roleId = await this.discordSvc.getVerificationRoleId(
+      const roleId = await this.discordVerificationSvc.getVerificationRoleId(
         payload.discordId,
         channelId,
         messageId
@@ -45,12 +47,12 @@ export class VerifyService {
         Logger.log(`Message-based verification: Address ${address} owns ${assetCount} assets`);
         
         if (!assetCount || assetCount === 0) {
-          await this.discordSvc.throwError(payload.nonce, 'Address does not own any assets in the collection');
+          await this.discordVerificationSvc.throwError(payload.nonce, 'Address does not own any assets in the collection');
           throw new Error('No matching assets for message-based verification');
         }
         
         Logger.log(`Role ID resolved from message: ${roleId}`);
-        await this.discordSvc.addUserRole(
+        await this.discordVerificationSvc.addUserRole(
           payload.userId,
           roleId,
           payload.discordId,
@@ -76,12 +78,12 @@ export class VerifyService {
       Logger.log(`Legacy path: Address ${address} owns ${assetCount} assets`);
       
       if (!assetCount || assetCount === 0) {
-        await this.discordSvc.throwError(payload.nonce, 'Address does not own any assets in the collection');
+        await this.discordVerificationSvc.throwError(payload.nonce, 'Address does not own any assets in the collection');
         throw new Error('No matching assets for legacy verification');
       }
       
       const legacyRoleId = await this.dbSvc.getServerRole(payload.discordId);
-      await this.discordSvc.addUserRole(
+      await this.discordVerificationSvc.addUserRole(
         payload.userId,
         legacyRoleId,
         payload.discordId,
@@ -103,7 +105,7 @@ export class VerifyService {
     // Verify the user owns at least one asset
     if (!assets || assets.length === 0) {
       Logger.log(`Multi-rule path: Address ${address} owns no assets`);
-      await this.discordSvc.throwError(payload.nonce, 'Address does not own any assets in the collection');
+      await this.discordVerificationSvc.throwError(payload.nonce, 'Address does not own any assets in the collection');
       throw new Error('No matching assets');
     }
     
@@ -113,12 +115,12 @@ export class VerifyService {
     );
     const matched = rules.filter(r => matchesRule(r, assets, channelId));
     if (!matched.length) {
-      await this.discordSvc.throwError(payload.nonce, 'No matching assets');
+      await this.discordVerificationSvc.throwError(payload.nonce, 'No matching assets');
       throw new Error('No matching assets');
     }
 
     for (const r of matched) {
-      await this.discordSvc.addUserRole(
+      await this.discordVerificationSvc.addUserRole(
         payload.userId,
         r.role_id,
         payload.discordId,

@@ -1,0 +1,262 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { DiscordCommandsService } from '../src/services/discord-commands.service';
+import { DiscordMessageService } from '../src/services/discord-message.service';
+import { DbService } from '../src/services/db.service';
+import { MessageFlags, ChannelType } from 'discord.js';
+
+const mockDbService = {
+  getLegacyRoles: jest.fn(),
+  addRoleMapping: jest.fn(),
+  deleteRoleMapping: jest.fn(),
+  getRoleMappings: jest.fn(),
+  ruleExists: jest.fn(),
+  removeAllLegacyRoles: jest.fn(),
+  getAllRulesWithLegacy: jest.fn(),
+  updateRuleMessageId: jest.fn(),
+};
+
+const mockDiscordMessageService = {
+  findExistingVerificationMessage: jest.fn(),
+  createVerificationMessage: jest.fn(),
+};
+
+describe('DiscordCommandsService', () => {
+  let service: DiscordCommandsService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        DiscordCommandsService,
+        { provide: DbService, useValue: mockDbService },
+        { provide: DiscordMessageService, useValue: mockDiscordMessageService },
+      ],
+    }).compile();
+
+    service = module.get<DiscordCommandsService>(DiscordCommandsService);
+    jest.clearAllMocks();
+  });
+
+  describe('handleAddRule', () => {
+    it('should prevent adding rule when legacy roles exist', async () => {
+      const mockInteraction = {
+        guild: { id: 'guild-id', channels: { cache: new Map() } },
+        options: {
+          getChannel: () => ({ id: 'channel-id', type: ChannelType.GuildText }),
+          getRole: () => ({ id: 'role-id' }),
+          getString: () => null,
+          getInteger: () => null,
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
+      mockDbService.getLegacyRoles.mockResolvedValue({
+        data: [{ role_id: 'legacy-role' }]
+      });
+
+      await service.handleAddRule(mockInteraction);
+
+      expect(mockDbService.getLegacyRoles).toHaveBeenCalledWith('guild-id');
+      expect(mockInteraction.reply).toHaveBeenCalledWith({
+        content: expect.stringContaining('migrate or remove the legacy rule'),
+        flags: MessageFlags.Ephemeral
+      });
+    });
+
+    it('should create new rule successfully', async () => {
+      const mockChannel = { id: 'channel-id', type: ChannelType.GuildText };
+      const mockRole = { id: 'role-id' };
+      const mockInteraction = {
+        guild: {
+          id: 'guild-id',
+          name: 'test-guild',
+          channels: { cache: new Map([['channel-id', mockChannel]]) }
+        },
+        options: {
+          getChannel: () => mockChannel,
+          getRole: () => mockRole,
+          getString: (key: string) => {
+            if (key === 'slug') return 'test-collection';
+            return null;
+          },
+          getInteger: () => null,
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
+      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+      mockDbService.addRoleMapping.mockResolvedValue([{ id: 1 }]); // Returns array with new rule
+      mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
+      mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
+      mockDbService.updateRuleMessageId.mockResolvedValue({});
+
+      await service.handleAddRule(mockInteraction);
+
+      expect(mockDbService.addRoleMapping).toHaveBeenCalledWith(
+        'guild-id',
+        'test-guild',
+        'channel-id',
+        'test-collection',
+        'role-id',
+        null,
+        null,
+        null
+      );
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        embeds: expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              title: 'Rule Added'
+            })
+          })
+        ])
+      });
+    });
+  });
+
+  describe('handleRemoveRule', () => {
+    it('should remove rule successfully', async () => {
+      const mockInteraction = {
+        guild: { id: 'guild-id' },
+        options: {
+          getChannel: () => ({ id: 'channel-id', name: 'test-channel' }),
+          getRole: () => ({ id: 'role-id', name: 'test-role' }),
+          getInteger: () => 1, // rule_id
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
+      mockDbService.deleteRoleMapping.mockResolvedValue({ error: null });
+
+      await service.handleRemoveRule(mockInteraction);
+
+      expect(mockDbService.deleteRoleMapping).toHaveBeenCalledWith('1', 'guild-id');
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        embeds: expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              title: 'Rule Removed'
+            })
+          })
+        ])
+      });
+    });
+  });
+
+  describe('handleListRules', () => {
+    it('should list rules with legacy warning', async () => {
+      const mockInteraction = {
+        guild: {
+          id: 'guild-id',
+          channels: { cache: new Map([['channel-id', { name: 'test-channel' }]]) },
+          roles: { cache: new Map([['role-id', { name: 'test-role' }]]) }
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
+      const mockRules = [
+        {
+          id: 1,
+          channel_id: 'channel-id',
+          role_id: 'role-id',
+          collection: 'test-collection',
+          legacy: true
+        }
+      ];
+      mockDbService.getAllRulesWithLegacy.mockResolvedValue(mockRules);
+
+      await service.handleListRules(mockInteraction);
+
+      expect(mockDbService.getAllRulesWithLegacy).toHaveBeenCalledWith('guild-id');
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        embeds: [
+          expect.objectContaining({
+            data: expect.objectContaining({
+              title: 'Verification Rules',
+              description: expect.stringContaining('[LEGACY] Rule'),
+              color: 12844800
+            })
+          })
+        ]
+      });
+    });
+  });
+
+  describe('handleRemoveLegacyRule', () => {
+    it('should remove legacy rules successfully', async () => {
+      const mockInteraction = {
+        guild: { id: 'guild-id' },
+        options: {
+          getChannel: () => ({ id: 'channel-id' }),
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
+      mockDbService.getLegacyRoles.mockResolvedValue({
+        data: [{ role_id: 'legacy-role' }]
+      });
+      mockDbService.removeAllLegacyRoles.mockResolvedValue({ removed: [{ role_id: 'legacy-role', name: 'test' }] });
+
+      await service.handleRemoveLegacyRule(mockInteraction);
+
+      expect(mockDbService.removeAllLegacyRoles).toHaveBeenCalledWith('guild-id');
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        content: expect.stringContaining('Removed')
+      });
+    });
+  });
+
+  describe('handleMigrateLegacyRule', () => {
+    it('should migrate legacy rules successfully', async () => {
+      const mockChannel = { id: 'channel-id', name: 'test-channel' };
+      const mockInteraction = {
+        guild: {
+          id: 'guild-id',
+          name: 'test-guild',
+          channels: { cache: new Map([['channel-id', mockChannel]]) }
+        },
+        options: {
+          getChannel: () => mockChannel,
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
+      const legacyRoles = [{ role_id: 'legacy-role' }];
+      mockDbService.getLegacyRoles.mockResolvedValue({ data: legacyRoles });
+      mockDbService.ruleExists.mockResolvedValue(false);
+      mockDbService.addRoleMapping.mockResolvedValue([{ id: 1 }]);
+      mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
+      mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
+      mockDbService.updateRuleMessageId.mockResolvedValue({});
+      mockDbService.removeAllLegacyRoles.mockResolvedValue({ removed: [{ role_id: 'legacy-role', name: 'test' }] });
+
+      await service.handleMigrateLegacyRule(mockInteraction);
+
+      expect(mockDbService.addRoleMapping).toHaveBeenCalledWith(
+        'guild-id',
+        'test-guild',
+        'channel-id',
+        'ALL',
+        'legacy-role',
+        null,
+        null,
+        1
+      );
+      expect(mockDbService.removeAllLegacyRoles).toHaveBeenCalledWith('guild-id');
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        content: expect.stringContaining('Migrated legacy rule')
+      });
+    });
+  });
+});

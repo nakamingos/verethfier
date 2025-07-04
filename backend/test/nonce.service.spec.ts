@@ -30,7 +30,7 @@ describe('NonceService', () => {
   });
 
   it('validates a correct nonce', async () => {
-    mockCache.get.mockResolvedValue('abc123');
+    mockCache.get.mockResolvedValue({ nonce: 'abc123', messageId: 'msg1', channelId: 'ch1' });
     const result = await service.validateNonce('user1', 'abc123');
     expect(result).toBe(true);
   });
