@@ -123,7 +123,7 @@ export class DiscordService {
         const minItems = interaction.options.getInteger('min_items') || null;
         
         // Defer the reply early to prevent timeout
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         
         const rule = await this.dbSvc.addRoleMapping(
           interaction.guild.id,
@@ -212,7 +212,7 @@ export class DiscordService {
         const ruleId = interaction.options.getInteger('rule_id');
         
         // Defer the reply early to prevent timeout
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         
         try {
           await this.dbSvc.deleteRoleMapping(String(ruleId), interaction.guild.id);
@@ -233,7 +233,7 @@ export class DiscordService {
         // No channel option: list all rules for the server
         
         // Defer the reply early to prevent timeout
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         
         const rules = await this.dbSvc.getAllRulesWithLegacy(
           interaction.guild.id
@@ -264,7 +264,7 @@ export class DiscordService {
         // Remove all legacy roles for this guild using DbService
         
         // Defer the reply early to prevent timeout
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         
         const legacyRolesResult = await this.dbSvc.getLegacyRoles(interaction.guild.id);
         const legacyRoles = legacyRolesResult.data;
@@ -292,7 +292,7 @@ export class DiscordService {
         }
         
         // Defer the reply early to prevent timeout
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         
         // Get legacy roles
         const legacyRolesResult = await this.dbSvc.getLegacyRoles(interaction.guild.id);
@@ -378,7 +378,7 @@ export class DiscordService {
   async requestVerification(interaction: ButtonInteraction<CacheType>): Promise<void> {
     try {
       // Defer the reply early to prevent timeout
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       
       const guild = interaction.guild;
       if (!guild) throw new Error('Guild not found');
