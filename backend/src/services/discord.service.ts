@@ -102,6 +102,8 @@ export class DiscordService {
         await this.discordCommandsSvc.handleRemoveLegacyRule(interaction);
       } else if (sub === 'migrate-legacy-rule') {
         await this.discordCommandsSvc.handleMigrateLegacyRule(interaction);
+      } else if (sub === 'recover-verification') {
+        await this.discordCommandsSvc.handleRecoverVerification(interaction);
       }
     } catch (error) {
       Logger.error('Error in handleSetup:', error);
@@ -174,6 +176,11 @@ export class DiscordService {
           sc.setName('migrate-legacy-rule')
             .setDescription('Migrate a legacy rule to a new rule (prompts for channel)')
             .addChannelOption(option => option.setName('channel').setDescription('Channel for the new rule').setRequired(true))
+        )
+        .addSubcommand(sc =>
+          sc.setName('recover-verification')
+            .setDescription('Recover verification setup for a channel (creates new message, updates orphaned rules)')
+            .addChannelOption(option => option.setName('channel').setDescription('Channel to recover verification for').setRequired(true))
         )
     ];
     Logger.debug('Reloading application /slash commands.', `${commands.length} commands`);
