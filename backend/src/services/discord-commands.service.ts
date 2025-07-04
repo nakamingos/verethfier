@@ -61,6 +61,7 @@ export class DiscordCommandsService {
       interaction.guild.id,
       interaction.guild.name,
       channel.id,
+      channel.name,
       slug,
       role.id,
       attrKey,
@@ -250,6 +251,7 @@ export class DiscordCommandsService {
           interaction.guild.id,
           interaction.guild.name,
           channel.id,
+          channel.name,
           'ALL', // slug
           legacy.role_id,
           null, // attribute_key

@@ -67,7 +67,7 @@ describe('DiscordCommandsService', () => {
     });
 
     it('should create new rule successfully', async () => {
-      const mockChannel = { id: 'channel-id', type: ChannelType.GuildText };
+      const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
       const mockRole = { id: 'role-id' };
       const mockInteraction = {
         guild: {
@@ -101,6 +101,7 @@ describe('DiscordCommandsService', () => {
         'guild-id',
         'test-guild',
         'channel-id',
+        'test-channel',
         'test-collection',
         'role-id',
         null,
@@ -116,6 +117,43 @@ describe('DiscordCommandsService', () => {
           })
         ])
       });
+    });
+
+    it('should create rule with slug="ALL" when no criteria provided', async () => {
+      const mockInteraction = {
+        guild: { id: 'guild-id', name: 'test-guild' },
+        options: {
+          getChannel: () => ({ id: 'channel-id', name: 'test-channel', type: 0 }),
+          getRole: () => ({ id: 'role-id', name: 'test-role' }),
+          getString: jest.fn().mockReturnValue(null), // All criteria return null
+          getInteger: jest.fn().mockReturnValue(null),
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
+      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+      mockDbService.addRoleMapping.mockResolvedValue({ id: 1 });
+      mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
+      mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
+      mockDbService.updateRuleMessageId.mockResolvedValue({});
+
+      await service.handleAddRule(mockInteraction);
+
+      // The DbService.addRoleMapping should be called with null values, 
+      // but the DbService itself will convert them to 'ALL' for slug
+      expect(mockDbService.addRoleMapping).toHaveBeenCalledWith(
+        'guild-id',
+        'test-guild',
+        'channel-id',
+        'test-channel',
+        null, // This will be converted to 'ALL' by DbService
+        'role-id',
+        null,
+        null,
+        null
+      );
     });
   });
 
@@ -249,6 +287,7 @@ describe('DiscordCommandsService', () => {
         'guild-id',
         'test-guild',
         'channel-id',
+        'test-channel',
         'ALL',
         'legacy-role',
         null,

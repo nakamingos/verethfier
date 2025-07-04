@@ -89,19 +89,28 @@ export class DbService {
     serverId: string,
     serverName: string,
     channelId: string,
+    channelName: string,
     slug: string,
     roleId: string,
     attrKey: string,
     attrVal: string,
     minItems: number
   ): Promise<any> {
+    // If no specific criteria are provided (no slug, attribute, or min_items), 
+    // set slug to 'ALL' to indicate this rule matches any asset
+    let finalSlug = slug;
+    if (!slug && !attrKey && !attrVal && !minItems) {
+      finalSlug = 'ALL';
+    }
+
     const { data, error } = await supabase
       .from('verifier_rules')
       .insert({
         server_id: serverId,
         server_name: serverName,
         channel_id: channelId,
-        slug: slug,
+        channel_name: channelName,
+        slug: finalSlug,
         role_id: roleId,
         attribute_key: attrKey,
         attribute_value: attrVal,
