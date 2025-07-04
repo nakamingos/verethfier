@@ -40,6 +40,15 @@ export class VerifyService {
       );
       
       if (roleId) {
+        // Check if the user owns any assets in the collection
+        const assetCount = await this.dataSvc.checkAssetOwnership(address);
+        Logger.log(`Message-based verification: Address ${address} owns ${assetCount} assets`);
+        
+        if (!assetCount || assetCount === 0) {
+          await this.discordSvc.throwError(payload.nonce, 'Address does not own any assets in the collection');
+          throw new Error('No matching assets for message-based verification');
+        }
+        
         Logger.log(`Role ID resolved from message: ${roleId}`);
         await this.discordSvc.addUserRole(
           payload.userId,
@@ -62,6 +71,15 @@ export class VerifyService {
 
     // --- Legacy path ---
     if (payload.role) {
+      // Check if the user owns any assets in the collection
+      const assetCount = await this.dataSvc.checkAssetOwnership(address);
+      Logger.log(`Legacy path: Address ${address} owns ${assetCount} assets`);
+      
+      if (!assetCount || assetCount === 0) {
+        await this.discordSvc.throwError(payload.nonce, 'Address does not own any assets in the collection');
+        throw new Error('No matching assets for legacy verification');
+      }
+      
       const legacyRoleId = await this.dbSvc.getServerRole(payload.discordId);
       await this.discordSvc.addUserRole(
         payload.userId,
@@ -81,8 +99,16 @@ export class VerifyService {
 
     // --- New multi-rule path ---
     const assets = await this.dataSvc.getDetailedAssets(address);
+    
+    // Verify the user owns at least one asset
+    if (!assets || assets.length === 0) {
+      Logger.log(`Multi-rule path: Address ${address} owns no assets`);
+      await this.discordSvc.throwError(payload.nonce, 'Address does not own any assets in the collection');
+      throw new Error('No matching assets');
+    }
+    
     // Only get rules for the current guild
-    const rules  = await this.dbSvc.getRoleMappings(
+    const rules = await this.dbSvc.getRoleMappings(
       payload.discordId
     );
     const matched = rules.filter(r => matchesRule(r, assets, channelId));
