@@ -139,16 +139,30 @@ export class DiscordService {
         Logger.debug('addRoleMapping result:', rule);
         const newRule = rule;
         
-        // Check for existing Verify Now message in the channel
-        let existingMessage = null;
+        // Check for existing Wallet Verification message in the Discord channel
+        let existingVerificationMessageId = null;
         try {
-          existingMessage = await this.dbSvc.findRuleWithMessage(interaction.guild.id, channel.id);
+          if (channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement) {
+            existingVerificationMessageId = await this.findExistingVerificationMessage(channel as GuildTextBasedChannel);
+          }
         } catch (err) {
-          Logger.error('Error checking for existing Verify Now message', err);
+          Logger.error('Error checking for existing Wallet Verification message in Discord channel', err);
         }
-        
-        if (!existingMessage) {
-          // Send the original embed+button to the channel
+
+        // If we found an existing verification message, use its ID for the new rule
+        if (existingVerificationMessageId) {
+          // Update the new rule with the existing message_id
+          await this.dbSvc.updateRuleMessageId(newRule.id, existingVerificationMessageId);
+          await interaction.editReply({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle('Rule Added')
+                .setDescription(`Rule for <#${channel.id}> and <@&${role.id}> added using existing verification message.`)
+                .setColor('#00FF00')
+            ]
+          });
+        } else {
+          // No existing verification message found, create a new one
           const verifyEmbed = new EmbedBuilder()
             .setTitle('Wallet Verification')
             .setDescription('Verify your identity using your EVM wallet by clicking the button below.')
@@ -185,7 +199,7 @@ export class DiscordService {
               embeds: [
                 new EmbedBuilder()
                   .setTitle('Rule Added')
-                  .setDescription(`Rule for <#${channel.id}> and <@&${role.id}> added.`)
+                  .setDescription(`Rule for <#${channel.id}> and <@&${role.id}> added with new verification message.`)
                   .setColor('#00FF00')
               ]
             });
@@ -196,17 +210,6 @@ export class DiscordService {
             });
             return;
           }
-        } else {
-          // Just update the new rule with the existing message_id
-          await this.dbSvc.updateRuleMessageId(newRule.id, existingMessage.message_id);
-          await interaction.editReply({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle('Rule Added')
-                .setDescription(`Rule for <#${channel.id}> and <@&${role.id}> added.`)
-                .setColor('#00FF00')
-            ]
-          });
         }
       } else if (sub === 'remove-rule') {
         const ruleId = interaction.options.getInteger('rule_id');
@@ -654,5 +657,55 @@ export class DiscordService {
     const rule = await this.dbSvc.findRuleByMessageId(guildId, channelId, messageId);
     if (rule && rule.role_id) return rule.role_id;
     return null;
+  }
+
+  /**
+   * Searches for existing Wallet Verification messages in a Discord channel.
+   * Looks for messages with "Wallet Verification" embed title and "Verify Now" button.
+   * @param channel - The Discord channel to search in
+   * @returns The message ID of the existing verification message, or null if not found
+   */
+  async findExistingVerificationMessage(channel: GuildTextBasedChannel): Promise<string | null> {
+    try {
+      // Fetch recent messages from the channel (last 100 messages should be enough)
+      const messages = await channel.messages.fetch({ limit: 100 });
+      
+      for (const [messageId, message] of messages) {
+        // Check if message is from our bot
+        if (message.author.id !== this.client?.user?.id) continue;
+        
+        // Check if message has embeds with "Wallet Verification" title
+        if (message.embeds.length > 0) {
+          const embed = message.embeds[0];
+          if (embed.title === 'Wallet Verification') {
+            // Check if message has components with "Verify Now" button
+            if (message.components.length > 0) {
+              const actionRow = message.components[0];
+              if (actionRow.type === 1 && 'components' in actionRow) { // ActionRowBuilder type
+                const components = actionRow.components;
+                if (components.length > 0) {
+                  const button = components[0];
+                  // Check if it's a button component and has the right properties
+                  if (button.type === 2) { // ButtonComponent type
+                    const buttonComponent = button as any; // Type assertion to access button properties
+                    if ((buttonComponent.customId === 'requestVerification' && buttonComponent.label === 'Verify Now') ||
+                        (buttonComponent.style === ButtonStyle.Link && buttonComponent.label === 'Verify Now')) {
+                      Logger.debug(`Found existing Wallet Verification message: ${messageId}`);
+                      return messageId;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      Logger.debug('No existing Wallet Verification message found in channel');
+      return null;
+    } catch (error) {
+      Logger.error('Error searching for existing verification message:', error);
+      return null;
+    }
   }
 }
