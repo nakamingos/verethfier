@@ -1,0 +1,25 @@
+# Add to your root .gitignore (not just backend)
+
+# Database dumps and working files
+*.sql
+!supabase/migrations/*.sql  # Keep migration files
+!supabase/seed.sql         # Keep seed files if you have them
+
+# Zip files and archives
+*.zip
+*.tar.gz
+*.rar
+
+# Working/temp files
+schema_dump*.sql
+fix_*.sql
+*_dump*.sql
+REMOTE_*.sql
+
+# IDE/OS files
+.directory
+.DS_Store
+Thumbs.db
+
+# Temporary working files
+temp/
