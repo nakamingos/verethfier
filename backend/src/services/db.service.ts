@@ -100,7 +100,7 @@ export class DbService {
     const finalSlug = slug || 'ALL';
     const finalAttrKey = attrKey || '';
     const finalAttrVal = attrVal || '';
-    const finalMinItems = minItems || 0;
+    const finalMinItems = minItems != null ? minItems : 1;
 
     // Debug logging to help troubleshoot rule creation
     Logger.debug('Inserting rule into database:', {
@@ -293,6 +293,21 @@ export class DbService {
   }
 
   /**
+   * Finds ALL rules by message_id for a given guild and channel.
+   * This supports multiple roles being assigned for the same verification criteria.
+   */
+  async findRulesByMessageId(guildId: string, channelId: string, messageId: string): Promise<VerifierRole[]> {
+    const { data, error } = await supabase
+      .from('verifier_rules')
+      .select('*')
+      .eq('server_id', guildId)
+      .eq('channel_id', channelId)
+      .eq('message_id', messageId);
+    if (error) throw error;
+    return (data || []) as VerifierRole[];
+  }
+
+  /**
    * Gets all rules for a specific channel in a guild.
    */
   async getRulesByChannel(guildId: string, channelId: string): Promise<VerifierRole[]> {
@@ -318,7 +333,7 @@ export class DbService {
     const finalSlug = slug || 'ALL';
     const finalAttrKey = attrKey || '';
     const finalAttrVal = attrVal || '';
-    const finalMinItems = minItems || 0;
+    const finalMinItems = minItems != null ? minItems : 1;
 
     const { data, error } = await supabase
       .from('verifier_rules')

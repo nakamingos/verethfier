@@ -62,7 +62,7 @@ describe('DbService', () => {
         role_id: 'role-id',
         attribute_key: '', // null -> ''
         attribute_value: '', // null -> ''
-        min_items: 0 // null -> 0
+        min_items: 1 // null -> 1
       });
     });
 
@@ -116,7 +116,7 @@ describe('DbService', () => {
         role_id: 'role-id',
         attribute_key: '', // empty string preserved
         attribute_value: '', // empty string preserved
-        min_items: 0 // zero preserved
+        min_items: 0 // zero preserved (explicit 0 overrides default)
       });
     });
   });

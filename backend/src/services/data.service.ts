@@ -83,8 +83,11 @@ export class DataService {
     attributeValue?: string,
     minItems: number = 1
   ): Promise<number> {
-    // Ensure minimum 1 asset is always required (prevent min_items = 0 bypass)
-    const effectiveMinItems = Math.max(minItems, 1);
+    // Use the actual minItems value (allow 0 if that's what the rule specifies)
+    const effectiveMinItems = minItems;
+    
+    // Add debug logging
+    Logger.log(`checkAssetOwnershipWithCriteria: address=${address}, slug=${slug}, attr=${attributeKey}=${attributeValue}, minItems=${minItems}, effectiveMinItems=${effectiveMinItems}`);
     
     address = address.toLowerCase();
     const marketAddress = '0xd3418772623be1a3cc6b6d45cb46420cedd9154a'.toLowerCase();

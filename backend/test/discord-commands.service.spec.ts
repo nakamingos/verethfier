@@ -109,7 +109,7 @@ describe('DiscordCommandsService', () => {
         'role-id',
         null,
         null,
-        null
+        1  // min_items now defaults to 1 instead of null
       );
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
         embeds: expect.arrayContaining([
@@ -146,7 +146,7 @@ describe('DiscordCommandsService', () => {
       await service.handleAddRule(mockInteraction);
 
       // The DbService.addRoleMapping is called with null values from the command, 
-      // but the DbService itself will convert them to defaults ('ALL', '', '', 0)
+      // but the DbService itself will convert them to defaults ('ALL', '', '', 1)
       expect(mockDbService.addRoleMapping).toHaveBeenCalledWith(
         'guild-id',
         'test-guild',
@@ -156,7 +156,7 @@ describe('DiscordCommandsService', () => {
         'role-id',
         null,
         null,
-        null
+        1  // min_items now defaults to 1 instead of null
       );
     });
 
