@@ -52,7 +52,7 @@ export class DiscordCommandsService {
     const slug = interaction.options.getString('slug') || null;
     const attrKey = interaction.options.getString('attribute_key') || null;
     const attrVal = interaction.options.getString('attribute_value') || null;
-    const minItems = interaction.options.getInteger('min_items') || null;
+    const minItems = interaction.options.getInteger('min_items') || 1;
     
     // Defer the reply early to prevent timeout
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -112,6 +112,7 @@ export class DiscordCommandsService {
         channel.name,
         slug,
         role.id,
+        role.name,
         attrKey,
         attrVal,
         minItems
@@ -324,6 +325,7 @@ export class DiscordCommandsService {
           channel.name,
           'ALL', // slug
           legacy.role_id,
+          legacy.name || 'Legacy Role', // role_name
           null, // attribute_key
           null, // attribute_value
           1    // min_items (set to 1 for migration)

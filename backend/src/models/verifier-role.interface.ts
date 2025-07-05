@@ -3,8 +3,10 @@ export interface VerifierRole {
   server_id: string;
   server_name: string;
   channel_id: string;
+  channel_name: string;
   slug: string | null;
   role_id: string;
+  role_name: string | null;
   attribute_key: string | null;
   attribute_value: string | null;
   min_items: number | null;

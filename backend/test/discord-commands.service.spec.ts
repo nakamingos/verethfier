@@ -70,7 +70,7 @@ describe('DiscordCommandsService', () => {
 
     it('should create new rule successfully', async () => {
       const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
-      const mockRole = { id: 'role-id' };
+      const mockRole = { id: 'role-id', name: 'Test Role' };
       const mockInteraction = {
         guild: {
           id: 'guild-id',
@@ -107,9 +107,10 @@ describe('DiscordCommandsService', () => {
         'test-channel',
         'test-collection',
         'role-id',
+        'Test Role',  // role_name
         null,
         null,
-        null
+        1  // min_items now defaults to 1 instead of null
       );
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
         embeds: expect.arrayContaining([
@@ -127,7 +128,7 @@ describe('DiscordCommandsService', () => {
         guild: { id: 'guild-id', name: 'test-guild' },
         options: {
           getChannel: () => ({ id: 'channel-id', name: 'test-channel', type: 0 }),
-          getRole: () => ({ id: 'role-id', name: 'test-role' }),
+          getRole: () => ({ id: 'role-id', name: 'Test Role' }),
           getString: jest.fn().mockReturnValue(null), // All criteria return null
           getInteger: jest.fn().mockReturnValue(null),
         },
@@ -146,7 +147,7 @@ describe('DiscordCommandsService', () => {
       await service.handleAddRule(mockInteraction);
 
       // The DbService.addRoleMapping is called with null values from the command, 
-      // but the DbService itself will convert them to defaults ('ALL', '', '', 0)
+      // but the DbService itself will convert them to defaults ('ALL', '', '', 1)
       expect(mockDbService.addRoleMapping).toHaveBeenCalledWith(
         'guild-id',
         'test-guild',
@@ -154,9 +155,10 @@ describe('DiscordCommandsService', () => {
         'test-channel',
         null, // This will be converted to 'ALL' by DbService
         'role-id',
+        'Test Role',  // role_name
         null,
         null,
-        null
+        1  // min_items now defaults to 1 instead of null
       );
     });
 
@@ -316,7 +318,7 @@ describe('DiscordCommandsService', () => {
         editReply: jest.fn(),
       } as any;
 
-      const legacyRoles = [{ role_id: 'legacy-role' }];
+      const legacyRoles = [{ role_id: 'legacy-role', name: 'test' }];
       mockDbService.getLegacyRoles.mockResolvedValue({ data: legacyRoles });
       mockDbService.ruleExists.mockResolvedValue(false);
       mockDbService.addRoleMapping.mockResolvedValue([{ id: 1 }]);
@@ -334,6 +336,7 @@ describe('DiscordCommandsService', () => {
         'test-channel',
         'ALL',
         'legacy-role',
+        'test', // role_name from legacy.name
         null,
         null,
         1

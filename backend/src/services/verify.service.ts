@@ -36,51 +36,86 @@ export class VerifyService {
     if (messageId && channelId) {
       Logger.log(`Message-based verification for messageId: ${messageId}, channelId: ${channelId}`);
       
-      // Get the full rule to access verification criteria
-      const rule = await this.dbSvc.findRuleByMessageId(
+      // Get ALL rules that match this message (not just the first one)
+      const rules = await this.dbSvc.findRulesByMessageId(
         payload.discordId,
         channelId,
         messageId
       );
       
-      if (rule && rule.role_id) {
+      if (!rules || rules.length === 0) {
+        Logger.warn(`No rules found for messageId: ${messageId}, channelId: ${channelId}`);
+        const errorMsg = 'No verification rules found for this request';
+        await this.discordVerificationSvc.throwError(payload.nonce, errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      Logger.log(`Found ${rules.length} rules for messageId: ${messageId}`);
+      
+      const assignedRoles = [];
+      let hasMatchingAssets = false;
+      
+      for (const rule of rules) {
+        if (!rule.role_id) {
+          Logger.warn(`Rule ${rule.id} has no role_id, skipping`);
+          continue;
+        }
+        
+        Logger.log(`Processing rule ${rule.id}: slug=${rule.slug}, attr=${rule.attribute_key}=${rule.attribute_value}, min_items=${rule.min_items}`);
+        
         // Check asset ownership against the rule criteria
         const matchingAssets = await this.dataSvc.checkAssetOwnershipWithCriteria(
           address, 
           rule.slug,
           rule.attribute_key, 
           rule.attribute_value,
-          rule.min_items || 1
+          rule.min_items != null ? rule.min_items : 1
         );
         
-        Logger.log(`Message-based verification: Address ${address} owns ${matchingAssets} matching assets for rule ${rule.id}`);
+        Logger.log(`Rule ${rule.id}: Address ${address} owns ${matchingAssets} matching assets (required: ${rule.min_items != null ? rule.min_items : 1})`);
         
-        if (!matchingAssets || matchingAssets === 0) {
-          const errorMsg = rule.slug 
-            ? `Address does not own the required assets for collection: ${rule.slug}`
-            : 'Address does not own any assets in the collection';
-          await this.discordVerificationSvc.throwError(payload.nonce, errorMsg);
-          throw new Error(errorMsg); // Use the same user-friendly message
+        const requiredMinItems = rule.min_items != null ? rule.min_items : 1;
+        if (matchingAssets >= requiredMinItems) {
+          hasMatchingAssets = true;
+          
+          try {
+            Logger.log(`Assigning role: ${rule.role_id} to user: ${payload.userId}`);
+            await this.discordVerificationSvc.addUserRole(
+              payload.userId,
+              rule.role_id,
+              payload.discordId,
+              address,
+              payload.nonce
+            );
+            await this.dbSvc.logUserRole(
+              payload.userId,
+              payload.discordId,
+              rule.role_id,
+              address
+            );
+            assignedRoles.push(rule.role_id);
+            Logger.log(`✅ Successfully assigned role: ${rule.role_id}`);
+          } catch (error) {
+            Logger.error(`❌ Failed to assign role ${rule.role_id}:`, error.message);
+            // Continue with other roles even if one fails
+          }
         }
-        
-        Logger.log(`Role ID resolved from rule: ${rule.role_id}`);
-        await this.discordVerificationSvc.addUserRole(
-          payload.userId,
-          rule.role_id,
-          payload.discordId,
-          address,
-          payload.nonce
-        );
-        await this.dbSvc.logUserRole(
-          payload.userId,
-          payload.discordId,
-          rule.role_id,
-          address
-        );
-        return { message: 'Verification successful (message-based)', address };
-      } else {
-        Logger.warn(`No rule found for messageId: ${messageId}, channelId: ${channelId}`);
       }
+      
+      if (!hasMatchingAssets) {
+        const errorMsg = rules[0]?.slug 
+          ? `Address does not own the required assets for collection: ${rules[0].slug}`
+          : 'Address does not own any assets in the collection';
+        await this.discordVerificationSvc.throwError(payload.nonce, errorMsg);
+        throw new Error(errorMsg);
+      }
+      
+      Logger.log(`Message-based verification completed. Assigned ${assignedRoles.length} roles: ${assignedRoles.join(', ')}`);
+      return { 
+        message: `Verification successful (message-based) - ${assignedRoles.length} roles assigned`, 
+        address,
+        assignedRoles
+      };
     }
 
     // --- Legacy path ---

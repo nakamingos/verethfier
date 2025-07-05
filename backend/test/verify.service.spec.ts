@@ -37,7 +37,8 @@ const mockDbService = {
     attribute_key: '',
     attribute_value: '',
     min_items: 1
-  })
+  }),
+  findRulesByMessageId: jest.fn().mockResolvedValue([])
 };
 
 describe('VerifyService', () => {
@@ -97,5 +98,72 @@ describe('VerifyService', () => {
     const payload = { userId: 'u', discordId: 'g', nonce: 'n' };
     await expect(service.verifySignatureFlow(payload as any, 'sig')).rejects.toThrow('Address does not own any assets in the collection');
     expect(mockDiscordVerificationService.throwError).toHaveBeenCalled();
+  });
+
+  it('handles rule with min_items=0 correctly', async () => {
+    const mockPayload = {
+      userId: 'user123',
+      discordId: 'guild123',
+      nonce: 'nonce123',
+      address: '0x123...abc',
+      userTag: 'TestUser#1234',
+      avatar: 'avatar.png',
+      discordName: 'TestUser',
+      discordIcon: 'guild-icon.png',
+      role: 'role123',
+      roleName: 'Test Role',
+      expiry: Date.now() + 3600000
+    };
+    const mockSignature = 'signature123';
+    const mockAddress = '0x123...abc';
+    const mockMessageId = 'message123';
+    const mockChannelId = 'channel123';
+
+    // Mock the wallet verification
+    jest.spyOn(service['walletSvc'], 'verifySignature').mockResolvedValue(mockAddress);
+    
+    // Mock nonce service
+    jest.spyOn(service['nonceSvc'], 'getNonceData').mockResolvedValue({
+      messageId: mockMessageId,
+      channelId: mockChannelId
+    });
+    jest.spyOn(service['nonceSvc'], 'invalidateNonce').mockResolvedValue();
+
+    // Mock a rule with min_items=0
+    const mockRules = [{
+      id: 1,
+      role_id: 'role123',
+      role_name: 'Test Role',
+      slug: 'test-collection',
+      attribute_key: null,
+      attribute_value: null,
+      min_items: 0,  // This should allow assignment even with 0 assets
+      server_id: 'guild123',
+      server_name: 'TestGuild',
+      channel_id: 'channel123',
+      channel_name: 'test-channel',
+      message_id: mockMessageId
+    }];
+    jest.spyOn(service['dbSvc'], 'findRulesByMessageId').mockResolvedValue(mockRules);
+
+    // Mock data service returning 0 matching assets
+    jest.spyOn(service['dataSvc'], 'checkAssetOwnershipWithCriteria').mockResolvedValue(0);
+
+    // Mock Discord verification service
+    jest.spyOn(service['discordVerificationSvc'], 'addUserRole').mockResolvedValue();
+    jest.spyOn(service['dbSvc'], 'logUserRole').mockResolvedValue();
+
+    const result = await service.verifySignatureFlow(mockPayload, mockSignature);
+
+    // Should succeed even with 0 assets because min_items=0
+    expect(result.message).toContain('Verification successful');
+    expect(result.assignedRoles).toEqual(['role123']);
+    expect(service['discordVerificationSvc'].addUserRole).toHaveBeenCalledWith(
+      'user123',
+      'role123',
+      'guild123',
+      mockAddress,
+      'nonce123'
+    );
   });
 });
