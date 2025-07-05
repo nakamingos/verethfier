@@ -5,8 +5,14 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL || 'https://cpwubaszhjdtqlvfdlbx.supabase.co';
-const supabaseKey = process.env.SUPABASE_KEY;
+// Use specific environment variables for DB Service
+const supabaseUrl = process.env.DB_SUPABASE_URL;
+const supabaseKey = process.env.DB_SUPABASE_KEY || process.env.SUPABASE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('DB_SUPABASE_URL and DB_SUPABASE_KEY must be set in environment variables');
+}
+
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 import { VerifierRole } from '@/models/verifier-role.interface';
