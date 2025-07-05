@@ -16,13 +16,13 @@ export function matchesRule(
     rule.channel_id == null /* null or undefined */ ||
     rule.channel_id === channelId;
 
-  // trait match: only enforced if both attribute_key+attribute_value set
+  // trait match: only enforced if both attribute_key+attribute_value set (case-insensitive)
   let attrMatch = true;
   const key = rule.attribute_key;
   const val = rule.attribute_value;
   if (key && key !== '' && val && val !== '') {
     attrMatch = assets.some(
-      (a) => a.attributes?.[key] == val
+      (a) => a.attributes?.[key]?.toString().toLowerCase() === val.toString().toLowerCase()
     );
   }
 

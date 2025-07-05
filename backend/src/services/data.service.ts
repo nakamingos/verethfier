@@ -39,22 +39,39 @@ export class DataService {
   }
 
   async getDetailedAssets(address: string): Promise<AssetWithAttrs[]> {
-    const { data, error } = await supabase
+    // Step 1: Get ethscriptions owned by the address
+    const { data: ethscriptions, error } = await supabase
       .from('ethscriptions')
-      .select(`
-        slug,
-        attributes(values)
-      `)
+      .select('hashId, slug, sha')
       .eq('owner', address.toLowerCase());
 
     if (error) {
-      throw new Error(`Failed to fetch detailed assets: ${error.message}`);
+      throw new Error(`Failed to fetch ethscriptions: ${error.message}`);
     }
 
-    return (data ?? []).map(row => ({
-      slug: row.slug,
-      attributes: (row.attributes?.[0]?.values as Record<string, string | number>) || {},
-    }));
+    if (!ethscriptions || ethscriptions.length === 0) {
+      return [];
+    }
+
+    // Step 2: Get attributes for these ethscriptions using their sha values
+    const ethscriptionShas = ethscriptions.map(e => e.sha).filter(sha => sha); // Filter out null/undefined
+    const { data: attributes, error: attrError } = await supabase
+      .from('attributes_new')
+      .select('sha, values')
+      .in('sha', ethscriptionShas);
+
+    if (attrError) {
+      throw new Error(`Failed to fetch attributes: ${attrError.message}`);
+    }
+
+    // Step 3: Combine the data
+    return ethscriptions.map(ethscription => {
+      const attr = attributes?.find(a => a.sha === ethscription.sha);
+      return {
+        slug: ethscription.slug,
+        attributes: (attr?.values as Record<string, string | number>) || {},
+      };
+    });
   }
 
   async getAllSlugs(): Promise<string[]> {
@@ -92,49 +109,124 @@ export class DataService {
     address = address.toLowerCase();
     const marketAddress = '0xd3418772623be1a3cc6b6d45cb46420cedd9154a'.toLowerCase();
 
-    let query = supabase
-      .from('ethscriptions')
-      .select('hashId, owner, prevOwner, slug')
-      .or(`owner.eq.${address},and(owner.eq.${marketAddress},prevOwner.eq.${address})`);
-
-    // Filter by slug if specified (skip filtering for 'ALL' which means any collection)
-    if (slug && slug !== 'ALL' && slug !== 'all-collections') {
-      query = query.eq('slug', slug);
-    }
-
-    const { data, error } = await query;
-      
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    // If no attribute filtering needed, just check count
+    // If no attribute filtering needed, use simple query
     if (!attributeKey || !attributeValue || attributeKey === '' || attributeValue === '') {
+      let query = supabase
+        .from('ethscriptions')
+        .select('hashId, owner, prevOwner, slug')
+        .or(`owner.eq.${address},and(owner.eq.${marketAddress},prevOwner.eq.${address})`);
+
+      // Filter by slug if specified (skip filtering for 'ALL' which means any collection)
+      if (slug && slug !== 'ALL' && slug !== 'all-collections') {
+        query = query.eq('slug', slug);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        throw new Error(error.message);
+      }
+      
       return data.length >= effectiveMinItems ? data.length : 0;
     }
 
-    // For attribute filtering, we need to join with attributes table and filter by JSONB
-    const attributeQuery = supabase
+    // For attribute filtering, use a direct JOIN since there's a relationship on sha
+    let joinQuery = supabase
       .from('ethscriptions')
       .select(`
-        hashId,
-        attributes!inner(values)
+        hashId, 
+        owner, 
+        prevOwner, 
+        slug, 
+        sha,
+        attributes_new!inner(sha, values)
       `)
-      .or(`owner.eq.${address},and(owner.eq.${marketAddress},prevOwner.eq.${address})`)
-      .eq(`attributes.values->>${attributeKey}`, attributeValue);
+      .or(`owner.eq.${address},and(owner.eq.${marketAddress},prevOwner.eq.${address})`);
 
-    // Add slug filter to attribute query if specified
+    // Filter by slug if specified
     if (slug && slug !== 'ALL' && slug !== 'all-collections') {
-      attributeQuery.eq('slug', slug);
+      joinQuery = joinQuery.eq('slug', slug);
     }
 
-    const { data: attributeData, error: attributeError } = await attributeQuery;
+    const { data: joinedData, error: joinError } = await joinQuery;
 
-    if (attributeError) {
-      throw new Error(attributeError.message);
+    if (joinError) {
+      throw new Error(`Failed to query with join: ${joinError.message}`);
     }
 
-    const matchingCount = attributeData?.length || 0;
+    if (!joinedData || joinedData.length === 0) {
+      Logger.log(`No ethscriptions found with attributes for user`);
+      return 0;
+    }
+
+    // Filter by attribute key/value (case-insensitive)
+    const possibleKeys = [
+      attributeKey,
+      attributeKey.charAt(0).toUpperCase() + attributeKey.slice(1).toLowerCase(),
+      attributeKey.toLowerCase(),
+      attributeKey.toUpperCase()
+    ];
+
+    let matchingItems = [];
+    let usedKey = attributeKey;
+
+    for (const keyVariation of possibleKeys) {
+      const matches = joinedData.filter(item => {
+        const attrs = item.attributes_new;
+        if (!attrs || !attrs.values) return false;
+        
+        const value = attrs.values[keyVariation];
+        return value && value.toLowerCase() === attributeValue.toLowerCase();
+      });
+
+      if (matches.length > 0) {
+        matchingItems = matches;
+        usedKey = keyVariation;
+        Logger.log(`Found ${matches.length} matches using key variation: "${keyVariation}" (value: "${attributeValue}")`);
+        break;
+      }
+    }
+
+    const matchingCount = matchingItems.length;
+    
+    // Debug logging
+    Logger.log(`Attribute filtering: found ${matchingCount} matching ethscriptions with ${usedKey}='${attributeValue}'`);
+    Logger.log(`User owns ${joinedData.length} total ${slug || 'ethscriptions'} with attributes`);
+    
+    if (joinedData.length > 0 && matchingCount === 0) {
+      Logger.log(`User's ethscriptions have attributes but none match ${attributeKey}='${attributeValue}'`);
+      
+      // Show what attributes the user actually has
+      const userAttrs = joinedData.slice(0, 3).map(item => ({
+        sha: item.sha,
+        attributes: item.attributes_new?.values || {}
+      }));
+      Logger.log(`User's asset attributes (first few):`, userAttrs);
+      
+      // Check if user has the attribute key but different value
+      const userWithKey = joinedData.filter(item => {
+        const attrs = item.attributes_new;
+        if (!attrs || !attrs.values) return false;
+        
+        return Object.keys(attrs.values).some(key => 
+          key.toLowerCase() === attributeKey.toLowerCase()
+        );
+      });
+      
+      if (userWithKey.length > 0) {
+        Logger.log(`User has "${attributeKey}" attribute but with different values:`, 
+          userWithKey.slice(0, 3).map(item => {
+            const attrs = item.attributes_new;
+            const matchingKey = Object.keys(attrs.values).find(key => 
+              key.toLowerCase() === attributeKey.toLowerCase()
+            );
+            return { sha: item.sha, [matchingKey]: attrs.values[matchingKey] };
+          })
+        );
+      } else {
+        Logger.log(`User does not have any "${attributeKey}" attribute`);
+      }
+    }
+    
     return matchingCount >= effectiveMinItems ? matchingCount : 0;
   }
 }
