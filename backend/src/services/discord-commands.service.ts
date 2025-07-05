@@ -161,7 +161,12 @@ export class DiscordCommandsService {
         embeds: [
           new EmbedBuilder()
             .setTitle('Rule Added')
-            .setDescription(`Rule for <#${channel.id}> and <@&${role.id}> added using existing verification message.`)
+            .setDescription(`Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added using existing verification message.`)
+            .addFields([
+              { name: 'Collection', value: newRule.slug || 'all-collections', inline: true },
+              { name: 'Attribute', value: newRule.attribute_key && newRule.attribute_value ? `${newRule.attribute_key}=${newRule.attribute_value}` : 'None', inline: true },
+              { name: 'Min Items', value: (newRule.min_items ?? 1).toString(), inline: true }
+            ])
             .setColor('#00FF00')
         ]
       });
@@ -187,7 +192,12 @@ export class DiscordCommandsService {
           embeds: [
             new EmbedBuilder()
               .setTitle('Rule Added')
-              .setDescription(`Rule for <#${channel.id}> and <@&${role.id}> added with new verification message.`)
+              .setDescription(`Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added with new verification message.`)
+              .addFields([
+                { name: 'Collection', value: newRule.slug || 'all-collections', inline: true },
+                { name: 'Attribute', value: newRule.attribute_key && newRule.attribute_value ? `${newRule.attribute_key}=${newRule.attribute_value}` : 'None', inline: true },
+                { name: 'Min Items', value: (newRule.min_items ?? 1).toString(), inline: true }
+              ])
               .setColor('#00FF00')
           ]
         });
