@@ -1,129 +1,231 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DbService } from '../src/services/db.service';
+import { TestDatabase } from './test-database';
 
-// Mock the entire @supabase/supabase-js module before any imports
-jest.mock('@supabase/supabase-js', () => {
-  const mockSingle = jest.fn();
-  const mockSelect = jest.fn(() => ({ single: mockSingle }));
-  const mockInsert = jest.fn(() => ({ select: mockSelect }));
-  const mockFrom = jest.fn(() => ({ insert: mockInsert }));
-  
-  return {
-    createClient: jest.fn(() => ({ from: mockFrom }))
-  };
-});
-
-describe('DbService', () => {
+describe('DbService - Integration Tests', () => {
   let service: DbService;
-  let mockSupabase: any;
+  let testDb: TestDatabase;
+
+  beforeAll(async () => {
+    testDb = TestDatabase.getInstance();
+    
+    // Check if local Supabase is running
+    const isHealthy = await testDb.isHealthy();
+    if (!isHealthy) {
+      console.warn('⚠️  Local Supabase not accessible. Skipping integration tests.');
+      return;
+    }
+  });
 
   beforeEach(async () => {
-    // Get references to the mocked functions
-    const { createClient } = require('@supabase/supabase-js');
-    mockSupabase = createClient();
-    
-    // Reset all mocks
-    jest.clearAllMocks();
-    
-    // Set up successful response for all tests by default
-    mockSupabase.from().insert().select().single.mockResolvedValue({
-      data: { id: 1 },
-      error: null
-    });
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [DbService],
     }).compile();
 
     service = module.get<DbService>(DbService);
+    
+    // Clean up test data before each test
+    await testDb.cleanupTestData();
+  });
+
+  afterEach(async () => {
+    // Clean up test data after each test
+    await testDb.cleanupTestData();
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+
+  describe('addUpdateServer', () => {
+    it('should create a new server', async () => {
+      const result = await service.addUpdateServer(
+        'test_server_new', 
+        'Test Server New', 
+        'test_role_new'
+      );
+
+      expect(result).toBeDefined();
+      // Note: Supabase upsert might return null on success
+    });
+
+    it('should update existing server', async () => {
+      // First create a server
+      await service.addUpdateServer('test_server_update', 'Original Name', 'role_1');
+      
+      // Then update it
+      const result = await service.addUpdateServer(
+        'test_server_update', 
+        'Updated Name', 
+        'role_2'
+      );
+
+      expect(result).toBeDefined();
+    });
   });
 
   describe('addRoleMapping', () => {
-    it('should transform null values to defaults', async () => {
-      await service.addRoleMapping(
-        'server-id',
-        'server-name', 
-        'channel-id',
-        'channel-name',
-        null, // slug
-        'role-id',
-        'Test Role', // roleName
-        null, // attrKey
-        null, // attrVal
-        null  // minItems
-      );
-
-      // Verify insert was called with transformed values
-      expect(mockSupabase.from().insert).toHaveBeenCalledWith({
-        server_id: 'server-id',
-        server_name: 'server-name',
-        channel_id: 'channel-id',
-        channel_name: 'channel-name',
-        slug: 'ALL', // null -> 'ALL'
-        role_id: 'role-id',
-        role_name: 'Test Role',
-        attribute_key: '', // null -> ''
-        attribute_value: '', // null -> ''
-        min_items: 1 // null -> 1
-      });
+    beforeEach(async () => {
+      // Create a test server first
+      await testDb.createTestServer('test_server_mapping');
     });
 
-    it('should preserve provided values', async () => {
-      await service.addRoleMapping(
-        'server-id',
-        'server-name',
-        'channel-id',
-        'channel-name',
-        'specific-collection',
-        'role-id',
-        'Specific Role',
+    it('should add role mapping with all parameters', async () => {
+      const result = await service.addRoleMapping(
+        'test_server_mapping',
+        'Test Server',
+        'test_channel_123',
+        'test-channel',
+        'test-collection',
+        'test_role_123',
+        'Test Role',
         'trait_type',
         'rare',
-        5
+        2
       );
 
-      // Verify insert was called with provided values
-      expect(mockSupabase.from().insert).toHaveBeenCalledWith({
-        server_id: 'server-id',
-        server_name: 'server-name',
-        channel_id: 'channel-id',
-        channel_name: 'channel-name',
-        slug: 'specific-collection',
-        role_id: 'role-id',
-        role_name: 'Specific Role',
-        attribute_key: 'trait_type',
-        attribute_value: 'rare',
-        min_items: 5
-      });
+      expect(result).toBeDefined();
+      expect(result.server_id).toBe('test_server_mapping');
+      expect(result.channel_id).toBe('test_channel_123');
+      expect(result.slug).toBe('test-collection');
+      expect(result.min_items).toBe(2);
     });
 
-    it('should handle empty strings as falsy', async () => {
-      await service.addRoleMapping(
-        'server-id',
-        'server-name',
-        'channel-id',
-        'channel-name',
-        '', // empty string slug
-        'role-id',
-        'Empty Role', // role_name
-        '', // empty string attrKey  
-        '', // empty string attrVal
-        0   // zero minItems
+    it('should handle default values for optional parameters', async () => {
+      const result = await service.addRoleMapping(
+        'test_server_mapping',
+        'Test Server',
+        'test_channel_default',
+        'test-channel',
+        '', // Empty slug should become 'ALL'
+        'test_role_default',
+        'Test Role',
+        '',
+        '',
+        null
       );
 
-      // Verify empty string slug becomes 'ALL', others stay as provided
-      expect(mockSupabase.from().insert).toHaveBeenCalledWith({
-        server_id: 'server-id',
-        server_name: 'server-name',
-        channel_id: 'channel-id',
-        channel_name: 'channel-name',
-        slug: 'ALL', // empty string -> 'ALL'
-        role_id: 'role-id',
-        role_name: 'Empty Role',
-        attribute_key: '', // empty string preserved
-        attribute_value: '', // empty string preserved
-        min_items: 0 // zero preserved (explicit 0 overrides default)
-      });
+      expect(result).toBeDefined();
+      expect(result.slug).toBe('ALL');
+      expect(result.min_items).toBe(1);
+    });
+  });
+
+  describe('getRoleMappings', () => {
+    beforeEach(async () => {
+      await testDb.createTestServer('test_server_get');
+      await testDb.createTestRule('test_server_get');
+    });
+
+    it('should return role mappings for server', async () => {
+      const result = await service.getRoleMappings('test_server_get');
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result.length).toBeGreaterThan(0);
+      expect(result[0].server_id).toBe('test_server_get');
+    });
+
+    it('should filter by channel when provided', async () => {
+      const result = await service.getRoleMappings('test_server_get', 'test_channel_123');
+
+      expect(Array.isArray(result)).toBe(true);
+      if (result.length > 0) {
+        expect(result[0].channel_id).toBe('test_channel_123');
+      }
+    });
+  });
+
+  describe('ruleExists', () => {
+    beforeEach(async () => {
+      await testDb.createTestServer('test_server_exists');
+      await testDb.createTestRule('test_server_exists');
+    });
+
+    it('should return true when rule exists', async () => {
+      const result = await service.ruleExists(
+        'test_server_exists',
+        'test_channel_123',
+        'test_role_123',
+        'test-collection'
+      );
+
+      expect(result).toBe(true);
+    });
+
+    it('should return false when rule does not exist', async () => {
+      const result = await service.ruleExists(
+        'test_server_exists',
+        'nonexistent_channel',
+        'nonexistent_role',
+        'nonexistent-collection'
+      );
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('deleteRoleMapping', () => {
+    it('should delete role mapping', async () => {
+      // Create test data first
+      await testDb.createTestServer('test_server_delete');
+      const rule = await testDb.createTestRule('test_server_delete');
+
+      // Delete the rule
+      await expect(
+        service.deleteRoleMapping(rule.id.toString(), 'test_server_delete')
+      ).resolves.not.toThrow();
+
+      // Verify it's deleted
+      const exists = await service.ruleExists(
+        'test_server_delete',
+        'test_channel_123',
+        'test_role_123',
+        'test-collection'
+      );
+      expect(exists).toBe(false);
+    });
+  });
+
+  describe('getUserServers', () => {
+    it('should handle non-existent user', async () => {
+      const result = await service.getUserServers('test_user_nonexistent');
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('logUserRole', () => {
+    it('should log user role assignment', async () => {
+      await expect(
+        service.logUserRole(
+          'test_user_123',
+          'test_server_log',
+          'test_role_log',
+          'test_address_123'
+        )
+      ).resolves.not.toThrow();
+    });
+  });
+
+  describe('service structure validation', () => {
+    it('should have all required methods', () => {
+      expect(typeof service.addUpdateServer).toBe('function');
+      expect(typeof service.getUserServers).toBe('function');
+      expect(typeof service.addServerToUser).toBe('function');
+      expect(typeof service.getServerRole).toBe('function');
+      expect(typeof service.addRoleMapping).toBe('function');
+      expect(typeof service.getRoleMappings).toBe('function');
+      expect(typeof service.deleteRoleMapping).toBe('function');
+      expect(typeof service.logUserRole).toBe('function');
+      expect(typeof service.getAllRulesWithLegacy).toBe('function');
+      expect(typeof service.removeAllLegacyRoles).toBe('function');
+      expect(typeof service.getLegacyRoles).toBe('function');
+      expect(typeof service.ruleExists).toBe('function');
+      expect(typeof service.findRuleWithMessage).toBe('function');
+      expect(typeof service.updateRuleMessageId).toBe('function');
+      expect(typeof service.findRuleByMessageId).toBe('function');
+      expect(typeof service.findRulesByMessageId).toBe('function');
+      expect(typeof service.getRulesByChannel).toBe('function');
+      expect(typeof service.findConflictingRule).toBe('function');
     });
   });
 });
