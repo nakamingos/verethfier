@@ -5,8 +5,8 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const supabaseUrl = 'https://kcbuycbhynlmsrvoegzp.supabase.co';
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.SUPABASE_URL || 'https://kcbuycbhynlmsrvoegzp.supabase.co';
+const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 @Injectable()
