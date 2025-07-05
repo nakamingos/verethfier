@@ -94,7 +94,7 @@ export class VerifyService {
               address
             );
             assignedRoles.push(rule.role_id);
-            Logger.log(`✅ Successfully assigned role: ${rule.role_id}`);
+            Logger.log(`✅ Successfully assigned role: ${rule.role_id} for rule ${rule.id}: slug=${rule.slug}, attr=${rule.attribute_key}=${rule.attribute_value}, min_items=${rule.min_items}`);
           } catch (error) {
             Logger.error(`❌ Failed to assign role ${rule.role_id}:`, error.message);
             // Continue with other roles even if one fails
@@ -131,6 +131,7 @@ export class VerifyService {
       }
       
       const legacyRoleId = await this.dbSvc.getServerRole(payload.discordId);
+      Logger.log(`Legacy path: Assigning role ${legacyRoleId}`);
       await this.discordVerificationSvc.addUserRole(
         payload.userId,
         legacyRoleId,
@@ -144,6 +145,7 @@ export class VerifyService {
         legacyRoleId,
         address
       );
+      Logger.log(`✅ Legacy path: Successfully assigned role: ${legacyRoleId}`);
       return { message: 'Verification successful (legacy)', address };
     }
 
@@ -170,6 +172,7 @@ export class VerifyService {
     }
 
     for (const r of matched) {
+      Logger.log(`Multi-rule path: Assigning role ${r.role_id} for rule ${r.id}: slug=${r.slug}, attr=${r.attribute_key}=${r.attribute_value}, min_items=${r.min_items}`);
       await this.discordVerificationSvc.addUserRole(
         payload.userId,
         r.role_id,
@@ -183,6 +186,7 @@ export class VerifyService {
         r.role_id,
         address
       );
+      Logger.log(`✅ Multi-rule path: Successfully assigned role: ${r.role_id} for rule ${r.id}: slug=${r.slug}, attr=${r.attribute_key}=${r.attribute_value}, min_items=${r.min_items}`);
     }
     return { message: 'Verification successful', address };
   }
