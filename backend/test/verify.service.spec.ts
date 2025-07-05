@@ -133,6 +133,7 @@ describe('VerifyService', () => {
     const mockRules = [{
       id: 1,
       role_id: 'role123',
+      role_name: 'Test Role',
       slug: 'test-collection',
       attribute_key: null,
       attribute_value: null,

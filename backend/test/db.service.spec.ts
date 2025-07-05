@@ -47,6 +47,7 @@ describe('DbService', () => {
         'channel-name',
         null, // slug
         'role-id',
+        'Test Role', // roleName
         null, // attrKey
         null, // attrVal
         null  // minItems
@@ -60,6 +61,7 @@ describe('DbService', () => {
         channel_name: 'channel-name',
         slug: 'ALL', // null -> 'ALL'
         role_id: 'role-id',
+        role_name: 'Test Role',
         attribute_key: '', // null -> ''
         attribute_value: '', // null -> ''
         min_items: 1 // null -> 1
@@ -74,6 +76,7 @@ describe('DbService', () => {
         'channel-name',
         'specific-collection',
         'role-id',
+        'Specific Role',
         'trait_type',
         'rare',
         5
@@ -87,6 +90,7 @@ describe('DbService', () => {
         channel_name: 'channel-name',
         slug: 'specific-collection',
         role_id: 'role-id',
+        role_name: 'Specific Role',
         attribute_key: 'trait_type',
         attribute_value: 'rare',
         min_items: 5
@@ -101,6 +105,7 @@ describe('DbService', () => {
         'channel-name',
         '', // empty string slug
         'role-id',
+        'Empty Role', // role_name
         '', // empty string attrKey  
         '', // empty string attrVal
         0   // zero minItems
@@ -114,6 +119,7 @@ describe('DbService', () => {
         channel_name: 'channel-name',
         slug: 'ALL', // empty string -> 'ALL'
         role_id: 'role-id',
+        role_name: 'Empty Role',
         attribute_key: '', // empty string preserved
         attribute_value: '', // empty string preserved
         min_items: 0 // zero preserved (explicit 0 overrides default)

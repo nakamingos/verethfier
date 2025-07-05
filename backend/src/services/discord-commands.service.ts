@@ -112,6 +112,7 @@ export class DiscordCommandsService {
         channel.name,
         slug,
         role.id,
+        role.name,
         attrKey,
         attrVal,
         minItems
@@ -324,6 +325,7 @@ export class DiscordCommandsService {
           channel.name,
           'ALL', // slug
           legacy.role_id,
+          legacy.name || 'Legacy Role', // role_name
           null, // attribute_key
           null, // attribute_value
           1    // min_items (set to 1 for migration)

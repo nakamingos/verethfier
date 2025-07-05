@@ -92,6 +92,7 @@ export class DbService {
     channelName: string,
     slug: string,
     roleId: string,
+    roleName: string,
     attrKey: string,
     attrVal: string,
     minItems: number
@@ -110,6 +111,7 @@ export class DbService {
       channel_name: channelName,
       slug: finalSlug,
       role_id: roleId,
+      role_name: roleName,
       attribute_key: finalAttrKey,
       attribute_value: finalAttrVal,
       min_items: finalMinItems
@@ -124,6 +126,7 @@ export class DbService {
         channel_name: channelName,
         slug: finalSlug,
         role_id: roleId,
+        role_name: roleName,
         attribute_key: finalAttrKey,
         attribute_value: finalAttrVal,
         min_items: finalMinItems
