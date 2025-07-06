@@ -137,16 +137,9 @@ describe('DiscordVerificationService', () => {
         'Test Role',
         'wallet-address'
       );
-      expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: expect.arrayContaining([
-          expect.objectContaining({
-            data: expect.objectContaining({
-              title: 'Verification Successful'
-            })
-          })
-        ])
-      });
-      expect(service.tempMessages[nonce]).toBeUndefined();
+      // addUserRole no longer sends success message or cleans up nonce
+      expect(mockInteraction.editReply).not.toHaveBeenCalled();
+      expect(service.tempMessages[nonce]).toBeDefined(); // Should still exist
     });
 
     it('should handle error when guild not found', async () => {
@@ -218,6 +211,62 @@ describe('DiscordVerificationService', () => {
       const result = await service.getVerificationRoleId('guild-id', 'channel-id', 'message-id');
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('sendVerificationComplete', () => {
+    it('should send verification complete message with role names', async () => {
+      const nonce = 'test-nonce';
+      service.tempMessages[nonce] = mockInteraction as any;
+
+      await service.sendVerificationComplete('guild-id', nonce, ['role-id']);
+
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        embeds: expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              title: 'Verification Successful',
+              description: expect.stringContaining('Test Role')
+            })
+          })
+        ])
+      });
+      expect(service.tempMessages[nonce]).toBeUndefined(); // Should be cleaned up
+    });
+
+    it('should handle multiple roles', async () => {
+      const nonce = 'test-nonce';
+      const mockRole = { id: 'role-id', name: 'Test Role' };
+      const mockRole2 = { id: 'role-id-2', name: 'Test Role 2' };
+      // Add the second role to the mock cache
+      mockClient.guilds.cache.get('guild-id').roles.cache.get.mockImplementation((roleId: string) => {
+        if (roleId === 'role-id') return mockRole;
+        if (roleId === 'role-id-2') return mockRole2;
+        return undefined;
+      });
+      service.tempMessages[nonce] = mockInteraction as any;
+
+      await service.sendVerificationComplete('guild-id', nonce, ['role-id', 'role-id-2']);
+
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        embeds: expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              title: 'Verification Successful',
+              description: expect.stringMatching(/Test Role[\s\S]*Test Role 2/)
+            })
+          })
+        ])
+      });
+    });
+
+    it('should handle error when guild not found', async () => {
+      const nonce = 'test-nonce';
+      service.tempMessages[nonce] = mockInteraction as any;
+
+      await expect(
+        service.sendVerificationComplete('invalid-guild', nonce, ['role-id'])
+      ).rejects.toThrow('Guild not found');
     });
   });
 });

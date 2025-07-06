@@ -173,43 +173,14 @@ export class DiscordVerificationService {
       throw new Error('No stored interaction found for this nonce');
     }
 
-    try {
-      await member.roles.add(role);
-      await this.dbSvc.addServerToUser(
-        userId, 
-        guildId, 
-        role.name,
-        address
-      );
-
-      // Reply to the interaction
-      await storedInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle('Verification Successful')
-            .setDescription(`You have been successfully verified in ${guild.name}.`)
-            .setColor('#00FF00')
-        ],
-      });
-      
-    } catch (error) {
-      Logger.error('Error in addUserRole:', error);
-
-      // Reply to the interaction
-      await storedInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle('Verification Failed')
-            .setDescription(`An error occurred while verifying your identity. Please try again later.`)
-            .setColor('#FF0000')
-        ],
-      });
-
-    } finally {
-      
-      // Delete the temp message
-      delete this.tempMessages[nonce];
-    }
+    // Add the role - don't send success message here as there might be more roles coming
+    await member.roles.add(role);
+    await this.dbSvc.addServerToUser(
+      userId, 
+      guildId, 
+      role.name,
+      address
+    );
   }
 
   /**
@@ -241,6 +212,75 @@ export class DiscordVerificationService {
       });
     } catch (error) {
       Logger.error(`Failed to edit reply for nonce ${nonce}:`, error);
+    } finally {
+      // Clean up the stored interaction
+      delete this.tempMessages[nonce];
+    }
+  }
+
+  /**
+   * Sends a verification complete message showing all assigned roles
+   */
+  async sendVerificationComplete(
+    guildId: string,
+    nonce: string,
+    assignedRoles: string[]
+  ): Promise<void> {
+    if (!this.client) throw new Error('Discord bot not initialized');
+
+    const guild = this.client.guilds.cache.get(guildId);
+    if (!guild) throw new Error('Guild not found');
+
+    const storedInteraction = this.tempMessages[nonce];
+    if (!storedInteraction) {
+      throw new Error('No stored interaction found for this nonce');
+    }
+
+    try {
+      // Get role names from role IDs
+      const roleNames = assignedRoles.map(roleId => {
+        const role = guild.roles.cache.get(roleId);
+        return role ? role.name : `Unknown Role (${roleId})`;
+      });
+
+      let description = `You have been successfully verified in ${guild.name}`;
+      
+      if (roleNames.length > 0) {
+        description += `\n\n**Roles Assigned:**\n${roleNames.map(name => `• ${name}`).join('\n')}`;
+      }
+
+      if (!storedInteraction.isRepliable()) {
+        Logger.warn(`Interaction for nonce ${nonce} is no longer repliable during success message`);
+        return;
+      }
+
+      await storedInteraction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('Verification Successful')
+            .setDescription(description)
+            .setColor('#00FF00')
+        ],
+      });
+      
+    } catch (error) {
+      Logger.error('Error in sendVerificationComplete:', error.message);
+
+      // Fallback: try to send basic success message
+      try {
+        if (storedInteraction && storedInteraction.isRepliable()) {
+          await storedInteraction.editReply({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle('Verification Successful')
+                .setDescription(`You have been successfully verified in ${guild.name}.`)
+                .setColor('#00FF00')
+            ],
+          });
+        }
+      } catch (fallbackError) {
+        Logger.error('Failed to send fallback success message:', fallbackError);
+      }
     } finally {
       // Clean up the stored interaction
       delete this.tempMessages[nonce];
