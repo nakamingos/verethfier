@@ -40,18 +40,120 @@ export class DiscordCommandsService {
       }
 
       const channel = interaction.options.getChannel('channel') as TextChannel;
-      const role = interaction.options.getRole('role') as Role;
+      const roleName = interaction.options.getString('role');
       const slug = interaction.options.getString('slug') || 'ALL';
       const attributeKey = interaction.options.getString('attribute_key') || 'ALL';
       const attributeValue = interaction.options.getString('attribute_value') || 'ALL';
       const minItems = interaction.options.getInteger('min_items') || 1;
 
-      if (!channel || !role) {
+      if (!channel || !roleName) {
         await interaction.editReply('Channel and role are required.');
         return;
       }
 
-      // Check for duplicate rules first
+      // Try to find existing role (including ones we can't manage)
+      let role = interaction.guild.roles.cache.find(r => 
+        r.name.toLowerCase() === roleName.toLowerCase()
+      );
+
+      // If role exists, check if we can manage it or provide appropriate error
+      if (role) {
+        if (!role.editable) {
+          await interaction.editReply({
+            content: `❌ A role named "${roleName}" already exists but is positioned higher than the bot's role. The bot cannot manage this role. Please:\n• Use a different role name, or\n• Move the bot's role higher in the server settings, or\n• Ask an admin to move the "${roleName}" role below the bot's role.`
+          });
+          return;
+        }
+        // Role exists and is manageable - we'll use it
+      }
+
+      // If role doesn't exist, create it
+      if (!role) {
+        // Double-check that no role with this name exists anywhere in the server
+        const existingRoleWithName = interaction.guild.roles.cache.find(r => 
+          r.name.toLowerCase() === roleName.toLowerCase()
+        );
+        
+        if (existingRoleWithName) {
+          await interaction.editReply({
+            content: `❌ A role named "${roleName}" already exists in this server. Please choose a different name for the new role.`
+          });
+          return;
+        }
+
+        try {
+          // Get bot member to determine role position
+          const botMember = interaction.guild.members.me;
+          let position = undefined;
+          
+          if (botMember) {
+            // Create role below bot's highest role
+            const botHighestPosition = botMember.roles.highest.position;
+            position = Math.max(1, botHighestPosition - 1);
+          }
+
+          role = await interaction.guild.roles.create({
+            name: roleName,
+            color: 'Blue', // Default color
+            position: position,
+            reason: `Auto-created for verification rule by ${interaction.user.tag}`
+          });
+          
+          // Send a follow-up message about role creation
+          await interaction.followUp({
+            content: `✅ Created new role: **${role.name}**`,
+            ephemeral: true
+          });
+        } catch (error) {
+          await interaction.editReply(`❌ Failed to create role "${roleName}": ${error.message}`);
+          return;
+        }
+      }
+
+      // Check for exact duplicate rules first (same role + same criteria)
+      const exactDuplicate = await this.dbSvc.checkForExactDuplicateRule(
+        interaction.guild.id,
+        channel.id,
+        slug,
+        attributeKey,
+        attributeValue,
+        minItems,
+        role.id
+      );
+
+      if (exactDuplicate) {
+        const formatAttribute = (key: string, value: string) => {
+          if (key !== 'ALL' && value !== 'ALL') return `${key}=${value}`;
+          if (key !== 'ALL' && value === 'ALL') return `${key} (any value)`;
+          if (key === 'ALL' && value !== 'ALL') return `ANY_KEY=${value}`;
+          return 'ALL';
+        };
+
+        await interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0xFF0000)
+              .setTitle('❌ Duplicate Rule')
+              .setDescription(`This exact rule already exists!`)
+              .addFields(
+                {
+                  name: '🔄 Existing Rule',
+                  value: `**Role:** <@&${role.id}>\n**Collection:** ${slug}\n**Attribute:** ${formatAttribute(attributeKey, attributeValue)}\n**Min Items:** ${minItems}`,
+                  inline: false
+                },
+                {
+                  name: '💡 What can you do?',
+                  value: `• Use different criteria (collection, attribute, or min items)\n• Remove the existing rule first with \`/setup remove-rule\`\n• Check existing rules with \`/setup list-rules\``,
+                  inline: false
+                }
+              )
+          ],
+          components: []
+        });
+        return;
+      }
+
+      // Check for duplicate rules with different roles
       const existingRule = await this.dbSvc.checkForDuplicateRule(
         interaction.guild.id,
         channel.id,
@@ -264,6 +366,14 @@ export class DiscordCommandsService {
     };
 
     if (existingRules.length > 0) {
+      // Find existing verification message ID from existing rules
+      const existingMessageId = existingRules.find(rule => rule.message_id)?.message_id;
+      
+      if (existingMessageId) {
+        // Update the new rule with the existing message_id
+        await this.dbSvc.updateRuleMessageId(newRule.id, existingMessageId);
+      }
+
       // Use existing verification message
       const embed = new EmbedBuilder()
         .setColor(0x00FF00)
