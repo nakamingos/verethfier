@@ -8,6 +8,22 @@ import { DbService }     from './db.service';
 import { DecodedData }   from '@/models/app.interface';
 import { matchRule }   from './utils/match-rule.util';
 
+/**
+ * VerifyService
+ * 
+ * Core verification service that handles the complete wallet signature verification flow.
+ * Supports both message-based verification (new rule system) and legacy server-based verification.
+ * 
+ * Flow:
+ * 1. Verifies wallet signature using viem/ethers
+ * 2. Validates and invalidates nonce to prevent replay attacks
+ * 3. Checks asset ownership against verification rules
+ * 4. Assigns Discord roles based on matching criteria
+ * 
+ * The service supports two verification paths:
+ * - Message-based: Uses specific message/channel rules (preferred)
+ * - Legacy: Uses server-wide role assignments (deprecated)
+ */
 @Injectable()
 export class VerifyService {
   constructor(
@@ -19,20 +35,34 @@ export class VerifyService {
     private readonly dbSvc: DbService,
   ) {}
 
+  /**
+   * Main verification flow that handles wallet signature verification and role assignment.
+   * 
+   * This method supports two verification modes:
+   * 1. Message-based verification: Uses rules associated with a specific Discord message
+   * 2. Legacy verification: Uses server-wide role assignments (deprecated)
+   * 
+   * @param payload - Decoded JWT payload containing user and server information
+   * @param signature - Wallet signature to verify
+   * @returns Promise<{message: string, address: string}> - Verification result
+   * @throws Error if verification fails at any step
+   */
   async verifySignatureFlow(
     payload: DecodedData & { address?: string },
     signature: string
   ) {
+    // Verify the wallet signature and extract the signing address
     const address = await this.walletSvc.verifySignature(payload, signature);
     
-    // Get the message data associated with the nonce
+    // Get the message data associated with the nonce for message-based verification
     const { messageId, channelId } = await this.nonceSvc.getNonceData(payload.userId);
     
-    // Invalidate the nonce after retrieving the data
+    // Invalidate the nonce after retrieving the data to prevent replay attacks
     await this.nonceSvc.invalidateNonce(payload.userId);
     Logger.log(`Nonce deleted for userId: ${payload.userId}`);
 
     // --- Message-based verification (takes precedence if messageId is present) ---
+    // This is the new verification system that uses specific rules for Discord messages
     if (messageId && channelId) {
       Logger.log(`Message-based verification for messageId: ${messageId}, channelId: ${channelId}`);
       

@@ -6,6 +6,26 @@ import { DiscordService } from './discord.service';
 import { VerificationRule } from '@/models/verification-rule.interface';
 import { AdminFeedback } from './utils/admin-feedback.util';
 
+/**
+ * DiscordCommandsService
+ * 
+ * Handles Discord slash command processing for server administration.
+ * Provides comprehensive verification rule management through Discord's slash command interface.
+ * 
+ * Key responsibilities:
+ * - Process add-rule commands with validation and confirmation flows
+ * - Handle remove-rule commands with safety checks
+ * - List and display current verification rules
+ * - Manage legacy rule migration and cleanup
+ * - Create and update verification messages in channels
+ * - Provide rich admin feedback with embedded messages
+ * 
+ * Command flows include:
+ * - Rule creation with duplicate detection and confirmation
+ * - Role management (find existing or create new roles)
+ * - Channel validation and message posting
+ * - Legacy system migration assistance
+ */
 @Injectable()
 export class DiscordCommandsService {
   // Store pending rules for confirmation flow

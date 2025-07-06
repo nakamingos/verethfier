@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
-// Cache environment variables
+// Cache environment variables for performance
 const EXPIRY = Number(process.env.NONCE_EXPIRY);
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
@@ -19,12 +19,51 @@ import { DiscordVerificationService } from '@/services/discord-verification.serv
 import { DiscordCommandsService } from '@/services/discord-commands.service';
 import { CONSTANTS } from '@/constants';
 
+/**
+ * Discord Bot Service
+ * 
+ * This service manages the Discord bot integration for the verification system.
+ * It handles:
+ * - Bot initialization and client management
+ * - Slash command registration and handling
+ * - Role autocomplete functionality
+ * - Integration with verification, messaging, and command services
+ * 
+ * The service automatically initializes the Discord bot on startup unless:
+ * - Discord is disabled via environment variables
+ * - No bot token is provided
+ * - Running in test environment
+ * 
+ * @example
+ * ```typescript
+ * // The service is automatically initialized by NestJS
+ * // Methods can be called through dependency injection
+ * await discordService.initializeBot();
+ * ```
+ */
 @Injectable()
 export class DiscordService {
 
+  /** The Discord.js client instance, null until initialized */
   private client: Client | null = null;
+  
+  /** REST API instance for Discord API calls */
   private rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
   
+  /**
+   * Creates an instance of DiscordService.
+   * 
+   * Automatically initializes the Discord bot if conditions are met:
+   * - Discord is enabled via DISCORD environment variable
+   * - Bot token is provided via DISCORD_BOT_TOKEN
+   * - Not running in test environment
+   * 
+   * @param nonceSvc - Service for managing verification nonces
+   * @param dbSvc - Database service for data persistence
+   * @param discordMessageSvc - Service for Discord message management
+   * @param discordVerificationSvc - Service for handling verification flows
+   * @param discordCommandsSvc - Service for Discord slash command handling
+   */
   constructor(
     @Inject(NonceService) private nonceSvc: NonceService,
     private readonly dbSvc: DbService,
@@ -55,8 +94,16 @@ export class DiscordService {
   }
 
   /**
-   * Initializes the Discord bot.
-   * @returns A promise that resolves when the bot is initialized.
+   * Initializes the Discord bot client with proper event handlers.
+   * 
+   * Sets up the Discord client with:
+   * - Required intents for guild operations
+   * - Ready event handler for successful connection
+   * - Interaction event handlers for commands and autocomplete
+   * - Timeout protection to prevent hanging initialization
+   * 
+   * @returns Promise that resolves when the bot is successfully initialized
+   * @throws Error if initialization fails or times out after 10 seconds
    */
   async initializeBot(): Promise<void> {
     if (this.client) return Promise.resolve();
@@ -94,16 +141,28 @@ export class DiscordService {
 
 
   /**
-   * Creates slash commands for the bot.
-   * This method registers a slash command named 'setup' with a description and a required channel option.
-   * It uses the Discord REST API to register the commands.
-   * @returns A Promise that resolves when the slash commands are successfully registered.
+   * Creates and registers slash commands for the Discord bot.
+   * 
+   * This method:
+   * - Registers the '/setup' command with subcommands for rule management
+   * - Sets up event listeners for interaction handling:
+   *   - Autocomplete interactions for role selection
+   *   - Chat input command interactions for admin commands
+   *   - Button interactions for user verification requests
+   * 
+   * The '/setup' command includes subcommands for:
+   * - add-rule: Create new verification rules
+   * - remove-rule: Delete existing rules
+   * - list-rules: Display all rules
+   * - recover-verification: Recover verification messages
+   * 
+   * @returns Promise that resolves when slash commands are registered and handlers are set up
    */
   async createSlashCommands(): Promise<void> {
     await this.registerSlashCommands();
 
     this.client.on('interactionCreate', async (interaction) => {
-      // Handle autocomplete interactions
+      // Handle autocomplete interactions for role selection
       if (interaction.isAutocomplete()) {
         if (interaction.commandName === 'setup' && interaction.options.getSubcommand() === 'add-rule') {
           const focusedOption = interaction.options.getFocused(true);
@@ -114,7 +173,7 @@ export class DiscordService {
         return;
       }
 
-      // Handle command interactions (admin)
+      // Handle slash command interactions (admin functions)
       if (interaction.isChatInputCommand()) {
         const { commandName } = interaction;
         if (commandName === 'setup') {
@@ -122,7 +181,7 @@ export class DiscordService {
         }
       }
 
-      // Handle button interactions (user)
+      // Handle button interactions (user verification)
       if (interaction.isButton()) {
         if (interaction.customId === 'requestVerification') {
           await this.discordVerificationSvc.requestVerification(interaction);
@@ -132,8 +191,18 @@ export class DiscordService {
   }
 
   /**
-   * Handles the setup process for the bot when a command interaction is received.
-   * @param interaction - The command interaction object.
+   * Handles Discord slash command interactions for the '/setup' command.
+   * 
+   * Routes subcommands to their respective handlers in the DiscordCommandsService:
+   * - 'add-rule': Creates new verification rules
+   * - 'remove-rule': Deletes existing verification rules  
+   * - 'list-rules': Displays all verification rules for the channel
+   * - 'recover-verification': Recovers lost verification messages
+   * 
+   * Includes comprehensive error handling to ensure users receive feedback
+   * even when operations fail, with appropriate ephemeral responses.
+   * 
+   * @param interaction - The chat input command interaction from Discord
    */
   async handleSetup(interaction: ChatInputCommandInteraction): Promise<void> {
     try {
@@ -151,7 +220,7 @@ export class DiscordService {
     } catch (error) {
       Logger.error('Error in handleSetup:', error);
       
-      // Check if interaction has been deferred or replied to
+      // Check if interaction has been deferred or replied to to avoid API errors
       try {
         if (interaction.deferred) {
           await interaction.editReply({
@@ -168,9 +237,15 @@ export class DiscordService {
       }
     }
   }
+
   /**
-   * Requests verification from the user by sending a verification link.
-   * @param interaction - The button interaction triggered by the user.
+   * Delegates verification request handling to the Discord verification service.
+   * 
+   * This method serves as a bridge between the main Discord service and the
+   * specialized verification service, maintaining separation of concerns.
+   * 
+   * @param interaction - The button interaction triggered when a user clicks "Verify Now"
+   * @returns Promise that resolves when verification request is processed
    */
   async requestVerification(interaction: ButtonInteraction<CacheType>): Promise<void> {
     return this.discordVerificationSvc.requestVerification(interaction);
