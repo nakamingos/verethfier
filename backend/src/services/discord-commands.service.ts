@@ -3,6 +3,7 @@ import { ChatInputCommandInteraction, EmbedBuilder, MessageFlags, ChannelType, G
 import { DbService } from './db.service';
 import { DiscordMessageService } from './discord-message.service';
 import { DiscordService } from './discord.service';
+import { AdminFeedback } from './utils/admin-feedback.util';
 
 @Injectable()
 export class DiscordCommandsService {
@@ -34,7 +35,14 @@ export class DiscordCommandsService {
       
       if (legacyRoles && legacyRoles.length > 0) {
         await interaction.editReply({
-          content: 'You must migrate or remove the legacy rule(s) for this server before adding new rules. Use /setup migrate-legacy-rule or /setup remove-legacy-rule.'
+          embeds: [AdminFeedback.error(
+            'Legacy Rules Exist',
+            'You must migrate or remove the legacy rule(s) for this server before adding new rules.',
+            [
+              'Use `/setup migrate-legacy-rule` to migrate legacy rules',
+              'Use `/setup remove-legacy-rule` to remove legacy rules'
+            ]
+          )]
         });
         return;
       }
@@ -47,7 +55,9 @@ export class DiscordCommandsService {
       const minItems = interaction.options.getInteger('min_items') || 1;
 
       if (!channel || !roleName) {
-        await interaction.editReply('Channel and role are required.');
+        await interaction.editReply({
+          content: AdminFeedback.simple('Channel and role are required.', true)
+        });
         return;
       }
 
@@ -60,7 +70,15 @@ export class DiscordCommandsService {
       if (role) {
         if (!role.editable) {
           await interaction.editReply({
-            content: `❌ A role named "${roleName}" already exists but is positioned higher than the bot's role. The bot cannot manage this role. Please:\n• Use a different role name, or\n• Move the bot's role higher in the server settings, or\n• Ask an admin to move the "${roleName}" role below the bot's role.`
+            embeds: [AdminFeedback.error(
+              'Role Hierarchy Issue',
+              `A role named "${roleName}" already exists but is positioned higher than the bot's role. The bot cannot manage this role.`,
+              [
+                'Use a different role name',
+                'Move the bot\'s role higher in the server settings',
+                `Ask an admin to move the "${roleName}" role below the bot's role`
+              ]
+            )]
           });
           return;
         }
@@ -76,7 +94,11 @@ export class DiscordCommandsService {
         
         if (existingRoleWithName) {
           await interaction.editReply({
-            content: `❌ A role named "${roleName}" already exists in this server. Please choose a different name for the new role.`
+            embeds: [AdminFeedback.error(
+              'Duplicate Role Name',
+              `A role named "${roleName}" already exists in this server.`,
+              ['Choose a different name for the new role']
+            )]
           });
           return;
         }
@@ -101,11 +123,17 @@ export class DiscordCommandsService {
           
           // Send a follow-up message about role creation
           await interaction.followUp({
-            content: `✅ Created new role: **${role.name}**`,
+            content: AdminFeedback.simple(`Created new role: **${role.name}**`),
             ephemeral: true
           });
         } catch (error) {
-          await interaction.editReply(`❌ Failed to create role "${roleName}": ${error.message}`);
+          await interaction.editReply({
+            embeds: [AdminFeedback.error(
+              'Role Creation Failed',
+              `Failed to create role "${roleName}": ${error.message}`,
+              ['Try again with a different role name']
+            )]
+          });
           return;
         }
       }
@@ -122,33 +150,21 @@ export class DiscordCommandsService {
       );
 
       if (exactDuplicate) {
-        const formatAttribute = (key: string, value: string) => {
-          if (key !== 'ALL' && value !== 'ALL') return `${key}=${value}`;
-          if (key !== 'ALL' && value === 'ALL') return `${key} (any value)`;
-          if (key === 'ALL' && value !== 'ALL') return `ANY_KEY=${value}`;
-          return 'ALL';
-        };
-
         await interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0xFF0000)
-              .setTitle('❌ Duplicate Rule')
-              .setDescription(`This exact rule already exists!`)
-              .addFields(
-                {
-                  name: '🔄 Existing Rule',
-                  value: `**Role:** <@&${role.id}>\n**Collection:** ${slug}\n**Attribute:** ${formatAttribute(attributeKey, attributeValue)}\n**Min Items:** ${minItems}`,
-                  inline: false
-                },
-                {
-                  name: '💡 What can you do?',
-                  value: `• Use different criteria (collection, attribute, or min items)\n• Remove the existing rule first with \`/setup remove-rule\`\n• Check existing rules with \`/setup list-rules\``,
-                  inline: false
-                }
-              )
-          ],
-          components: []
+          embeds: [AdminFeedback.error(
+            'Exact Duplicate Rule',
+            'This exact rule already exists!',
+            [
+              'Use different criteria (collection, attribute, or min items)',
+              'Remove the existing rule first with `/setup remove-rule`',
+              'Check existing rules with `/setup list-rules`'
+            ],
+            [{
+              name: 'Existing Rule',
+              value: AdminFeedback.formatRule(exactDuplicate),
+              inline: false
+            }]
+          )]
         });
         return;
       }
@@ -196,7 +212,10 @@ export class DiscordCommandsService {
       if (interaction.deferred) {
         await interaction.editReply('An error occurred while adding the rule.');
       } else {
-        await interaction.reply({ content: 'An error occurred while adding the rule.', ephemeral: true });
+        await interaction.reply({ 
+          content: AdminFeedback.simple('An error occurred while adding the rule.', true), 
+          ephemeral: true 
+        });
       }
     }
   }
@@ -216,38 +235,43 @@ export class DiscordCommandsService {
     // Get the existing role name for display
     const existingRole = await this.discordSvc.getRole(interaction.guild.id, existingRule.role_id);
     
-    // Format attribute display for both rules
-    const formatAttribute = (key: string, value: string) => {
-      if (key !== 'ALL' && value !== 'ALL') return `${key}=${value}`;
-      if (key !== 'ALL' && value === 'ALL') return `${key} (any value)`;
-      if (key === 'ALL' && value !== 'ALL') return `ALL=${value}`;
-      return 'ALL';
+    // Create rule objects for consistent formatting
+    const existingRuleFormatted = {
+      role_id: existingRule.role_id,
+      slug: existingRule.slug,
+      attribute_key: existingRule.attribute_key,
+      attribute_value: existingRule.attribute_value,
+      min_items: existingRule.min_items
     };
 
-    const existingAttr = formatAttribute(existingRule.attribute_key, existingRule.attribute_value);
-    const newAttr = formatAttribute(newRuleData.attributeKey, newRuleData.attributeValue);
+    const newRuleFormatted = {
+      role_id: newRuleData.role.id,
+      slug: newRuleData.slug,
+      attribute_key: newRuleData.attributeKey,
+      attribute_value: newRuleData.attributeValue,
+      min_items: newRuleData.minItems
+    };
 
-    const embed = new EmbedBuilder()
-      .setColor(0xFFAA00) // Orange for warning
-      .setTitle('⚠️ Duplicate Rule Detected')
-      .setDescription('A rule with the same criteria already exists for a different role.')
-      .addFields(
+    const embed = AdminFeedback.warning(
+      'Duplicate Rule Criteria',
+      'A rule with the same criteria already exists for a different role. Users meeting these criteria will receive **both roles**. This might be intentional (role stacking) or an error.',
+      [
+        'Click "Create Anyway" to proceed with role stacking',
+        'Click "Cancel" to modify your criteria'
+      ],
+      [
         {
-          name: '📋 Existing Rule',
-          value: `**Role:** ${existingRole?.name || 'Unknown Role'}\n**Collection:** ${existingRule.slug}\n**Attribute:** ${existingAttr}\n**Min Items:** ${existingRule.min_items}`,
+          name: 'Existing Rule',
+          value: AdminFeedback.formatRule(existingRuleFormatted, `${existingRole?.name || 'Unknown Role'}`),
           inline: true
         },
         {
-          name: '🆕 New Rule (Proposed)',
-          value: `**Role:** ${newRuleData.role.name}\n**Collection:** ${newRuleData.slug}\n**Attribute:** ${newAttr}\n**Min Items:** ${newRuleData.minItems}`,
+          name: 'New Rule (Proposed)',
+          value: AdminFeedback.formatRule(newRuleFormatted, newRuleData.role.name),
           inline: true
-        },
-        {
-          name: '❓ What happens if you proceed?',
-          value: 'Users meeting these criteria will receive **both roles**. This might be intentional (role stacking) or an error.',
-          inline: false
         }
-      );
+      ]
+    );
 
     const row = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
@@ -283,12 +307,7 @@ export class DiscordCommandsService {
       } else if (i.customId.startsWith('cancel_duplicate_')) {
         await i.deferUpdate();
         await interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0x808080)
-              .setTitle('❌ Rule Creation Cancelled')
-              .setDescription('The rule was not created.')
-          ],
+          embeds: [AdminFeedback.info('Rule Creation Cancelled', 'The rule was not created.')],
           components: []
         });
         this.pendingRules.delete(interaction.id);
@@ -301,12 +320,7 @@ export class DiscordCommandsService {
         // Timeout - clean up
         this.pendingRules.delete(interaction.id);
         interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0x808080)
-              .setTitle('⏰ Request Timed Out')
-              .setDescription('Rule creation was cancelled due to timeout.')
-          ],
+          embeds: [AdminFeedback.info('Request Timed Out', 'Rule creation was cancelled due to timeout.')],
           components: []
         }).catch(() => {}); // Ignore errors if interaction is no longer valid
       }
@@ -347,12 +361,11 @@ export class DiscordCommandsService {
     } catch (error) {
       Logger.error('Error creating rule:', error);
       await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0xFF0000)
-            .setTitle('❌ Error Creating Rule')
-            .setDescription('Failed to create the rule. Please try again.')
-        ],
+        embeds: [AdminFeedback.error(
+          'Rule Creation Failed',
+          'Failed to create the rule. Please try again.',
+          ['Check that all criteria are valid', 'Try again with different settings']
+        )],
         components: []
       });
       return;
@@ -375,15 +388,15 @@ export class DiscordCommandsService {
       }
 
       // Use existing verification message
-      const embed = new EmbedBuilder()
-        .setColor(0x00FF00)
-        .setTitle(isDuplicateConfirmed ? '✅ Duplicate Rule Created' : '✅ Rule Added')
-        .setDescription(`Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added using existing verification message.`)
-        .addFields(
+      const embed = AdminFeedback.success(
+        isDuplicateConfirmed ? 'Duplicate Rule Created' : 'Rule Added',
+        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added using existing verification message.`,
+        [
           { name: 'Collection', value: slug, inline: true },
-          { name: 'Attribute', value: formatAttribute(attributeKey, attributeValue), inline: true },
+          { name: 'Attribute', value: AdminFeedback.formatRule(newRule).split('\n')[2].replace('**Attribute:** ', ''), inline: true },
           { name: 'Min Items', value: minItems.toString(), inline: true }
-        );
+        ]
+      );
 
       if (isDuplicateConfirmed) {
         embed.addFields({
@@ -414,7 +427,7 @@ export class DiscordCommandsService {
     try {
       if (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement) {
         await interaction.editReply({
-          content: 'Selected channel is not a text or announcement channel.',
+          content: AdminFeedback.simple('Selected channel is not a text or announcement channel.', true),
           components: []
         });
         return;
@@ -435,15 +448,15 @@ export class DiscordCommandsService {
         return 'ALL';
       };
 
-      const embed = new EmbedBuilder()
-        .setColor(0x00FF00)
-        .setTitle(isDuplicateConfirmed ? '✅ Duplicate Rule Created' : '✅ Rule Added')
-        .setDescription(`Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added with new verification message.`)
-        .addFields(
+      const embed = AdminFeedback.success(
+        isDuplicateConfirmed ? 'Duplicate Rule Created' : 'Rule Added',
+        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added with new verification message.`,
+        [
           { name: 'Collection', value: slug, inline: true },
           { name: 'Attribute', value: formatAttribute(attributeKey, attributeValue), inline: true },
           { name: 'Min Items', value: minItems.toString(), inline: true }
-        );
+        ]
+      );
 
       if (isDuplicateConfirmed) {
         embed.addFields({
@@ -457,7 +470,7 @@ export class DiscordCommandsService {
     } catch (err) {
       Logger.error('Failed to send Verify Now message', err);
       await interaction.editReply({
-        content: 'Failed to send Verify Now message. Please check my permissions and try again.',
+        content: AdminFeedback.simple('Failed to send Verify Now message. Please check my permissions and try again.', true),
         components: []
       });
     }
@@ -472,16 +485,11 @@ export class DiscordCommandsService {
     try {
       await this.dbSvc.deleteRoleMapping(String(ruleId), interaction.guild.id);
       await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle('Rule Removed')
-            .setDescription(`Rule ID ${ruleId} removed.`)
-            .setColor('#FF0000')
-        ]
+        embeds: [AdminFeedback.success('Rule Removed', `Rule ID ${ruleId} removed.`)]
       });
     } catch (err) {
       await interaction.editReply({
-        content: `Error: ${err.message}`
+        content: AdminFeedback.simple(`Error: ${err.message}`, true)
       });
     }
   }
@@ -508,12 +516,7 @@ export class DiscordCommandsService {
     }
     
     await interaction.editReply({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle('Verification Rules')
-          .setDescription(desc)
-          .setColor('#C3FF00')
-      ]
+      embeds: [AdminFeedback.info('Verification Rules', desc)]
     });
   }
 
@@ -526,7 +529,7 @@ export class DiscordCommandsService {
     
     if (!legacyRoles || legacyRoles.length === 0) {
       await interaction.editReply({
-        content: 'No legacy roles found for this server. Nothing to remove.'
+        content: AdminFeedback.simple('No legacy roles found for this server. Nothing to remove.')
       });
       return;
     }
@@ -534,7 +537,7 @@ export class DiscordCommandsService {
     await this.dbSvc.removeAllLegacyRoles(interaction.guild.id);
     
     await interaction.editReply({
-      content: `Removed ${legacyRoles.length} legacy rule(s).`
+      content: AdminFeedback.simple(`Removed ${legacyRoles.length} legacy rule(s).`)
     });
   }
 
@@ -542,7 +545,7 @@ export class DiscordCommandsService {
     const channel = interaction.options.getChannel('channel');
     if (!channel) {
       await interaction.reply({
-        content: 'Channel not found or not specified.',
+        content: AdminFeedback.simple('Channel not found or not specified.', true),
         flags: MessageFlags.Ephemeral
       });
       return;
@@ -557,7 +560,7 @@ export class DiscordCommandsService {
     
     if (!legacyRoles || legacyRoles.length === 0) {
       await interaction.editReply({
-        content: 'No legacy roles found for this server. Nothing to migrate.'
+        content: AdminFeedback.simple('No legacy roles found for this server. Nothing to migrate.')
       });
       return;
     }
@@ -621,7 +624,7 @@ export class DiscordCommandsService {
       const channel = interaction.options.getChannel('channel');
       if (!channel || channel.type !== ChannelType.GuildText) {
         await interaction.editReply({
-          content: 'Please specify a valid text channel.'
+          content: AdminFeedback.simple('Please specify a valid text channel.', true)
         });
         return;
       }
@@ -643,7 +646,7 @@ export class DiscordCommandsService {
 
       if (orphanedRules.length === 0) {
         await interaction.editReply({
-          content: 'No orphaned verification rules found for this channel. All existing verification messages appear to be intact.'
+          content: AdminFeedback.simple('No orphaned verification rules found for this channel. All existing verification messages appear to be intact.')
         });
         return;
       }
@@ -663,16 +666,17 @@ export class DiscordCommandsService {
       }
 
       // Provide feedback to the admin
-      const embed = new EmbedBuilder()
-        .setTitle('Verification Recovery Complete')
-        .setDescription(`Successfully recovered verification setup for ${textChannel}`)
-        .addFields(
+      const embed = AdminFeedback.success(
+        'Verification Recovery Complete',
+        `Successfully recovered verification setup for ${textChannel}`,
+        [
           { name: 'New Message Created', value: `Message ID: ${newMessageId}`, inline: false },
           { name: 'Rules Updated', value: `${updatedCount}/${orphanedRules.length} rules updated`, inline: true },
           { name: 'Roles Affected', value: orphanedRules.map(r => `<@&${r.role_id}>`).join(', ') || 'None', inline: false }
-        )
-        .setColor('#00FF00')
-        .setTimestamp();
+        ]
+      );
+      
+      embed.setTimestamp();
 
       await interaction.editReply({
         embeds: [embed]
@@ -685,11 +689,11 @@ export class DiscordCommandsService {
       
       if (interaction.deferred) {
         await interaction.editReply({
-          content: `Error during recovery: ${error.message}`
+          content: AdminFeedback.simple(`Error during recovery: ${error.message}`, true)
         });
       } else {
         await interaction.reply({
-          content: `Error during recovery: ${error.message}`,
+          content: AdminFeedback.simple(`Error during recovery: ${error.message}`, true),
           flags: MessageFlags.Ephemeral
         });
       }

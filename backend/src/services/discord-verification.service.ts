@@ -209,6 +209,7 @@ export class DiscordVerificationService {
             .setDescription(`${message}`)
             .setColor('#FF0000')
         ],
+        components: [] // Remove the "Verify Now" button on error too
       });
     } catch (error) {
       Logger.error(`Failed to edit reply for nonce ${nonce}:`, error);
@@ -237,8 +238,11 @@ export class DiscordVerificationService {
     }
 
     try {
-      // Get role names from role IDs
-      const roleNames = assignedRoles.map(roleId => {
+      // Deduplicate role IDs to prevent showing the same role multiple times
+      const uniqueRoleIds = [...new Set(assignedRoles)];
+      
+      // Get role names from unique role IDs
+      const roleNames = uniqueRoleIds.map(roleId => {
         const role = guild.roles.cache.get(roleId);
         return role ? role.name : `Unknown Role (${roleId})`;
       });
@@ -261,6 +265,7 @@ export class DiscordVerificationService {
             .setDescription(description)
             .setColor('#00FF00')
         ],
+        components: [] // Remove the "Verify Now" button
       });
       
     } catch (error) {
@@ -276,6 +281,7 @@ export class DiscordVerificationService {
                 .setDescription(`You have been successfully verified in ${guild.name}.`)
                 .setColor('#00FF00')
             ],
+            components: [] // Remove the "Verify Now" button in fallback case too
           });
         }
       } catch (fallbackError) {
