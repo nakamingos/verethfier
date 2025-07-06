@@ -117,7 +117,7 @@ describe('DiscordService - Enhanced Tests', () => {
     process.env = {
       ...originalEnv,
       DISCORD: '0', // Disable Discord bot initialization in tests
-      DISCORD_BOT_TOKEN: 'test-token',
+      DISCORD_BOT_TOKEN: 'test_bot_token',
       DISCORD_CLIENT_ID: 'test-client-id',
       NONCE_EXPIRY: '3600'
     };
@@ -170,7 +170,7 @@ describe('DiscordService - Enhanced Tests', () => {
 
       await initPromise;
 
-      expect(mockClient.login).toHaveBeenCalledWith('test-token');
+      expect(mockClient.login).toHaveBeenCalledWith('test_bot_token');
       expect(mockDiscordMessageService.initialize).toHaveBeenCalledWith(mockClient);
       expect(mockDiscordVerificationService.initialize).toHaveBeenCalledWith(mockClient);
       expect(mockDiscordCommandsService.initialize).toHaveBeenCalledWith(mockClient);
@@ -221,7 +221,7 @@ describe('DiscordService - Enhanced Tests', () => {
       await expect(service.initializeBot()).rejects.toThrow('Login failed');
       
       // Verify login was attempted
-      expect(mockClient.login).toHaveBeenCalledWith('test-token');
+      expect(mockClient.login).toHaveBeenCalledWith('test_bot_token');
     });
   });
 
@@ -236,13 +236,13 @@ describe('DiscordService - Enhanced Tests', () => {
     });
 
     it('should handle slash command registration errors', async () => {
-      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      const loggerErrorSpy = jest.spyOn(Logger, 'error').mockImplementation();
       mockRest.put.mockRejectedValueOnce(new Error('Registration failed'));
       
       await service.registerSlashCommands();
       
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.any(Error));
-      consoleErrorSpy.mockRestore();
+      expect(loggerErrorSpy).toHaveBeenCalledWith('Failed to register slash commands:', expect.any(Error));
+      loggerErrorSpy.mockRestore();
     });
 
     it('should create slash commands with interaction handlers', async () => {

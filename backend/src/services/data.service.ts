@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-
 import { createClient } from '@supabase/supabase-js';
-
 import dotenv from 'dotenv';
+
+// Load environment variables
 dotenv.config();
 
 // Use specific environment variables for Data Service
@@ -15,9 +15,28 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+/**
+ * DataService
+ * 
+ * Handles all data operations related to asset ownership verification.
+ * Connects to the data Supabase instance to query ethscriptions and metadata.
+ * 
+ * Key responsibilities:
+ * - Check asset ownership for verification
+ * - Query assets with specific attributes and criteria
+ * - Support slug-based and attribute-based filtering
+ * - Handle marketplace escrow scenarios
+ */
 @Injectable()
 export class DataService {
   
+  /**
+   * Checks basic asset ownership for an address.
+   * Includes assets in marketplace escrow (owned by market but previously owned by address).
+   * 
+   * @param address - The wallet address to check ownership for
+   * @returns Promise<number> - Count of assets owned by the address
+   */
   async checkAssetOwnership(address: string): Promise<any> {
     address = address.toLowerCase();
     const marketAddress = '0xd3418772623be1a3cc6b6d45cb46420cedd9154a'.toLowerCase();
@@ -35,6 +54,12 @@ export class DataService {
     return data.length;
   }
 
+  /**
+   * Gets unique slugs of assets owned by an address.
+   * 
+   * @param address - The wallet address to check
+   * @returns Promise<string[]> - Array of unique slug names owned
+   */
   async getOwnedSlugs(address: string): Promise<string[]> {
     const { data, error } = await supabase
       .from('ethscriptions')
@@ -44,6 +69,13 @@ export class DataService {
     return Array.from(new Set((data || []).map(r => r.slug)));
   }
 
+  /**
+   * Gets detailed asset information including metadata attributes.
+   * Combines ethscriptions data with metadata for comprehensive asset details.
+   * 
+   * @param address - The wallet address to get assets for
+   * @returns Promise<AssetWithAttrs[]> - Array of assets with their attributes
+   */
   async getDetailedAssets(address: string): Promise<AssetWithAttrs[]> {
     // Step 1: Get ethscriptions owned by the address
     const { data: ethscriptions, error } = await supabase

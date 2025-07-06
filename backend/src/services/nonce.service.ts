@@ -1,14 +1,15 @@
-import { Inject, Injectable } from '@nestjs/common';
-
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
-
+import { Inject, Injectable } from '@nestjs/common';
 import dotenv from 'dotenv';
+import { CONSTANTS } from '@/constants';
+
+// Load environment variables
 dotenv.config();
 
-const TTL = Number(process.env.NONCE_EXPIRY);
+const NONCE_EXPIRY = Number(process.env.NONCE_EXPIRY) || CONSTANTS.DEFAULT_NONCE_EXPIRY;
 
-interface NonceData {
+export interface NonceData {
   nonce: string;
   messageId?: string;
   channelId?: string;
@@ -35,7 +36,7 @@ export class NonceService {
   ): Promise<string> {
     const nonce = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     const data: NonceData = { nonce, messageId, channelId };
-    await this.cache.set(`nonce_${userId}`, data, TTL);
+    await this.cache.set(`nonce_${userId}`, data, NONCE_EXPIRY);
     return nonce;
   }
 

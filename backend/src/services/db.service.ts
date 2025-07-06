@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-
 import { createClient } from '@supabase/supabase-js';
-
 import dotenv from 'dotenv';
+import { CONSTANTS } from '@/constants';
+import { DbResult, ServerRecord, LegacyRoleRecord } from '@/models/db.interface';
+
+// Load environment variables
 dotenv.config();
 
 // Use specific environment variables for DB Service
@@ -17,14 +19,52 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 import { VerifierRole } from '@/models/verifier-role.interface';
 
+/**
+ * Database Service
+ * 
+ * This service provides data access layer for the verification system using Supabase.
+ * It handles:
+ * - Server and user management
+ * - Verification rule CRUD operations
+ * - Legacy role management and migration
+ * - Asset verification tracking
+ * 
+ * Database Schema:
+ * - verifier_servers: Discord server information
+ * - verifier_users: User verification data
+ * - verifier_roles: Verification rules configuration
+ * - verification_queue: Pending verifications
+ * 
+ * @example
+ * ```typescript
+ * // Add or update a server
+ * await dbService.addUpdateServer('123456789', 'My Server', 'role123');
+ * 
+ * // Get verification rules
+ * const rules = await dbService.getVerificationRules('123456789', 'channel123');
+ * ```
+ */
 @Injectable()
 export class DbService {
 
+  /**
+   * Adds or updates a Discord server in the database.
+   * 
+   * Uses upsert operation to either create new server record or update existing one.
+   * This is typically called when the bot joins a new server or when server
+   * configuration changes.
+   * 
+   * @param serverId - Discord server (guild) ID
+   * @param serverName - Human-readable server name
+   * @param roleId - Default role ID for this server
+   * @returns Promise resolving to the server record or null on error
+   * @throws Error if database operation fails
+   */
   async addUpdateServer(
     serverId: string, 
     serverName: string,
     roleId: string
-  ): Promise<any> {
+  ): Promise<DbResult<ServerRecord> | null> {
 
     const { data, error } = await supabase
       .from('verifier_servers')
@@ -38,6 +78,16 @@ export class DbService {
     return data;
   }
   
+  /**
+   * Retrieves user data for a specific Discord user.
+   * 
+   * Returns user verification history and associated server data.
+   * Used for user verification status checks and history tracking.
+   * 
+   * @param userId - Discord user ID
+   * @returns Promise resolving to user data object or null if not found
+   * @throws Error if database query fails
+   */
   async getUserServers(userId: string): Promise<any> {
     const { data, error } = await supabase
       .from('verifier_users')
@@ -305,7 +355,7 @@ export class DbService {
   }
 
   // Get all legacy roles for a guild (by guild/server id)
-  async getLegacyRoles(serverId: string): Promise<{ data: Array<{ role_id: string, name: string }>, error: any }> {
+  async getLegacyRoles(serverId: string): Promise<DbResult<LegacyRoleRecord[]>> {
     const { data, error } = await supabase
       .from('verifier_servers')
       .select('role_id, name')

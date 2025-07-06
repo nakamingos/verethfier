@@ -4,6 +4,19 @@ import { recoverTypedDataAddress } from 'viem';
 import { NonceService } from '@/services/nonce.service';
 import { DecodedData } from '@/models/app.interface';
 
+/**
+ * WalletService
+ * 
+ * Handles wallet signature verification using EIP-712 typed data signatures.
+ * Verifies that a user controls a specific Ethereum address by validating
+ * their signature against a structured message containing verification details.
+ * 
+ * Key responsibilities:
+ * - Verify EIP-712 signatures using viem
+ * - Validate nonces to prevent replay attacks
+ * - Check signature expiry to ensure freshness
+ * - Support legacy verification message format
+ */
 @Injectable()
 export class WalletService {
 
@@ -12,12 +25,19 @@ export class WalletService {
   ) {}
   
   /**
-   * Verifies the wallet signature for the given data.
+   * Verifies an EIP-712 wallet signature for the given verification data.
    * 
-   * @param data - The decoded data to be verified.
-   * @param signature - The signature to be verified.
-   * @returns The address if the signature is valid.
-   * @throws Error if the nonce is invalid or expired, or if the verification has expired, or if the signature is invalid.
+   * This method performs several validation steps:
+   * 1. Validates the nonce to ensure the request is legitimate and not replayed
+   * 2. Checks that the verification hasn't expired
+   * 3. Reconstructs the typed data message using EIP-712 format
+   * 4. Recovers the signing address from the signature
+   * 5. Validates that the recovered address matches expectations
+   * 
+   * @param data - The decoded verification data containing user and server info
+   * @param signature - The EIP-712 signature to verify
+   * @returns Promise<string> - The verified wallet address
+   * @throws Error if nonce is invalid/expired, verification expired, or signature invalid
    */
   async verifySignature(
     data: DecodedData,

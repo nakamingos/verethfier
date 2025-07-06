@@ -1,10 +1,28 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ButtonInteraction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, CacheType, Client, MessageFlags } from 'discord.js';
+import dotenv from 'dotenv';
 import { DbService } from './db.service';
 import { NonceService } from './nonce.service';
 
+// Load environment variables
+dotenv.config();
+
 const EXPIRY = Number(process.env.NONCE_EXPIRY);
 
+/**
+ * DiscordVerificationService
+ * 
+ * Handles Discord-specific verification interactions and role management.
+ * Manages the user-facing verification flow from Discord button clicks
+ * through role assignment completion.
+ * 
+ * Key responsibilities:
+ * - Process verification button interactions
+ * - Generate verification links with encoded payloads
+ * - Assign Discord roles after successful verification
+ * - Handle verification error reporting
+ * - Support both legacy and message-based verification flows
+ */
 @Injectable()
 export class DiscordVerificationService {
   private client: Client | null = null;
@@ -14,7 +32,10 @@ export class DiscordVerificationService {
   } = {};
 
   /**
-   * Initialize the service with the Discord client.
+   * Initialize the service with the Discord client instance.
+   * Required for Discord API operations and role management.
+   * 
+   * @param client - The initialized Discord.js client
    */
   initialize(client: Client): void {
     this.client = client;
@@ -26,8 +47,18 @@ export class DiscordVerificationService {
   ) {}
 
   /**
-   * Requests verification from the user by sending a verification link.
-   * @param interaction - The button interaction triggered by the user.
+   * Handles verification button interactions from Discord users.
+   * 
+   * This method initiates the verification flow when a user clicks a verification button:
+   * 1. Validates the Discord context (guild, channel, role)
+   * 2. Creates a secure nonce linked to the message/channel
+   * 3. Generates an encoded verification payload
+   * 4. Provides a verification link for the user to complete wallet signing
+   * 
+   * Supports both legacy and message-based verification systems.
+   * 
+   * @param interaction - The Discord button interaction triggered by the user
+   * @throws Error if guild/channel/role not found or verification setup invalid
    */
   async requestVerification(interaction: ButtonInteraction<CacheType>): Promise<void> {
     try {

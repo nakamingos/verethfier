@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
-// import { HttpModule } from '@nestjs/axios';
 
 import { AppController } from '@/app.controller';
 import { AppService } from '@/app.service';
@@ -16,24 +15,24 @@ import { WalletService } from '@/services/wallet.service';
 import { DbService } from '@/services/db.service';
 import { DataService } from './services/data.service';
 import { VerifyService } from './services/verify.service';
+import { CONSTANTS } from '@/constants';
 
 @Module({
   imports: [
-    // HttpModule,
     CacheModule.register(),
     // Security: Rate limiting
     ThrottlerModule.forRoot([{
       name: 'short',
-      ttl: 1000, // 1 second
-      limit: 3,  // 3 requests per second
+      ttl: CONSTANTS.RATE_LIMIT.SHORT.TTL,
+      limit: CONSTANTS.RATE_LIMIT.SHORT.LIMIT,
     }, {
       name: 'medium',
-      ttl: 10000, // 10 seconds
-      limit: 20,  // 20 requests per 10 seconds
+      ttl: CONSTANTS.RATE_LIMIT.MEDIUM.TTL,
+      limit: CONSTANTS.RATE_LIMIT.MEDIUM.LIMIT,
     }, {
       name: 'long',
-      ttl: 60000, // 1 minute
-      limit: 100, // 100 requests per minute
+      ttl: CONSTANTS.RATE_LIMIT.LONG.TTL,
+      limit: CONSTANTS.RATE_LIMIT.LONG.LIMIT,
     }]),
   ],
   controllers: [AppController],

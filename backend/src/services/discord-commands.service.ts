@@ -1,10 +1,31 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-import { ChatInputCommandInteraction, EmbedBuilder, MessageFlags, ChannelType, GuildTextBasedChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel, Role } from 'discord.js';
+import { ChatInputCommandInteraction, EmbedBuilder, MessageFlags, ChannelType, GuildTextBasedChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel, Role, Client } from 'discord.js';
 import { DbService } from './db.service';
 import { DiscordMessageService } from './discord-message.service';
 import { DiscordService } from './discord.service';
+import { VerificationRule } from '@/models/verification-rule.interface';
 import { AdminFeedback } from './utils/admin-feedback.util';
 
+/**
+ * DiscordCommandsService
+ * 
+ * Handles Discord slash command processing for server administration.
+ * Provides comprehensive verification rule management through Discord's slash command interface.
+ * 
+ * Key responsibilities:
+ * - Process add-rule commands with validation and confirmation flows
+ * - Handle remove-rule commands with safety checks
+ * - List and display current verification rules
+ * - Manage legacy rule migration and cleanup
+ * - Create and update verification messages in channels
+ * - Provide rich admin feedback with embedded messages
+ * 
+ * Command flows include:
+ * - Rule creation with duplicate detection and confirmation
+ * - Role management (find existing or create new roles)
+ * - Channel validation and message posting
+ * - Legacy system migration assistance
+ */
 @Injectable()
 export class DiscordCommandsService {
   // Store pending rules for confirmation flow
@@ -14,7 +35,7 @@ export class DiscordCommandsService {
    * Initialize the service with the Discord client.
    * This service doesn't directly use the client but maintains consistency.
    */
-  initialize(client: any): void {
+  initialize(client: Client): void {
     // No client needed for this service
   }
 
@@ -29,172 +50,23 @@ export class DiscordCommandsService {
     try {
       await interaction.deferReply({ ephemeral: true });
 
-      // Check if there are legacy roles that need to be migrated
-      const legacyRolesResult = await this.dbSvc.getLegacyRoles(interaction.guild.id);
-      const legacyRoles = legacyRolesResult.data;
-      
-      if (legacyRoles && legacyRoles.length > 0) {
-        await interaction.editReply({
-          embeds: [AdminFeedback.error(
-            'Legacy Rules Exist',
-            'You must migrate or remove the legacy rule(s) for this server before adding new rules.',
-            [
-              'Use `/setup migrate-legacy-rule` to migrate legacy rules',
-              'Use `/setup remove-legacy-rule` to remove legacy rules'
-            ]
-          )]
-        });
-        return;
+      // Validate input and check for legacy rules
+      const params = await this.validateInputAndLegacyRules(interaction);
+      if (!params) {
+        return; // Error already handled
       }
 
-      const channel = interaction.options.getChannel('channel') as TextChannel;
-      const roleName = interaction.options.getString('role');
-      const slug = interaction.options.getString('slug') || 'ALL';
-      const attributeKey = interaction.options.getString('attribute_key') || 'ALL';
-      const attributeValue = interaction.options.getString('attribute_value') || 'ALL';
-      const minItems = interaction.options.getInteger('min_items') || 1;
+      const { channel, roleName, slug, attributeKey, attributeValue, minItems } = params;
 
-      if (!channel || !roleName) {
-        await interaction.editReply({
-          content: AdminFeedback.simple('Channel and role are required.', true)
-        });
-        return;
-      }
-
-      // Try to find existing role (including ones we can't manage)
-      let role = interaction.guild.roles.cache.find(r => 
-        r.name.toLowerCase() === roleName.toLowerCase()
-      );
-
-      // If role exists, check if we can manage it or provide appropriate error
-      if (role) {
-        if (!role.editable) {
-          await interaction.editReply({
-            embeds: [AdminFeedback.error(
-              'Role Hierarchy Issue',
-              `A role named "${roleName}" already exists but is positioned higher than the bot's role. The bot cannot manage this role.`,
-              [
-                'Use a different role name',
-                'Move the bot\'s role higher in the server settings',
-                `Ask an admin to move the "${roleName}" role below the bot's role`
-              ]
-            )]
-          });
-          return;
-        }
-        // Role exists and is manageable - we'll use it
-      }
-
-      // If role doesn't exist, create it
+      // Find or create the role
+      const role = await this.findOrCreateRole(interaction, roleName);
       if (!role) {
-        // Double-check that no role with this name exists anywhere in the server
-        const existingRoleWithName = interaction.guild.roles.cache.find(r => 
-          r.name.toLowerCase() === roleName.toLowerCase()
-        );
-        
-        if (existingRoleWithName) {
-          await interaction.editReply({
-            embeds: [AdminFeedback.error(
-              'Duplicate Role Name',
-              `A role named "${roleName}" already exists in this server.`,
-              ['Choose a different name for the new role']
-            )]
-          });
-          return;
-        }
-
-        try {
-          // Get bot member to determine role position
-          const botMember = interaction.guild.members.me;
-          let position = undefined;
-          
-          if (botMember) {
-            // Create role below bot's highest role
-            const botHighestPosition = botMember.roles.highest.position;
-            position = Math.max(1, botHighestPosition - 1);
-          }
-
-          role = await interaction.guild.roles.create({
-            name: roleName,
-            color: 'Blue', // Default color
-            position: position,
-            reason: `Auto-created for verification rule by ${interaction.user.tag}`
-          });
-          
-          // Send a follow-up message about role creation
-          await interaction.followUp({
-            content: AdminFeedback.simple(`Created new role: **${role.name}**`),
-            ephemeral: true
-          });
-        } catch (error) {
-          await interaction.editReply({
-            embeds: [AdminFeedback.error(
-              'Role Creation Failed',
-              `Failed to create role "${roleName}": ${error.message}`,
-              ['Try again with a different role name']
-            )]
-          });
-          return;
-        }
+        return; // Error already handled in findOrCreateRole
       }
 
-      // Check for exact duplicate rules first (same role + same criteria)
-      const exactDuplicate = await this.dbSvc.checkForExactDuplicateRule(
-        interaction.guild.id,
-        channel.id,
-        slug,
-        attributeKey,
-        attributeValue,
-        minItems,
-        role.id
-      );
-
-      if (exactDuplicate) {
-        await interaction.editReply({
-          embeds: [AdminFeedback.error(
-            'Exact Duplicate Rule',
-            'This exact rule already exists!',
-            [
-              'Use different criteria (collection, attribute, or min items)',
-              'Remove the existing rule first with `/setup remove-rule`',
-              'Check existing rules with `/setup list-rules`'
-            ],
-            [{
-              name: 'Existing Rule',
-              value: AdminFeedback.formatRule(exactDuplicate),
-              inline: false
-            }]
-          )]
-        });
-        return;
-      }
-
-      // Check for duplicate rules with different roles
-      const existingRule = await this.dbSvc.checkForDuplicateRule(
-        interaction.guild.id,
-        channel.id,
-        slug,
-        attributeKey,
-        attributeValue,
-        minItems,
-        role.id // Exclude the same role (not really duplicate if same role)
-      );
-
-      if (existingRule) {
-        // Found a matching rule for a different role - warn the admin
-        await this.showDuplicateRuleWarning(
-          interaction,
-          existingRule,
-          {
-            channel,
-            role,
-            slug,
-            attributeKey,
-            attributeValue,
-            minItems
-          }
-        );
-        return;
+      // Check for duplicate rules
+      if (!(await this.checkForDuplicateRules(interaction, channel, role, slug, attributeKey, attributeValue, minItems))) {
+        return; // Duplicate found and handled
       }
 
       // No duplicate found, proceed with normal rule creation
@@ -697,6 +569,215 @@ export class DiscordCommandsService {
           flags: MessageFlags.Ephemeral
         });
       }
+    }
+  }
+
+  /**
+   * Validates that no legacy rules exist and extracts input parameters
+   * @returns Input parameters if valid, null if validation failed (error already sent to user)
+   */
+  private async validateInputAndLegacyRules(interaction: ChatInputCommandInteraction): Promise<{
+    channel: TextChannel;
+    roleName: string;
+    slug: string;
+    attributeKey: string;
+    attributeValue: string;
+    minItems: number;
+  } | null> {
+    // Check if there are legacy roles that need to be migrated
+    const legacyRolesResult = await this.dbSvc.getLegacyRoles(interaction.guild.id);
+    const legacyRoles = legacyRolesResult.data;
+    
+    if (legacyRoles && legacyRoles.length > 0) {
+      await interaction.editReply({
+        embeds: [AdminFeedback.error(
+          'Legacy Rules Exist',
+          'You must migrate or remove the legacy rule(s) for this server before adding new rules.',
+          [
+            'Use `/setup migrate-legacy-rule` to migrate legacy rules',
+            'Use `/setup remove-legacy-rule` to remove legacy rules'
+          ]
+        )]
+      });
+      return null;
+    }
+
+    const channel = interaction.options.getChannel('channel') as TextChannel;
+    const roleName = interaction.options.getString('role');
+    const slug = interaction.options.getString('slug') || 'ALL';
+    const attributeKey = interaction.options.getString('attribute_key') || 'ALL';
+    const attributeValue = interaction.options.getString('attribute_value') || 'ALL';
+    const minItems = interaction.options.getInteger('min_items') || 1;
+
+    if (!channel || !roleName) {
+      await interaction.editReply({
+        content: AdminFeedback.simple('Channel and role are required.', true)
+      });
+      return null;
+    }
+
+    return { channel, roleName, slug, attributeKey, attributeValue, minItems };
+  }
+
+  /**
+   * Checks for duplicate rules and handles them appropriately
+   * @returns true if no duplicates found, false if duplicate found (error already sent to user)
+   */
+  private async checkForDuplicateRules(
+    interaction: ChatInputCommandInteraction,
+    channel: TextChannel,
+    role: Role,
+    slug: string,
+    attributeKey: string,
+    attributeValue: string,
+    minItems: number
+  ): Promise<boolean> {
+    // Check for exact duplicate rules first (same role + same criteria)
+    const exactDuplicate = await this.dbSvc.checkForExactDuplicateRule(
+      interaction.guild.id,
+      channel.id,
+      slug,
+      attributeKey,
+      attributeValue,
+      minItems,
+      role.id
+    );
+
+    if (exactDuplicate) {
+      await interaction.editReply({
+        embeds: [AdminFeedback.error(
+          'Exact Duplicate Rule',
+          'This exact rule already exists!',
+          [
+            'Use different criteria (collection, attribute, or min items)',
+            'Remove the existing rule first with `/setup remove-rule`',
+            'Check existing rules with `/setup list-rules`'
+          ],
+          [{
+            name: 'Existing Rule',
+            value: AdminFeedback.formatRule(exactDuplicate),
+            inline: false
+          }]
+        )]
+      });
+      return false;
+    }
+
+    // Check for duplicate rules with different roles
+    const existingRule = await this.dbSvc.checkForDuplicateRule(
+      interaction.guild.id,
+      channel.id,
+      slug,
+      attributeKey,
+      attributeValue,
+      minItems,
+      role.id // Exclude the same role (not really duplicate if same role)
+    );
+
+    if (existingRule) {
+      // Found a matching rule for a different role - warn the admin
+      await this.showDuplicateRuleWarning(
+        interaction,
+        existingRule,
+        {
+          channel,
+          role,
+          slug,
+          attributeKey,
+          attributeValue,
+          minItems
+        }
+      );
+      return false;
+    }
+
+    return true; // No duplicates found
+  }
+
+  /**
+   * Finds an existing role or creates a new one
+   * @returns Role if successful, null if there was an error (error already sent to user)
+   */
+  private async findOrCreateRole(
+    interaction: ChatInputCommandInteraction, 
+    roleName: string
+  ): Promise<Role | null> {
+    // Try to find existing role (including ones we can't manage)
+    let role = interaction.guild.roles.cache.find(r => 
+      r.name.toLowerCase() === roleName.toLowerCase()
+    );
+
+    // If role exists, check if we can manage it or provide appropriate error
+    if (role) {
+      if (!role.editable) {
+        await interaction.editReply({
+          embeds: [AdminFeedback.error(
+            'Role Hierarchy Issue',
+            `A role named "${roleName}" already exists but is positioned higher than the bot's role. The bot cannot manage this role.`,
+            [
+              'Use a different role name',
+              'Move the bot\'s role higher in the server settings',
+              `Ask an admin to move the "${roleName}" role below the bot's role`
+            ]
+          )]
+        });
+        return null;
+      }
+      // Role exists and is manageable - we'll use it
+      return role;
+    }
+
+    // If role doesn't exist, create it
+    // Double-check that no role with this name exists anywhere in the server
+    const existingRoleWithName = interaction.guild.roles.cache.find(r => 
+      r.name.toLowerCase() === roleName.toLowerCase()
+    );
+    
+    if (existingRoleWithName) {
+      await interaction.editReply({
+        embeds: [AdminFeedback.error(
+          'Duplicate Role Name',
+          `A role named "${roleName}" already exists in this server.`,
+          ['Choose a different name for the new role']
+        )]
+      });
+      return null;
+    }
+
+    try {
+      // Get bot member to determine role position
+      const botMember = interaction.guild.members.me;
+      let position = undefined;
+      
+      if (botMember) {
+        // Create role below bot's highest role
+        const botHighestPosition = botMember.roles.highest.position;
+        position = Math.max(1, botHighestPosition - 1);
+      }
+
+      role = await interaction.guild.roles.create({
+        name: roleName,
+        color: 'Blue', // Default color
+        position: position,
+        reason: `Auto-created for verification rule by ${interaction.user.tag}`
+      });
+      
+      // Send a follow-up message about role creation
+      await interaction.followUp({
+        content: AdminFeedback.simple(`Created new role: **${role.name}**`),
+        ephemeral: true
+      });
+
+      return role;
+    } catch (error) {
+      await interaction.editReply({
+        embeds: [AdminFeedback.error(
+          'Role Creation Failed',
+          `Failed to create role "${roleName}": ${error.message}`,
+          ['Try again with a different role name']
+        )]
+      });
+      return null;
     }
   }
 }

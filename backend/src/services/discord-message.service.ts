@@ -1,12 +1,28 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GuildTextBasedChannel, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Client } from 'discord.js';
 
+/**
+ * DiscordMessageService
+ * 
+ * Manages Discord message creation and manipulation for verification systems.
+ * Handles both legacy and new verification message formats while preventing
+ * duplicate verification messages in channels.
+ * 
+ * Key responsibilities:
+ * - Create verification embed messages with buttons
+ * - Detect existing verification messages to prevent duplicates
+ * - Update verification messages with current rule information
+ * - Support both legacy and new message formats
+ */
 @Injectable()
 export class DiscordMessageService {
   private client: Client | null = null;
 
   /**
-   * Initialize the service with the Discord client.
+   * Initialize the service with the Discord client instance.
+   * Required for accessing Discord API and bot user information.
+   * 
+   * @param client - The initialized Discord.js client
    */
   initialize(client: Client): void {
     this.client = client;
@@ -15,11 +31,14 @@ export class DiscordMessageService {
   constructor() {}
 
   /**
-   * Searches for ANY existing verification messages (legacy or new) in a Discord channel.
-   * Simple approach: any message from our bot that has buttons is likely a verification message.
-   * This prevents creating duplicate verification buttons regardless of format.
-   * @param channel - The Discord channel to search in
-   * @returns The message ID of ANY existing verification message, or null if not found
+   * Searches for existing verification messages in a Discord channel.
+   * 
+   * Uses a simple but effective approach: any message from our bot that contains
+   * interactive components (buttons) is likely a verification message. This prevents
+   * creating duplicate verification buttons regardless of message format (legacy or new).
+   * 
+   * @param channel - The Discord channel to search for verification messages
+   * @returns Promise<string | null> - Message ID of existing verification message, or null
    */
   async findExistingVerificationMessage(channel: GuildTextBasedChannel): Promise<string | null> {
     try {

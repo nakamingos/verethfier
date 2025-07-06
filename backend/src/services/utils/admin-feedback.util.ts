@@ -1,4 +1,5 @@
 import { EmbedBuilder, Colors } from 'discord.js';
+import { VerificationRule } from '@/models/verification-rule.interface';
 
 /**
  * Standardized admin feedback message utility
@@ -119,7 +120,7 @@ export class AdminFeedback {
   /**
    * Format rule details consistently
    */
-  static formatRule(rule: any, title?: string): string {
+  static formatRule(rule: VerificationRule, title?: string): string {
     const formatAttribute = (key: string, value: string) => {
       if (key !== 'ALL' && value !== 'ALL') return `${key}=${value}`;
       if (key !== 'ALL' && value === 'ALL') return `${key} (any value)`;
@@ -143,7 +144,7 @@ export class AdminFeedback {
   /**
    * Format multiple rules with separators
    */
-  static formatRuleList(rules: any[], channelName?: string): EmbedBuilder {
+  static formatRuleList(rules: VerificationRule[], channelName?: string): EmbedBuilder {
     const title = channelName ? `Verification Rules for #${channelName}` : 'Verification Rules';
     
     if (rules.length === 0) {
