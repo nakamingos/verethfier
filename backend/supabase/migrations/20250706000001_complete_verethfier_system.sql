@@ -102,6 +102,7 @@ INSERT INTO verifier_rules (
   attribute_key,
   attribute_value,
   min_items,
+  role_name,
   message_id,
   created_at
 ) VALUES (
@@ -114,7 +115,8 @@ INSERT INTO verifier_rules (
   'legacy_attribute',   -- Special attribute key
   'legacy_value',       -- Special attribute value
   1,                    -- Min items
-  NULL,                 -- No message ID for legacy
+  'Legacy Role',        -- Human-readable role name for legacy
+  NULL,                 -- No message ID for legacy (this NULL is appropriate)
   now()                 -- Created timestamp
 ) ON CONFLICT DO NOTHING;
 
