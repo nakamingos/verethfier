@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
@@ -15,11 +16,14 @@ import { WalletService } from '@/services/wallet.service';
 import { DbService } from '@/services/db.service';
 import { DataService } from './services/data.service';
 import { VerifyService } from './services/verify.service';
+import { DynamicRoleService } from './services/dynamic-role.service';
+import { SimpleRoleMonitorService } from './services/simple-role-monitor.service';
 import { CONSTANTS } from '@/constants';
 
 @Module({
   imports: [
     CacheModule.register(),
+    ScheduleModule.forRoot(),
     // Security: Rate limiting
     ThrottlerModule.forRoot([{
       name: 'short',
@@ -51,7 +55,9 @@ import { CONSTANTS } from '@/constants';
     WalletService,
     DbService,
     DataService,
-    VerifyService
+    VerifyService,
+    DynamicRoleService,
+    SimpleRoleMonitorService
   ],
 })
 export class AppModule {}

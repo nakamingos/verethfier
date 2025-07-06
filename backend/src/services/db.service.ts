@@ -492,6 +492,434 @@ export class DbService {
 
     return data && data.length > 0 ? data[0] : null;
   }
+
+  // =======================================
+  // DYNAMIC ROLE MANAGEMENT METHODS
+  // =======================================
+
+  /**
+   * Get all active role assignments that need periodic re-verification
+   */
+  async getActiveRoleAssignments(): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('verifier_user_roles')
+      .select(`
+        *,
+        verifier_rules!inner(*)
+      `)
+      .eq('status', 'active')
+      .order('last_checked', { ascending: true }); // Oldest checks first
+
+    if (error) {
+      Logger.error('Error fetching active role assignments:', error);
+      throw error;
+    }
+
+    return data || [];
+  }
+
+  /**
+   * Get a specific verification rule by ID
+   */
+  async getRuleById(ruleId: string): Promise<any> {
+    const { data, error } = await supabase
+      .from('verifier_rules')
+      .select('*')
+      .eq('id', ruleId)
+      .single();
+
+    if (error) {
+      Logger.error(`Error fetching rule ${ruleId}:`, error);
+      throw error;
+    }
+
+    return data;
+  }
+
+  /**
+   * Track a new role assignment in the enhanced tracking table
+   */
+  async trackRoleAssignment(assignment: {
+    userId: string;
+    serverId: string;
+    roleId: string;
+    ruleId: string;
+    address: string;
+    userName?: string;
+    serverName?: string;
+    roleName?: string;
+    expiresInHours?: number;
+  }): Promise<any> {
+    const expirationDate = assignment.expiresInHours 
+      ? new Date(Date.now() + assignment.expiresInHours * 60 * 60 * 1000)
+      : null;
+
+    const { data, error } = await supabase
+      .from('verifier_user_roles')
+      .insert({
+        user_id: assignment.userId,
+        server_id: assignment.serverId,
+        role_id: assignment.roleId,
+        rule_id: assignment.ruleId,
+        address: assignment.address.toLowerCase(),
+        user_name: assignment.userName,
+        server_name: assignment.serverName,
+        role_name: assignment.roleName,
+        verification_expires_at: expirationDate,
+        status: 'active'
+      })
+      .select()
+      .single();
+
+    if (error) {
+      Logger.error('Error tracking role assignment:', error);
+      throw error;
+    }
+
+    return data;
+  }
+
+  /**
+   * Update the verification status and timestamp for a role assignment
+   */
+  async updateRoleVerification(assignmentId: string, stillValid: boolean): Promise<any> {
+    const updates: any = {
+      last_checked: new Date().toISOString()
+    };
+
+    if (!stillValid) {
+      updates.status = 'expired';
+    }
+
+    const { data, error } = await supabase
+      .from('verifier_user_roles')
+      .update(updates)
+      .eq('id', assignmentId)
+      .select()
+      .single();
+
+    if (error) {
+      Logger.error('Error updating role verification:', error);
+      throw error;
+    }
+
+    return data;
+  }
+
+  /**
+   * Revoke a role assignment (mark as revoked)
+   */
+  async revokeRoleAssignment(assignmentId: string): Promise<any> {
+    const { data, error } = await supabase
+      .from('verifier_user_roles')
+      .update({
+        status: 'revoked',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', assignmentId)
+      .select()
+      .single();
+
+    if (error) {
+      Logger.error('Error revoking role assignment:', error);
+      throw error;
+    }
+
+    return data;
+  }
+
+  /**
+   * Get role assignments for a specific user in a server
+   */
+  async getUserRoleAssignments(userId: string, serverId?: string): Promise<any[]> {
+    let query = supabase
+      .from('verifier_user_roles')
+      .select(`
+        *,
+        verifier_rules!inner(*)
+      `)
+      .eq('user_id', userId)
+      .eq('status', 'active');
+
+    if (serverId) {
+      query = query.eq('server_id', serverId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      Logger.error('Error fetching user role assignments:', error);
+      throw error;
+    }
+
+    return data || [];
+  }
+
+  /**
+   * Get active assignments for a specific user
+   */
+  async getUserActiveAssignments(userId: string): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('verifier_user_roles')
+      .select(`
+        *,
+        verifier_rules:rule_id (*)
+      `)
+      .eq('user_id', userId)
+      .eq('status', 'active');
+
+    if (error) {
+      Logger.error('Error fetching user active assignments:', error);
+      throw error;
+    }
+
+    return data || [];
+  }
+
+  /**
+   * Get active assignments for a specific rule
+   */
+  async getRuleActiveAssignments(ruleId: string): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('verifier_user_roles')
+      .select('*')
+      .eq('rule_id', ruleId)
+      .eq('status', 'active');
+
+    if (error) {
+      Logger.error('Error fetching rule active assignments:', error);
+      throw error;
+    }
+
+    return data || [];
+  }
+
+  /**
+   * Get statistics about role assignments for monitoring
+   */
+  async getRoleAssignmentStats(): Promise<any> {
+    const { data, error } = await supabase
+      .from('verifier_user_roles')
+      .select('status, server_id, role_id')
+      .order('status');
+
+    if (error) {
+      Logger.error('Error fetching role assignment stats:', error);
+      throw error;
+    }
+
+    const stats = {
+      total: data?.length || 0,
+      active: data?.filter(r => r.status === 'active').length || 0,
+      expired: data?.filter(r => r.status === 'expired').length || 0,
+      revoked: data?.filter(r => r.status === 'revoked').length || 0,
+      byServer: {} as Record<string, number>
+    };
+
+    // Count by server
+    data?.forEach(assignment => {
+      if (assignment.status === 'active') {
+        stats.byServer[assignment.server_id] = (stats.byServer[assignment.server_id] || 0) + 1;
+      }
+    });
+
+    return stats;
+  }
+
+  /**
+   * Check if enhanced role tracking table exists
+   */
+  async checkEnhancedTrackingExists(): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('verifier_user_roles')
+        .select('id')
+        .limit(1);
+
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * Get user role assignment history for a specific server
+   */
+  async getUserRoleHistory(userId: string, serverId?: string): Promise<any[]> {
+    let query = supabase
+      .from('verifier_user_roles')
+      .select(`
+        *,
+        verifier_rules!inner(*)
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (serverId) {
+      query = query.eq('server_id', serverId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      Logger.error('Error fetching user role history:', error);
+      throw error;
+    }
+
+    return data || [];
+  }
+
+  /**
+   * Get user's latest verified address
+   */
+  async getUserLatestAddress(userId: string): Promise<string | null> {
+    const { data, error } = await supabase
+      .from('verifier_users')
+      .select('address')
+      .eq('user_id', userId)
+      .single();
+
+    if (error) {
+      Logger.debug(`No address found for user ${userId}:`, error.message);
+      return null;
+    }
+
+    return data?.address || null;
+  }
+
+  /**
+   * Get all unique users who have role assignments in a server
+   */
+  async getServerUniqueUsers(serverId: string): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('verifier_user_roles')
+      .select('user_id')
+      .eq('server_id', serverId)
+      .eq('status', 'active');
+
+    if (error) {
+      Logger.error('Error fetching server users:', error);
+      throw error;
+    }
+
+    // Return unique user IDs
+    const uniqueUsers = [...new Set(data?.map(row => row.user_id) || [])];
+    return uniqueUsers;
+  }
+
+  /**
+   * Update role assignment status by assignment ID
+   */
+  async updateRoleAssignmentStatus(assignmentId: string, status: 'active' | 'expired' | 'revoked'): Promise<any> {
+    const { data, error } = await supabase
+      .from('verifier_user_roles')
+      .update({
+        status,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', assignmentId)
+      .select()
+      .single();
+
+    if (error) {
+      Logger.error('Error updating role assignment status:', error);
+      throw error;
+    }
+
+    return data;
+  }
+
+  /**
+   * Update last verified timestamp for an assignment
+   */
+  async updateLastVerified(assignmentId: string): Promise<any> {
+    const { data, error } = await supabase
+      .from('verifier_user_roles')
+      .update({
+        last_checked: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', assignmentId)
+      .select()
+      .single();
+
+    if (error) {
+      Logger.error('Error updating last verified:', error);
+      throw error;
+    }
+
+    return data;
+  }
+
+  /**
+   * Count assignments by status
+   */
+  async countActiveAssignments(): Promise<number> {
+    const { count, error } = await supabase
+      .from('verifier_user_roles')
+      .select('*', { count: 'exact' })
+      .eq('status', 'active');
+
+    if (error) {
+      Logger.error('Error counting active assignments:', error);
+      throw error;
+    }
+
+    return count || 0;
+  }
+
+  async countRevokedAssignments(): Promise<number> {
+    const { count, error } = await supabase
+      .from('verifier_user_roles')
+      .select('*', { count: 'exact' })
+      .eq('status', 'revoked');
+
+    if (error) {
+      Logger.error('Error counting revoked assignments:', error);
+      throw error;
+    }
+
+    return count || 0;
+  }
+
+  async countExpiringSoonAssignments(hoursFromNow: number = 24): Promise<number> {
+    const expiryThreshold = new Date();
+    expiryThreshold.setHours(expiryThreshold.getHours() + hoursFromNow);
+
+    const { count, error } = await supabase
+      .from('verifier_user_roles')
+      .select('*', { count: 'exact' })
+      .eq('status', 'active')
+      .not('expires_at', 'is', null)
+      .lte('expires_at', expiryThreshold.toISOString());
+
+    if (error) {
+      Logger.error('Error counting expiring assignments:', error);
+      throw error;
+    }
+
+    return count || 0;
+  }
+
+  /**
+   * Get the last time re-verification was run
+   */
+  async getLastReverificationTime(): Promise<Date | null> {
+    const { data, error } = await supabase
+      .from('verifier_user_roles')
+      .select('last_checked')
+      .order('last_checked', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error) {
+      Logger.debug('No re-verification time found:', error.message);
+      return null;
+    }
+
+    return data?.last_checked ? new Date(data.last_checked) : null;
+  }
+
 }
 
 // create table

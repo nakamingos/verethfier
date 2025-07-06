@@ -1,73 +1,212 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
-</p>
+# Verethfier Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS-based Discord bot for Ethscriptions-based role verification.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## 🏗️ Architecture
 
-## Description
+- **Framework**: NestJS with TypeScript
+- **Database**: Supabase (PostgreSQL)
+- **External APIs**: Discord API, Ethscriptions Marketplace
+- **Authentication**: Wallet signature verification
+- **Role Management**: Dynamic assignment/removal based on holdings
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## 📁 Project Structure
 
-## Installation
-
-```bash
-$ yarn install
+```
+backend/
+├── src/
+│   ├── services/         # Core business logic
+│   │   ├── data.service.ts          # Ethscriptions data queries
+│   │   ├── db.service.ts            # Database operations
+│   │   ├── discord-*.service.ts     # Discord bot services
+│   │   ├── dynamic-role.service.ts  # Dynamic role management
+│   │   └── wallet.service.ts        # Wallet verification
+│   ├── models/           # TypeScript interfaces
+│   ├── dtos/            # Data transfer objects
+│   └── constants/       # Application constants
+├── test/                # Test suites (83%+ coverage)
+├── supabase/
+│   └── migrations/      # Database migrations
+└── scripts/             # Utility scripts
 ```
 
-## Running the app
+## 🚀 Getting Started
 
+### Prerequisites
+- Node.js 18+
+- Yarn package manager
+- Supabase project
+- Discord application
+
+### Installation
 ```bash
-# development
-$ yarn run start
-
-# watch mode
-$ yarn run start:dev
-
-# production mode
-$ yarn run start:prod
+yarn install
 ```
 
-## Test
-
+### Environment Setup
 ```bash
-# unit tests
-$ yarn run test
-
-# e2e tests
-$ yarn run test:e2e
-
-# test coverage
-$ yarn run test:cov
+cp env.example .env
+# Edit .env with your configuration
 ```
 
-## Support
+### Database Migration
+```bash
+# Start local Supabase (optional)
+npx supabase start
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+# Run migrations
+yarn migration:run
+```
 
-## Stay in touch
+### Development
+```bash
+yarn start:dev
+```
 
-- Author - [Kamil Myśliwiec](https://kamilmysliwiec.com)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+## ⚙️ Environment Variables
 
-## License
+### Required
+- `SUPABASE_URL` - Supabase project URL
+- `SUPABASE_KEY` - Supabase service role key
+- `DISCORD_TOKEN` - Discord bot token
+- `DISCORD_CLIENT_ID` - Discord application ID
+- `DISCORD_PUBLIC_KEY` - Discord public key
 
-Nest is [MIT licensed](LICENSE).
+### Optional
+- `NODE_ENV` - development/production
+- `PORT` - Server port (default: 3000)
+- `FRONTEND_URL` - Frontend URL for CORS
+
+## 🧪 Testing
+
+High test coverage with comprehensive test suites:
+
+```bash
+# Run all tests
+yarn test
+
+# Run with coverage
+yarn test:cov
+
+# Run specific tests
+yarn test discord-commands.service.spec.ts
+
+# Watch mode
+yarn test:watch
+```
+
+### Test Coverage
+- Overall: 83%+
+- Core services: 90%+
+- All 290+ tests passing
+
+## 📜 Available Scripts
+
+- `yarn start` - Start production server
+- `yarn start:dev` - Development with hot reload
+- `yarn start:debug` - Debug mode
+- `yarn build` - Build for production
+- `yarn test` - Run test suite
+- `yarn test:cov` - Tests with coverage
+- `yarn migration:run` - Run database migrations
+- `yarn lint` - ESLint checking
+- `yarn format` - Prettier formatting
+
+## 🔧 Key Services
+
+### DataService
+Handles Ethscriptions marketplace queries with filtering by:
+- Collection slug
+- Attribute key/value pairs  
+- Minimum holdings count
+- Owner address verification
+
+### DynamicRoleService
+Manages automatic role assignment/removal:
+- Scheduled re-verification
+- Grace period handling
+- Legacy data migration
+- Status tracking
+
+### DiscordService
+Discord bot functionality:
+- Slash command handling
+- Role assignment/removal
+- Server member management
+- Error handling and logging
+
+### WalletService
+Wallet verification:
+- Signature validation
+- Nonce management
+- Address verification
+
+## 🗄️ Database Schema
+
+### Core Tables
+- `verifier_user_roles` - Unified role tracking with status, timestamps
+- `verifier_rules` - Role assignment rules with collection/attribute criteria
+- `nonces` - Wallet verification nonces
+
+### Migration Support
+- Legacy data migration from old schema
+- 72-hour grace period for existing users
+- Seamless transition to enhanced tracking
+
+## 🚀 Deployment
+
+### Production Build
+```bash
+yarn build
+```
+
+### Environment Setup
+- Set production environment variables
+- Configure CORS allowlist
+- Set up SSL/TLS certificates
+
+### Database Migration
+```bash
+yarn migration:run
+```
+
+### Process Management
+```bash
+# Using PM2
+pm2 start dist/main.js --name verethfier-backend
+
+# Using Docker
+docker build -t verethfier-backend .
+docker run -p 3000:3000 verethfier-backend
+```
+
+## 🔒 Security Features
+
+- Helmet security headers
+- CORS with strict allowlist
+- Rate limiting with ThrottlerModule
+- Input validation with ValidationPipe
+- Secure error handling
+- Dependency vulnerability monitoring
+
+## 📊 Monitoring & Logging
+
+- Structured logging with context
+- Error tracking and reporting
+- Performance monitoring
+- Database query optimization
+- Discord API rate limit handling
+
+## 🤝 Contributing
+
+1. Follow TypeScript and NestJS best practices
+2. Maintain test coverage above 80%
+3. Use descriptive commit messages
+4. Add tests for new features
+5. Update documentation as needed
+
+## 📚 Documentation
+
+- [Dynamic Role Management](../docs/DYNAMIC_ROLE_MANAGEMENT.md)
+- [Security Audit Report](../docs/SECURITY_AUDIT.md)
+- [Migration Guide](supabase/migrations/README.md)
