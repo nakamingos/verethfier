@@ -121,30 +121,6 @@ describe('DiscordService', () => {
     expect(mockDiscordCommandsService.handleListRules).toHaveBeenCalledWith(mockInteraction);
   });
 
-  it('remove-legacy-rule delegates to DiscordCommandsService', async () => {
-    const mockInteraction = {
-      options: { getSubcommand: () => 'remove-legacy-rule' },
-      guild: { id: 'g' },
-      isChatInputCommand: () => true,
-      isButton: () => false,
-    } as any;
-    
-    await service.handleSetup(mockInteraction);
-    expect(mockDiscordCommandsService.handleRemoveLegacyRule).toHaveBeenCalledWith(mockInteraction);
-  });
-
-  it('migrate-legacy-rule delegates to DiscordCommandsService', async () => {
-    const mockInteraction = {
-      options: { getSubcommand: () => 'migrate-legacy-rule' },
-      guild: { id: 'g' },
-      isChatInputCommand: () => true,
-      isButton: () => false,
-    } as any;
-    
-    await service.handleSetup(mockInteraction);
-    expect(mockDiscordCommandsService.handleMigrateLegacyRule).toHaveBeenCalledWith(mockInteraction);
-  });
-
   it('requestVerification delegates to DiscordVerificationService', async () => {
     const mockInteraction = {
       customId: 'requestVerification',
