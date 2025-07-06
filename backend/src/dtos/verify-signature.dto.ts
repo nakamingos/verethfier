@@ -1,12 +1,7 @@
-import { IsString, IsNotEmpty, IsObject, ValidateNested, IsNumber, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsObject, ValidateNested, IsNumber, IsOptional, IsUrl } from 'class-validator';
 import { Type } from 'class-transformer';
-import { DecodedData } from '@/models/app.interface';
 
-export class DecodedDataDto implements DecodedData {
-  @IsString()
-  @IsNotEmpty()
-  address: string;
-
+export class DecodedDataDto {
   @IsString()
   @IsNotEmpty()
   userId: string;
@@ -16,7 +11,7 @@ export class DecodedDataDto implements DecodedData {
   userTag: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsUrl()
   avatar: string;
 
   @IsString()
@@ -28,7 +23,7 @@ export class DecodedDataDto implements DecodedData {
   discordName: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsUrl()
   discordIcon: string;
 
   @IsString()
@@ -45,13 +40,17 @@ export class DecodedDataDto implements DecodedData {
 
   @IsNumber()
   expiry: number;
+
+  @IsString()
+  @IsNotEmpty()
+  address: string;
 }
 
 export class VerifySignatureDto {
   @IsObject()
   @ValidateNested()
   @Type(() => DecodedDataDto)
-  data: DecodedDataDto & { address?: string };
+  data: DecodedDataDto;
 
   @IsString()
   @IsNotEmpty()

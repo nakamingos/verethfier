@@ -33,24 +33,13 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   
   // Security: Restrict CORS to known origins
-  const allowedOrigins = [
-    'http://localhost:4200',  // Development frontend
-    'https://yourdomain.com', // Production frontend (update this)
-    'https://www.yourdomain.com'
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
+    'http://localhost:4200',  // Angular development server
+    'http://localhost:3000',  // Alternative dev port
   ];
   
   app.enableCors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
-      
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      } else {
-        Logger.warn(`CORS blocked origin: ${origin}`);
-        return callback(new Error('Not allowed by CORS'));
-      }
-    },
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type', 'Authorization'],
