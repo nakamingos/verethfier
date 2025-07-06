@@ -104,8 +104,6 @@ const mockDiscordCommandsService = {
   handleRemoveRule: jest.fn(),
   handleListRules: jest.fn(),
   handleRecoverVerification: jest.fn(),
-  handleRemoveLegacyRule: jest.fn(),
-  handleMigrateLegacyRule: jest.fn(),
 };
 
 describe('DiscordService - Enhanced Tests', () => {
