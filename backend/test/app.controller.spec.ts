@@ -27,11 +27,26 @@ describe('AppController', () => {
       
       const result = await controller.verify(body as any);
       
-      expect(mockVerifyService.verifySignatureFlow).toHaveBeenCalledWith(body.data, body.signature);
+      // The controller now transforms the data to match the expected interface
+      const expectedData = {
+        address: '',
+        userId: 'u',
+        userTag: '',
+        avatar: '',
+        discordId: '',
+        discordName: '',
+        discordIcon: '',
+        role: '',
+        roleName: '',
+        nonce: 'n',
+        expiry: body.data.expiry,
+      };
+      
+      expect(mockVerifyService.verifySignatureFlow).toHaveBeenCalledWith(expectedData, body.signature);
       expect(result).toEqual({ message: 'ok' });
     });
 
-    it('returns error object when VerifyService throws', async () => {
+    it('throws HttpException when VerifyService throws', async () => {
       const errorMessage = 'Verification failed';
       mockVerifyService.verifySignatureFlow.mockRejectedValue(new Error(errorMessage));
       const body = {
@@ -39,33 +54,27 @@ describe('AppController', () => {
         signature: 'sig',
       };
       
-      const result = await controller.verify(body as any);
-      
-      expect(result).toEqual({ error: errorMessage });
+      await expect(controller.verify(body as any)).rejects.toThrow('Verification failed. Please try again.');
     });
 
-    it('returns generic error message when error has no message', async () => {
+    it('throws HttpException when error has no message', async () => {
       mockVerifyService.verifySignatureFlow.mockRejectedValue(new Error());
       const body = {
         data: { userId: 'u', nonce: 'n', expiry: Date.now() / 1000 },
         signature: 'sig',
       };
       
-      const result = await controller.verify(body as any);
-      
-      expect(result).toEqual({ error: 'An error occurred during verification' });
+      await expect(controller.verify(body as any)).rejects.toThrow('Verification failed. Please try again.');
     });
 
-    it('returns generic error message when error is not an Error object', async () => {
+    it('throws HttpException when error is not an Error object', async () => {
       mockVerifyService.verifySignatureFlow.mockRejectedValue('string error');
       const body = {
         data: { userId: 'u', nonce: 'n', expiry: Date.now() / 1000 },
         signature: 'sig',
       };
       
-      const result = await controller.verify(body as any);
-      
-      expect(result).toEqual({ error: 'An error occurred during verification' });
+      await expect(controller.verify(body as any)).rejects.toThrow('Verification failed. Please try again.');
     });
 
     it('handles successful verification with address', async () => {
