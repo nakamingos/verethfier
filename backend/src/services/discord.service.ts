@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 
 import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, CacheType, ChannelType, ChatInputCommandInteraction, Client, EmbedBuilder, Events, GatewayIntentBits, GuildTextBasedChannel, InteractionResponse, MessageFlags, PermissionFlagsBits, REST, Routes, SlashCommandBuilder } from 'discord.js';
 
@@ -13,7 +13,7 @@ dotenv.config();
 
 const EXPIRY = Number(process.env.NONCE_EXPIRY);
 
-Injectable()
+@Injectable()
 export class DiscordService {
 
   private client: Client | null = null;
@@ -24,6 +24,7 @@ export class DiscordService {
     private readonly dbSvc: DbService,
     private readonly discordMessageSvc: DiscordMessageService,
     private readonly discordVerificationSvc: DiscordVerificationService,
+    @Inject(forwardRef(() => DiscordCommandsService))
     private readonly discordCommandsSvc: DiscordCommandsService,
   ) {
     if (Number(process.env.DISCORD)) {

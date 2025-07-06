@@ -126,6 +126,18 @@ export class VerifyService {
         throw new Error(errorMsg);
       }
       
+      // Send verification complete message with all assigned roles
+      try {
+        await this.discordVerificationSvc.sendVerificationComplete(
+          payload.discordId,
+          payload.nonce,
+          assignedRoles
+        );
+      } catch (error) {
+        Logger.error('Failed to send verification complete message:', error);
+        // Log the error but don't fail the verification process
+      }
+      
       Logger.log(`Message-based verification completed. Assigned ${assignedRoles.length} roles: ${assignedRoles.join(', ')}`);
       return { 
         message: `Verification successful (message-based) - ${assignedRoles.length} roles assigned`, 
@@ -177,6 +189,19 @@ export class VerifyService {
         guild?.name || `Guild-${payload.discordId}`,
         role?.name || `Role-${legacyRoleId}`
       );
+      
+      // Send verification complete message with the assigned role
+      try {
+        await this.discordVerificationSvc.sendVerificationComplete(
+          payload.discordId,
+          payload.nonce,
+          [legacyRoleId]
+        );
+      } catch (error) {
+        Logger.error('Failed to send verification complete message (legacy):', error);
+        // Log the error but don't fail the verification process
+      }
+      
       Logger.log(`✅ Legacy path: Successfully assigned role: ${legacyRoleId}`);
       return { message: 'Verification successful (legacy)', address };
     }
@@ -203,6 +228,7 @@ export class VerifyService {
       throw new Error(errorMsg);
     }
 
+    const assignedRoleIds = [];
     for (const r of matched) {
       Logger.log(`Multi-rule path: Assigning role ${r.role_id} for rule ${r.id}: slug=${r.slug}, attr=${r.attribute_key}=${r.attribute_value}, min_items=${r.min_items}`);
       
@@ -234,8 +260,22 @@ export class VerifyService {
         guild?.name || `Guild-${payload.discordId}`,
         role?.name || `Role-${r.role_id}`
       );
+      assignedRoleIds.push(r.role_id);
       Logger.log(`✅ Multi-rule path: Successfully assigned role: ${r.role_id} for rule ${r.id}: slug=${r.slug}, attr=${r.attribute_key}=${r.attribute_value}, min_items=${r.min_items}`);
     }
-    return { message: 'Verification successful', address };
+    
+    // Send verification complete message with all assigned roles
+    try {
+      await this.discordVerificationSvc.sendVerificationComplete(
+        payload.discordId,
+        payload.nonce,
+        assignedRoleIds
+      );
+    } catch (error) {
+      Logger.error('Failed to send verification complete message (multi-rule):', error);
+      // Log the error but don't fail the verification process
+    }
+    
+    return { message: 'Verification successful', address, assignedRoles: assignedRoleIds };
   }
 }

@@ -3,8 +3,8 @@ describe('matchesRule', () => {
   const baseRule = {
     slug: null,
     channel_id: null,
-    attr_key: null,
-    attr_val: null,
+    attribute_key: null,
+    attribute_value: null,
     min_items: 1,
   };
   const assets = [
