@@ -173,9 +173,21 @@ describe('DiscordVerificationService', () => {
               description: 'Test error message'
             })
           })
-        ])
+        ]),
+        components: [] // Expect components to be cleared
       });
       expect(service.tempMessages[nonce]).toBeUndefined();
+    });
+
+    it('should remove verify button when sending error message', async () => {
+      const nonce = 'test-nonce';
+      service.tempMessages[nonce] = mockInteraction as any;
+
+      await service.throwError(nonce, 'Test error message');
+
+      // Verify that components array is empty (no "Verify Now" button)
+      const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
+      expect(editReplyCall.components).toEqual([]);
     });
 
     it('should handle missing stored interaction gracefully', async () => {
@@ -229,7 +241,8 @@ describe('DiscordVerificationService', () => {
               description: expect.stringContaining('Test Role')
             })
           })
-        ])
+        ]),
+        components: [] // Expect components to be cleared
       });
       expect(service.tempMessages[nonce]).toBeUndefined(); // Should be cleaned up
     });
@@ -256,8 +269,52 @@ describe('DiscordVerificationService', () => {
               description: expect.stringMatching(/Test Role[\s\S]*Test Role 2/)
             })
           })
-        ])
+        ]),
+        components: [] // Expect components to be cleared
       });
+    });
+
+    it('should deduplicate duplicate role IDs in the roles list', async () => {
+      const nonce = 'test-nonce';
+      const mockRole = { id: 'role-id', name: 'GIF Goddess' };
+      // Mock the role cache
+      mockClient.guilds.cache.get('guild-id').roles.cache.get.mockImplementation((roleId: string) => {
+        if (roleId === 'role-id') return mockRole;
+        return undefined;
+      });
+      service.tempMessages[nonce] = mockInteraction as any;
+
+      // Pass duplicate role IDs (same role assigned by multiple rules)
+      await service.sendVerificationComplete('guild-id', nonce, ['role-id', 'role-id', 'role-id']);
+
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        embeds: expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              title: 'Verification Successful',
+              description: expect.stringContaining('• GIF Goddess')
+            })
+          })
+        ]),
+        components: [] // Expect components to be cleared
+      });
+      
+      // Verify that 'GIF Goddess' appears only once in the description
+      const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
+      const description = editReplyCall.embeds[0].data.description;
+      const matches = description.match(/• GIF Goddess/g);
+      expect(matches).toHaveLength(1); // Should appear only once, not three times
+    });
+
+    it('should remove verify button when sending success message', async () => {
+      const nonce = 'test-nonce';
+      service.tempMessages[nonce] = mockInteraction as any;
+
+      await service.sendVerificationComplete('guild-id', nonce, ['role-id']);
+
+      // Verify that components array is empty (no "Verify Now" button)
+      const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
+      expect(editReplyCall.components).toEqual([]);
     });
 
     it('should handle error when guild not found', async () => {

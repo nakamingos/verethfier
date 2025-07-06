@@ -86,7 +86,22 @@ describe('DiscordCommandsService', () => {
       expect(mockDbService.getLegacyRoles).toHaveBeenCalledWith('guild-id');
       expect(mockInteraction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        content: expect.stringContaining('migrate or remove the legacy rule')
+        embeds: [
+          expect.objectContaining({
+            data: {
+              color: 0xFF0000, // Red color for error
+              title: '❌ Legacy Rules Exist',
+              description: 'You must migrate or remove the legacy rule(s) for this server before adding new rules.',
+              fields: [
+                {
+                  name: '💡 What you can do:',
+                  value: '• Use `/setup migrate-legacy-rule` to migrate legacy rules\n• Use `/setup remove-legacy-rule` to remove legacy rules',
+                  inline: false
+                }
+              ]
+            }
+          })
+        ]
       });
     });
 
@@ -262,7 +277,7 @@ describe('DiscordCommandsService', () => {
       const call = mockInteraction.editReply.mock.calls[0][0];
       expect(call.embeds).toBeDefined();
       expect(call.embeds.length).toBeGreaterThan(0);
-      expect(call.embeds[0].data.title).toBe('❌ Error Creating Rule');
+      expect(call.embeds[0].data.title).toBe('❌ Rule Creation Failed');
       expect(call.embeds[0].data.description).toContain('Failed to create the rule');
       
       // Cleanup
@@ -505,7 +520,22 @@ describe('DiscordCommandsService', () => {
       await service.handleAddRule(mockInteraction);
 
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        content: expect.stringContaining('A role named "Admin Role" already exists but is positioned higher than the bot\'s role')
+        embeds: [
+          expect.objectContaining({
+            data: {
+              color: 0xFF0000, // Red color for error
+              title: '❌ Role Hierarchy Issue',
+              description: 'A role named "Admin Role" already exists but is positioned higher than the bot\'s role. The bot cannot manage this role.',
+              fields: [
+                {
+                  name: '💡 What you can do:',
+                  value: '• Use a different role name\n• Move the bot\'s role higher in the server settings\n• Ask an admin to move the "Admin Role" role below the bot\'s role',
+                  inline: false
+                }
+              ]
+            }
+          })
+        ]
       });
       expect(mockDbService.addRoleMapping).not.toHaveBeenCalled();
     });
@@ -544,7 +574,22 @@ describe('DiscordCommandsService', () => {
       await service.handleAddRule(mockInteraction);
 
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        content: expect.stringContaining('A role named "admin" already exists but is positioned higher than the bot\'s role')
+        embeds: [
+          expect.objectContaining({
+            data: {
+              color: 0xFF0000, // Red color for error
+              title: '❌ Role Hierarchy Issue',
+              description: 'A role named "admin" already exists but is positioned higher than the bot\'s role. The bot cannot manage this role.',
+              fields: [
+                {
+                  name: '💡 What you can do:',
+                  value: '• Use a different role name\n• Move the bot\'s role higher in the server settings\n• Ask an admin to move the "admin" role below the bot\'s role',
+                  inline: false
+                }
+              ]
+            }
+          })
+        ]
       });
       expect(mockDbService.addRoleMapping).not.toHaveBeenCalled();
     });
@@ -585,7 +630,22 @@ describe('DiscordCommandsService', () => {
       await service.handleAddRule(mockInteraction);
 
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        content: '❌ A role named "member" already exists in this server. Please choose a different name for the new role.'
+        embeds: [
+          expect.objectContaining({
+            data: {
+              color: 0xFF0000, // Red color for error
+              title: '❌ Duplicate Role Name',
+              description: 'A role named "member" already exists in this server.',
+              fields: [
+                {
+                  name: '💡 What you can do:',
+                  value: '• Choose a different name for the new role',
+                  inline: false
+                }
+              ]
+            }
+          })
+        ]
       });
       expect(mockDbService.addRoleMapping).not.toHaveBeenCalled();
     });
@@ -713,13 +773,32 @@ describe('DiscordCommandsService', () => {
         );
 
         expect(mockInteraction.editReply).toHaveBeenCalledWith({
-          embeds: expect.arrayContaining([
+          embeds: [
             expect.objectContaining({
-              data: expect.objectContaining({
-                title: '⚠️ Duplicate Rule Detected'
-              })
+              data: {
+                color: 0xFFA500, // Orange color for warning
+                title: '⚠️ Duplicate Rule Criteria',
+                description: 'A rule with the same criteria already exists for a different role. Users meeting these criteria will receive **both roles**. This might be intentional (role stacking) or an error.',
+                fields: [
+                  {
+                    name: 'Existing Rule',
+                    value: '**Existing Role**\n**Role:** <@&existing-role-id>\n**Collection:** test-collection\n**Attribute:** Gold=rare\n**Min Items:** 1',
+                    inline: true
+                  },
+                  {
+                    name: 'New Rule (Proposed)',
+                    value: '**Test Role**\n**Role:** <@&role-id>\n**Collection:** test-collection\n**Attribute:** Gold=rare\n**Min Items:** 1',
+                    inline: true
+                  },
+                  {
+                    name: '💡 What you can do:',
+                    value: '• Click "Create Anyway" to proceed with role stacking\n• Click "Cancel" to modify your criteria',
+                    inline: false
+                  }
+                ]
+              }
             })
-          ]),
+          ],
           components: expect.any(Array)
         });
       });
@@ -819,15 +898,27 @@ describe('DiscordCommandsService', () => {
         );
 
         expect(mockInteraction.editReply).toHaveBeenCalledWith({
-          embeds: expect.arrayContaining([
+          embeds: [
             expect.objectContaining({
-              data: expect.objectContaining({
-                title: '❌ Duplicate Rule',
-                description: 'This exact rule already exists!'
-              })
+              data: {
+                color: 0xFF0000, // Red color for error
+                title: '❌ Exact Duplicate Rule',
+                description: 'This exact rule already exists!',
+                fields: [
+                  {
+                    name: 'Existing Rule',
+                    value: '**Role:** <@&role-id>\n**Collection:** test-collection\n**Attribute:** Gold=rare\n**Min Items:** 1',
+                    inline: false
+                  },
+                  {
+                    name: '💡 What you can do:',
+                    value: '• Use different criteria (collection, attribute, or min items)\n• Remove the existing rule first with `/setup remove-rule`\n• Check existing rules with `/setup list-rules`',
+                    inline: false
+                  }
+                ]
+              }
             })
-          ]),
-          components: []
+          ]
         });
         expect(mockDbService.addRoleMapping).not.toHaveBeenCalled();
       });
@@ -854,13 +945,15 @@ describe('DiscordCommandsService', () => {
 
       expect(mockDbService.deleteRoleMapping).toHaveBeenCalledWith('1', 'guild-id');
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: expect.arrayContaining([
+        embeds: [
           expect.objectContaining({
-            data: expect.objectContaining({
-              title: 'Rule Removed'
-            })
+            data: {
+              color: 0x00FF00, // Green color for success
+              title: '✅ Rule Removed',
+              description: 'Rule ID 1 removed.'
+            }
           })
-        ])
+        ]
       });
     });
   });
@@ -895,11 +988,11 @@ describe('DiscordCommandsService', () => {
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
         embeds: [
           expect.objectContaining({
-            data: expect.objectContaining({
-              title: 'Verification Rules',
-              description: expect.stringContaining('[LEGACY] Rule'),
-              color: 12844800
-            })
+            data: {
+              color: 0xC3FF00, // Lime color for info
+              title: '📋 Verification Rules',
+              description: '[LEGACY] Rule: <@&role-id> (from legacy setup, please migrate or remove)\n\n⚠️ [LEGACY] rules are from the old setup and may assign outdated roles. Please migrate to the new rules system and remove legacy rules.'
+            }
           })
         ]
       });
@@ -1017,11 +1110,33 @@ describe('DiscordCommandsService', () => {
       expect(mockDbService.updateRuleMessageId).toHaveBeenCalledWith(1, 'new-message-id');
       expect(mockDbService.updateRuleMessageId).toHaveBeenCalledWith(2, 'new-message-id');
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: [expect.objectContaining({
-          data: expect.objectContaining({
-            title: 'Verification Recovery Complete'
+        embeds: [
+          expect.objectContaining({
+            data: expect.objectContaining({
+              color: 0x00FF00, // Green color for success
+              title: '✅ Verification Recovery Complete',
+              description: 'Successfully recovered verification setup for <#channel-id>',
+              fields: [
+                {
+                  name: 'New Message Created',
+                  value: 'Message ID: new-message-id',
+                  inline: false
+                },
+                {
+                  name: 'Rules Updated',
+                  value: '2/2 rules updated',
+                  inline: true
+                },
+                {
+                  name: 'Roles Affected',
+                  value: '<@&role-1>, <@&role-2>',
+                  inline: false
+                }
+              ],
+              timestamp: expect.any(String) // Allow any timestamp
+            })
           })
-        })]
+        ]
       });
     });
 
@@ -1051,7 +1166,7 @@ describe('DiscordCommandsService', () => {
       await service.handleRecoverVerification(mockInteraction as any);
 
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        content: 'No orphaned verification rules found for this channel. All existing verification messages appear to be intact.'
+        content: '✅ No orphaned verification rules found for this channel. All existing verification messages appear to be intact.'
       });
       expect(mockDiscordMessageService.createVerificationMessage).not.toHaveBeenCalled();
     });
