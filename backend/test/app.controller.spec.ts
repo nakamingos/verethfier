@@ -27,7 +27,22 @@ describe('AppController', () => {
       
       const result = await controller.verify(body as any);
       
-      expect(mockVerifyService.verifySignatureFlow).toHaveBeenCalledWith(body.data, body.signature);
+      // The controller now transforms the data to match the expected interface
+      const expectedData = {
+        address: '',
+        userId: 'u',
+        userTag: '',
+        avatar: '',
+        discordId: '',
+        discordName: '',
+        discordIcon: '',
+        role: '',
+        roleName: '',
+        nonce: 'n',
+        expiry: body.data.expiry,
+      };
+      
+      expect(mockVerifyService.verifySignatureFlow).toHaveBeenCalledWith(expectedData, body.signature);
       expect(result).toEqual({ message: 'ok' });
     });
 

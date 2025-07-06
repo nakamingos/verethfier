@@ -24,22 +24,35 @@ async function bootstrap() {
 
   // Security: Global validation pipe for input validation
   app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
+    whitelist: false, // Don't strip unknown properties for flexibility
+    forbidNonWhitelisted: false, // Allow unknown properties
     transform: true,
     disableErrorMessages: process.env.NODE_ENV === 'production',
+    skipMissingProperties: true, // Allow optional properties
   }));
 
   app.setGlobalPrefix('api');
   
   // Security: Restrict CORS to known origins
-  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
-    'http://localhost:4200',  // Angular development server
-    'http://localhost:3000',  // Alternative dev port
-  ];
-  
+  const allowedOrigins = [
+    process.env.BASE_URL || 'http://localhost:4200',
+    'http://localhost:4200', // Always allow local frontend for development
+    'http://localhost:3000', // Common alternative port
+    // Add production domain here when deployed
+  ].filter(Boolean);
+
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, etc.)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        Logger.warn(`CORS blocked origin: ${origin}`, 'Security');
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type', 'Authorization'],

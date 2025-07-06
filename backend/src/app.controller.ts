@@ -2,6 +2,7 @@ import { Body, Controller, Post, HttpException, HttpStatus, Logger } from '@nest
 
 import { VerifyService } from './services/verify.service';
 import { VerifySignatureDto } from './dtos/verify-signature.dto';
+import { DecodedData } from './models/app.interface';
 
 @Controller()
 export class AppController {
@@ -10,8 +11,23 @@ export class AppController {
   @Post('verify-signature')
   async verify(@Body() body: VerifySignatureDto) {
     try {
+      // Convert DTO data to match expected interface
+      const decodedData = {
+        address: body.data.address || '',
+        userId: body.data.userId || '',
+        userTag: body.data.userTag || '',
+        avatar: body.data.avatar || '',
+        discordId: body.data.discordId || '',
+        discordName: body.data.discordName || '',
+        discordIcon: body.data.discordIconURL || body.data.discordIcon || '',
+        role: body.data.role || '',
+        roleName: body.data.roleName || '',
+        nonce: body.data.nonce || '',
+        expiry: body.data.expiry || 0,
+      };
+
       const result = await this.verifySvc.verifySignatureFlow(
-        body.data,
+        decodedData,
         body.signature
       );
       return result;
