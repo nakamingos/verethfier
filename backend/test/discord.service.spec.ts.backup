@@ -22,6 +22,7 @@ const mockGuild = {
   }
 };
 const mockRole = { id: 'role123', name: 'TestRole', position: 5, editable: true };
+const mockChannel = { id: 'channel123', type: 0 };
 
 const mockClient = {
   on: jest.fn(),
@@ -108,7 +109,7 @@ const mockDiscordCommandsService = {
   handleMigrateLegacyRule: jest.fn(),
 };
 
-describe('DiscordService - Enhanced Tests', () => {
+describe('DiscordService', () => {
   let service: DiscordService;
   let originalEnv: NodeJS.ProcessEnv;
 
@@ -140,9 +141,6 @@ describe('DiscordService - Enhanced Tests', () => {
     }).compile();
     service = module.get<DiscordService>(DiscordService);
     jest.clearAllMocks();
-    
-    // Set up client for tests that need it
-    (service as any).client = mockClient;
   });
 
   describe('Initialization', () => {
@@ -150,67 +148,48 @@ describe('DiscordService - Enhanced Tests', () => {
       expect(service).toBeDefined();
     });
 
-    it('should initialize bot successfully', async () => {
-      // Reset client to null to test initialization
-      (service as any).client = null;
+    it('should initialize bot when DISCORD env is enabled', async () => {
+      // Mock environment to enable Discord
+      const originalDiscord = process.env.DISCORD;
+      process.env.DISCORD = '1';
+
+      // Create new service instance
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          DiscordService,
+          { provide: NonceService, useValue: mockNonceService },
+          { provide: DbService, useValue: mockDbService },
+          { provide: DiscordMessageService, useValue: mockDiscordMessageService },
+          { provide: DiscordVerificationService, useValue: mockDiscordVerificationService },
+          { provide: DiscordCommandsService, useValue: mockDiscordCommandsService },
+        ],
+      }).compile();
+
+      const newService = module.get<DiscordService>(DiscordService);
       
-      let readyCallback: Function;
-      mockClient.on.mockImplementation((event, callback) => {
-        if (event === 'ready') {
-          readyCallback = callback;
-        }
-      });
-
-      const initPromise = service.initializeBot();
-      
-      // Simulate ready event
-      if (readyCallback) {
-        readyCallback(mockClient);
-      }
-
-      await initPromise;
-
+      // Verify initializeBot was called indirectly through constructor
+      expect(mockClient.on).toHaveBeenCalled();
       expect(mockClient.login).toHaveBeenCalledWith('test-token');
-      expect(mockDiscordMessageService.initialize).toHaveBeenCalledWith(mockClient);
-      expect(mockDiscordVerificationService.initialize).toHaveBeenCalledWith(mockClient);
-      expect(mockDiscordCommandsService.initialize).toHaveBeenCalledWith(mockClient);
-    });
 
-    it('should not initialize bot multiple times', async () => {
-      // Reset client to null to test the guard clause
-      (service as any).client = null;
-      
-      // First initialization
-      let readyCallback: Function;
-      mockClient.on.mockImplementation((event, callback) => {
-        if (event === 'ready') {
-          readyCallback = callback;
-        }
-      });
-
-      const initPromise1 = service.initializeBot();
-      
-      // Trigger ready event for first init
-      if (readyCallback) {
-        readyCallback(mockClient);
-      }
-      
-      await initPromise1;
-      
-      // Clear mock calls from first initialization
-      mockClient.login.mockClear();
-      
-      // Second call should be no-op since client is now set
-      await service.initializeBot();
-      
-      expect(mockClient.login).toHaveBeenCalledTimes(0); // Should not be called again
+      // Restore environment
+      process.env.DISCORD = originalDiscord;
     });
 
     it('should handle bot initialization errors', async () => {
-      // This test verifies error handling in the login process
-      // We skip the actual promise rejection test due to the complex async nature
-      // of the initializeBot method with event listeners
-      expect(true).toBe(true); // Placeholder for complex async error handling
+      const loggerErrorSpy = jest.spyOn(Logger, 'error').mockImplementation();
+      mockClient.login.mockRejectedValueOnce(new Error('Login failed'));
+
+      // Call initializeBot directly to test error handling
+      await expect(service.initializeBot()).rejects.toThrow('Login failed');
+      
+      loggerErrorSpy.mockRestore();
+    });
+
+    it('should not initialize bot multiple times', async () => {
+      await service.initializeBot();
+      await service.initializeBot(); // Second call should be no-op
+      
+      expect(mockClient.login).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -242,10 +221,6 @@ describe('DiscordService - Enhanced Tests', () => {
   });
 
   describe('Discord API Interactions', () => {
-    beforeEach(() => {
-      mockGuild.roles.fetch.mockResolvedValue(mockRole);
-    });
-
     describe('getUser', () => {
       it('should fetch user successfully', async () => {
         const result = await service.getUser('user123');
@@ -270,6 +245,7 @@ describe('DiscordService - Enhanced Tests', () => {
 
       it('should handle no client initialized', async () => {
         const loggerWarnSpy = jest.spyOn(Logger, 'warn').mockImplementation();
+        // Temporarily remove client
         (service as any).client = null;
         
         const result = await service.getUser('user123');
@@ -278,6 +254,7 @@ describe('DiscordService - Enhanced Tests', () => {
         expect(loggerWarnSpy).toHaveBeenCalledWith('Discord client not initialized when fetching user');
         loggerWarnSpy.mockRestore();
         
+        // Restore client for other tests
         (service as any).client = mockClient;
       });
     });
@@ -319,6 +296,10 @@ describe('DiscordService - Enhanced Tests', () => {
     });
 
     describe('getRole', () => {
+      beforeEach(() => {
+        mockGuild.roles.fetch.mockResolvedValue(mockRole);
+      });
+
       it('should fetch role successfully', async () => {
         const result = await service.getRole('guild123', 'role123');
         
@@ -357,10 +338,14 @@ describe('DiscordService - Enhanced Tests', () => {
   });
 
   describe('Command Handling', () => {
-    it('should handle add-rule command', async () => {
+
+  describe('Command Handling', () => {
+    it('add-rule delegates to DiscordCommandsService', async () => {
       const mockInteraction = {
         options: { getSubcommand: () => 'add-rule' },
         guild: { id: 'g' },
+        isChatInputCommand: () => true,
+        isButton: () => false,
         deferred: false,
         replied: false
       } as any;
@@ -369,10 +354,12 @@ describe('DiscordService - Enhanced Tests', () => {
       expect(mockDiscordCommandsService.handleAddRule).toHaveBeenCalledWith(mockInteraction);
     });
 
-    it('should handle remove-rule command', async () => {
+    it('remove-rule delegates to DiscordCommandsService', async () => {
       const mockInteraction = {
         options: { getSubcommand: () => 'remove-rule' },
         guild: { id: 'g' },
+        isChatInputCommand: () => true,
+        isButton: () => false,
         deferred: false,
         replied: false
       } as any;
@@ -381,10 +368,12 @@ describe('DiscordService - Enhanced Tests', () => {
       expect(mockDiscordCommandsService.handleRemoveRule).toHaveBeenCalledWith(mockInteraction);
     });
 
-    it('should handle list-rules command', async () => {
+    it('list-rules delegates to DiscordCommandsService', async () => {
       const mockInteraction = {
         options: { getSubcommand: () => 'list-rules' },
         guild: { id: 'g' },
+        isChatInputCommand: () => true,
+        isButton: () => false,
         deferred: false,
         replied: false
       } as any;
@@ -393,10 +382,12 @@ describe('DiscordService - Enhanced Tests', () => {
       expect(mockDiscordCommandsService.handleListRules).toHaveBeenCalledWith(mockInteraction);
     });
 
-    it('should handle recover-verification command', async () => {
+    it('recover-verification delegates to DiscordCommandsService', async () => {
       const mockInteraction = {
         options: { getSubcommand: () => 'recover-verification' },
         guild: { id: 'g' },
+        isChatInputCommand: () => true,
+        isButton: () => false,
         deferred: false,
         replied: false
       } as any;
@@ -468,29 +459,34 @@ describe('DiscordService - Enhanced Tests', () => {
   });
 
   describe('Service Delegation', () => {
-    it('should delegate requestVerification to DiscordVerificationService', async () => {
-      const mockInteraction = { customId: 'requestVerification' } as any;
+    it('requestVerification delegates to DiscordVerificationService', async () => {
+      const mockInteraction = {
+        customId: 'requestVerification',
+        guild: { id: 'g' },
+        isChatInputCommand: () => false,
+        isButton: () => true,
+      } as any;
       
       await service.requestVerification(mockInteraction);
       expect(mockDiscordVerificationService.requestVerification).toHaveBeenCalledWith(mockInteraction);
     });
 
-    it('should delegate addUserRole to DiscordVerificationService', async () => {
+    it('addUserRole delegates to DiscordVerificationService', async () => {
       await service.addUserRole('userId', 'roleId', 'guildId', 'address', 'nonce');
       expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('userId', 'roleId', 'guildId', 'address', 'nonce');
     });
 
-    it('should delegate throwError to DiscordVerificationService', async () => {
+    it('throwError delegates to DiscordVerificationService', async () => {
       await service.throwError('nonce', 'error message');
       expect(mockDiscordVerificationService.throwError).toHaveBeenCalledWith('nonce', 'error message');
     });
 
-    it('should delegate getVerificationRoleId to DiscordVerificationService', async () => {
+    it('getVerificationRoleId delegates to DiscordVerificationService', async () => {
       await service.getVerificationRoleId('guildId', 'channelId', 'messageId');
       expect(mockDiscordVerificationService.getVerificationRoleId).toHaveBeenCalledWith('guildId', 'channelId', 'messageId');
     });
 
-    it('should delegate findExistingVerificationMessage to DiscordMessageService', async () => {
+    it('findExistingVerificationMessage delegates to DiscordMessageService', async () => {
       const mockChannel = { id: 'channelId' } as any;
       await service.findExistingVerificationMessage(mockChannel);
       expect(mockDiscordMessageService.findExistingVerificationMessage).toHaveBeenCalledWith(mockChannel);
@@ -498,9 +494,15 @@ describe('DiscordService - Enhanced Tests', () => {
   });
 
   describe('Role Autocomplete', () => {
+    beforeEach(() => {
+      // Set up client for autocomplete tests
+      (service as any).client = mockClient;
+    });
+
     it('should filter roles by focused value and bot permissions', async () => {
       const role1 = { id: 'role1', name: 'admin', position: 5, editable: true };
       const role2 = { id: 'role2', name: 'moderator', position: 3, editable: true };
+      const role3 = { id: 'role3', name: 'user', position: 15, editable: false }; // Too high position
       
       const mockGuildWithRoles = {
         members: { me: { roles: { highest: { position: 10 } } } },
@@ -539,14 +541,20 @@ describe('DiscordService - Enhanced Tests', () => {
         editable: true
       };
 
+      const botMember = {
+        roles: {
+          highest: { position: 5 }
+        }
+      };
+
       const mockGuild = {
-        members: { me: { roles: { highest: { position: 5 } } } },
+        members: { me: botMember },
         roles: {
           cache: {
             filter: jest.fn().mockReturnThis(),
             sort: jest.fn().mockReturnThis(),
             first: jest.fn().mockReturnValue([existingRole]),
-            find: jest.fn().mockReturnValue(existingRole)
+            find: jest.fn().mockReturnValue(existingRole) // Found existing role
           }
         }
       };
@@ -563,18 +571,24 @@ describe('DiscordService - Enhanced Tests', () => {
 
       expect(mockInteraction.respond).toHaveBeenCalledWith([
         { name: 'poop', value: 'poop' }
-      ]);
+      ]); // Should only show existing role, no "Create new role" option
     });
 
     it('should suggest creating new role when role does not exist', async () => {
+      const botMember = {
+        roles: {
+          highest: { position: 5 }
+        }
+      };
+
       const mockGuild = {
-        members: { me: { roles: { highest: { position: 5 } } } },
+        members: { me: botMember },
         roles: {
           cache: {
             filter: jest.fn().mockReturnThis(),
             sort: jest.fn().mockReturnThis(),
-            first: jest.fn().mockReturnValue([]),
-            find: jest.fn().mockReturnValue(undefined)
+            first: jest.fn().mockReturnValue([]), // No matching roles found
+            find: jest.fn().mockReturnValue(undefined) // No existing role with this name
           }
         }
       };
@@ -591,7 +605,7 @@ describe('DiscordService - Enhanced Tests', () => {
 
       expect(mockInteraction.respond).toHaveBeenCalledWith([
         { name: '💡 Create new role: "unique-role-name"', value: 'unique-role-name' }
-      ]);
+      ]); // Should show "Create new role" option
     });
 
     it('should handle no guild in interaction', async () => {
@@ -630,7 +644,7 @@ describe('DiscordService - Enhanced Tests', () => {
     it('should handle autocomplete errors gracefully', async () => {
       const loggerErrorSpy = jest.spyOn(Logger, 'error').mockImplementation();
       const mockInteraction = {
-        guild: { members: { me: null } },
+        guild: { members: { me: null } }, // This will cause an error
         options: {
           getFocused: jest.fn().mockImplementation(() => {
             throw new Error('Autocomplete error');
@@ -647,6 +661,7 @@ describe('DiscordService - Enhanced Tests', () => {
     });
 
     it('should limit autocomplete choices to 24 roles plus create option', async () => {
+      // Create 30 roles to test the limit
       const roles = Array.from({ length: 30 }, (_, i) => ({
         id: `role${i}`,
         name: `role${i}`,
@@ -660,7 +675,7 @@ describe('DiscordService - Enhanced Tests', () => {
           cache: {
             filter: jest.fn().mockReturnThis(),
             sort: jest.fn().mockReturnThis(),
-            first: jest.fn().mockReturnValue(roles.slice(0, 24)),
+            first: jest.fn().mockReturnValue(roles.slice(0, 24)), // Discord limits to 24
             find: jest.fn().mockReturnValue(undefined)
           }
         }
@@ -682,12 +697,39 @@ describe('DiscordService - Enhanced Tests', () => {
       ];
 
       expect(mockInteraction.respond).toHaveBeenCalledWith(expectedChoices);
-      expect(expectedChoices.length).toBe(25);
+      expect(expectedChoices.length).toBe(25); // 24 roles + 1 create option
     });
   });
 
   describe('Event Handling', () => {
-    it('should handle interaction create events for autocomplete', async () => {
+    it('should handle client ready event during initialization', async () => {
+      const loggerDebugSpy = jest.spyOn(Logger, 'debug').mockImplementation();
+      
+      // Simulate the ready event
+      let readyCallback: Function;
+      mockClient.on.mockImplementation((event, callback) => {
+        if (event === 'ready') {
+          readyCallback = callback;
+        }
+      });
+
+      const initPromise = service.initializeBot();
+      
+      // Trigger the ready event
+      if (readyCallback) {
+        readyCallback(mockClient);
+      }
+
+      await initPromise;
+
+      expect(mockDiscordMessageService.initialize).toHaveBeenCalledWith(mockClient);
+      expect(mockDiscordVerificationService.initialize).toHaveBeenCalledWith(mockClient);
+      expect(mockDiscordCommandsService.initialize).toHaveBeenCalledWith(mockClient);
+      
+      loggerDebugSpy.mockRestore();
+    });
+
+    it('should handle interaction create events', async () => {
       let interactionCallback: Function;
       mockClient.on.mockImplementation((event, callback) => {
         if (event === 'interactionCreate') {
@@ -697,6 +739,7 @@ describe('DiscordService - Enhanced Tests', () => {
 
       await service.createSlashCommands();
 
+      // Test autocomplete interaction
       const autocompleteInteraction = {
         isAutocomplete: () => true,
         isChatInputCommand: () => false,
@@ -716,18 +759,8 @@ describe('DiscordService - Enhanced Tests', () => {
 
       expect(handleRoleAutocompleteSpy).toHaveBeenCalledWith(autocompleteInteraction);
       handleRoleAutocompleteSpy.mockRestore();
-    });
 
-    it('should handle interaction create events for chat input commands', async () => {
-      let interactionCallback: Function;
-      mockClient.on.mockImplementation((event, callback) => {
-        if (event === 'interactionCreate') {
-          interactionCallback = callback;
-        }
-      });
-
-      await service.createSlashCommands();
-
+      // Test chat input command interaction
       const commandInteraction = {
         isAutocomplete: () => false,
         isChatInputCommand: () => true,
@@ -743,18 +776,8 @@ describe('DiscordService - Enhanced Tests', () => {
 
       expect(handleSetupSpy).toHaveBeenCalledWith(commandInteraction);
       handleSetupSpy.mockRestore();
-    });
 
-    it('should handle interaction create events for button interactions', async () => {
-      let interactionCallback: Function;
-      mockClient.on.mockImplementation((event, callback) => {
-        if (event === 'interactionCreate') {
-          interactionCallback = callback;
-        }
-      });
-
-      await service.createSlashCommands();
-
+      // Test button interaction
       const buttonInteraction = {
         isAutocomplete: () => false,
         isChatInputCommand: () => false,
