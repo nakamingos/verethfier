@@ -98,10 +98,6 @@ export class DiscordService {
         await this.discordCommandsSvc.handleRemoveRule(interaction);
       } else if (sub === 'list-rules') {
         await this.discordCommandsSvc.handleListRules(interaction);
-      } else if (sub === 'remove-legacy-rule') {
-        await this.discordCommandsSvc.handleRemoveLegacyRule(interaction);
-      } else if (sub === 'migrate-legacy-rule') {
-        await this.discordCommandsSvc.handleMigrateLegacyRule(interaction);
       } else if (sub === 'recover-verification') {
         await this.discordCommandsSvc.handleRecoverVerification(interaction);
       }
@@ -166,10 +162,10 @@ export class DiscordService {
             .setDescription('Add a new verification rule')
             .addChannelOption(option => option.setName('channel').setDescription('Channel').setRequired(true))
             .addRoleOption(option => option.setName('role').setDescription('Role').setRequired(true))
-            .addStringOption(option => option.setName('slug').setDescription('Asset slug (optional)'))
-            .addStringOption(option => option.setName('attribute_key').setDescription('Attribute key (optional)'))
-            .addStringOption(option => option.setName('attribute_value').setDescription('Attribute value (optional)'))
-            .addIntegerOption(option => option.setName('min_items').setDescription('Minimum items (optional)'))
+            .addStringOption(option => option.setName('slug').setDescription('Asset slug (leave empty for ALL collections)'))
+            .addStringOption(option => option.setName('attribute_key').setDescription('Attribute key (leave empty for ALL attributes)'))
+            .addStringOption(option => option.setName('attribute_value').setDescription('Attribute value (leave empty for ALL values)'))
+            .addIntegerOption(option => option.setName('min_items').setDescription('Minimum items (default: 1)'))
         )
         .addSubcommand(sc =>
           sc.setName('remove-rule')
@@ -179,15 +175,6 @@ export class DiscordService {
         .addSubcommand(sc =>
           sc.setName('list-rules')
             .setDescription('List all verification rules')
-        )
-        .addSubcommand(sc =>
-          sc.setName('remove-legacy-rule')
-            .setDescription('Remove all legacy roles for this server (if any)')
-        )
-        .addSubcommand(sc =>
-          sc.setName('migrate-legacy-rule')
-            .setDescription('Migrate a legacy rule to a new rule (prompts for channel)')
-            .addChannelOption(option => option.setName('channel').setDescription('Channel for the new rule').setRequired(true))
         )
         .addSubcommand(sc =>
           sc.setName('recover-verification')

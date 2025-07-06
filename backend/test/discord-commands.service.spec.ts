@@ -82,6 +82,8 @@ describe('DiscordCommandsService', () => {
           getRole: () => mockRole,
           getString: (key: string) => {
             if (key === 'slug') return 'test-collection';
+            if (key === 'attribute_key') return null;
+            if (key === 'attribute_value') return null;
             return null;
           },
           getInteger: () => null,
@@ -108,8 +110,8 @@ describe('DiscordCommandsService', () => {
         'test-collection',
         'role-id',
         'Test Role',  // role_name
-        null,
-        null,
+        'ALL', // Now defaults to 'ALL' when null
+        'ALL', // Now defaults to 'ALL' when null
         1  // min_items now defaults to 1 instead of null
       );
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
@@ -123,7 +125,7 @@ describe('DiscordCommandsService', () => {
       });
     });
 
-    it('should create rule with slug="ALL" when no criteria provided', async () => {
+    it('should create rule with "ALL" defaults when no criteria provided', async () => {
       const mockInteraction = {
         guild: { id: 'guild-id', name: 'test-guild' },
         options: {
@@ -146,19 +148,18 @@ describe('DiscordCommandsService', () => {
 
       await service.handleAddRule(mockInteraction);
 
-      // The DbService.addRoleMapping is called with null values from the command, 
-      // but the DbService itself will convert them to defaults ('ALL', '', '', 1)
+      // Now expect the service to pass 'ALL' defaults to DbService
       expect(mockDbService.addRoleMapping).toHaveBeenCalledWith(
         'guild-id',
         'test-guild',
         'channel-id',
         'test-channel',
-        null, // This will be converted to 'ALL' by DbService
+        'ALL', // Now defaults to 'ALL' in the service
         'role-id',
         'Test Role',  // role_name
-        null,
-        null,
-        1  // min_items now defaults to 1 instead of null
+        'ALL', // Now defaults to 'ALL' in the service
+        'ALL', // Now defaults to 'ALL' in the service
+        1  // min_items now defaults to 1
       );
     });
 
@@ -201,6 +202,56 @@ describe('DiscordCommandsService', () => {
       // Cleanup
       loggerErrorSpy.mockRestore();
     });
+
+    it('should handle direct attribute input', async () => {
+      const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
+      const mockRole = { id: 'role-id', name: 'Test Role' };
+      const mockInteraction = {
+        guild: {
+          id: 'guild-id',
+          name: 'test-guild',
+          channels: { cache: new Map([['channel-id', mockChannel]]) }
+        },
+        options: {
+          getChannel: () => mockChannel,
+          getRole: () => mockRole,
+          getString: (key: string) => {
+            if (key === 'slug') return 'test-collection';
+            if (key === 'attribute_key') return 'rarity';
+            if (key === 'attribute_value') return 'legendary';
+            return null;
+          },
+          getInteger: () => 5,
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
+      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+      mockDbService.findConflictingRule.mockResolvedValue(null);
+      mockDbService.addRoleMapping.mockResolvedValue({ id: 1 });
+      mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
+      mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
+      mockDbService.updateRuleMessageId.mockResolvedValue({});
+
+      await service.handleAddRule(mockInteraction);
+
+      expect(mockDbService.addRoleMapping).toHaveBeenCalledWith(
+        'guild-id',
+        'test-guild',
+        'channel-id',
+        'test-channel',
+        'test-collection',
+        'role-id',
+        'Test Role',
+        'rarity',
+        'legendary',
+        5
+      );
+    });
+
+    // Remove the old custom validation tests since they're no longer needed
   });
 
   describe('handleRemoveRule', () => {

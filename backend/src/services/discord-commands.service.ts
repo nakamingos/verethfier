@@ -49,9 +49,9 @@ export class DiscordCommandsService {
       return;
     }
     
-    const slug = interaction.options.getString('slug') || null;
-    const attrKey = interaction.options.getString('attribute_key') || null;
-    const attrVal = interaction.options.getString('attribute_value') || null;
+    const slug = interaction.options.getString('slug') || 'ALL';
+    const attrKey = interaction.options.getString('attribute_key') || 'ALL';
+    const attrVal = interaction.options.getString('attribute_value') || 'ALL';
     const minItems = interaction.options.getInteger('min_items') || 1;
     
     // Defer the reply early to prevent timeout
@@ -70,18 +70,12 @@ export class DiscordCommandsService {
       minItems
     });
     
-    // Check for existing rule with the same criteria before attempting to create
-    let finalSlug = slug;
-    if (!slug && !attrKey && !attrVal && !minItems) {
-      finalSlug = 'ALL';
-    }
-    
     try {
       const existingRule = await this.dbSvc.findConflictingRule(
         interaction.guild.id,
         channel.id,
         role.id,
-        finalSlug,
+        slug,
         attrKey,
         attrVal,
         minItems
@@ -93,7 +87,7 @@ export class DiscordCommandsService {
           embeds: [
             new EmbedBuilder()
               .setTitle('Rule Already Exists')
-              .setDescription(`A rule with the same criteria already exists for <#${channel.id}> and <@&${role.id}>.\n\n**Existing Rule:**\n- Slug: ${existingRule.slug || 'None'}\n- Attribute: ${existingRule.attribute_key ? `${existingRule.attribute_key}=${existingRule.attribute_value}` : 'None'}\n- Min Items: ${existingRule.min_items || 'None'}\n\nUse \`/setup list-rules\` to see all existing rules.`)
+              .setDescription(`A rule with the same criteria already exists for <#${channel.id}> and <@&${role.id}>.\n\n**Existing Rule:**\n- Slug: ${existingRule.slug || 'ALL'}\n- Attribute: ${existingRule.attribute_key && existingRule.attribute_key !== 'ALL' ? `${existingRule.attribute_key}=${existingRule.attribute_value || 'ALL'}` : 'ALL'}\n- Min Items: ${existingRule.min_items || 1}\n\nUse \`/setup list-rules\` to see all existing rules.`)
               .setColor('#FF9900') // Orange color for warning
           ]
         });
@@ -163,8 +157,8 @@ export class DiscordCommandsService {
             .setTitle('Rule Added')
             .setDescription(`Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added using existing verification message.`)
             .addFields([
-              { name: 'Collection', value: newRule.slug || 'all-collections', inline: true },
-              { name: 'Attribute', value: newRule.attribute_key && newRule.attribute_value ? `${newRule.attribute_key}=${newRule.attribute_value}` : 'None', inline: true },
+              { name: 'Collection', value: newRule.slug || 'ALL', inline: true },
+              { name: 'Attribute', value: newRule.attribute_key && newRule.attribute_key !== 'ALL' ? `${newRule.attribute_key}=${newRule.attribute_value || 'ALL'}` : 'ALL', inline: true },
               { name: 'Min Items', value: (newRule.min_items ?? 1).toString(), inline: true }
             ])
             .setColor('#00FF00')
@@ -194,8 +188,8 @@ export class DiscordCommandsService {
               .setTitle('Rule Added')
               .setDescription(`Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added with new verification message.`)
               .addFields([
-                { name: 'Collection', value: newRule.slug || 'all-collections', inline: true },
-                { name: 'Attribute', value: newRule.attribute_key && newRule.attribute_value ? `${newRule.attribute_key}=${newRule.attribute_value}` : 'None', inline: true },
+                { name: 'Collection', value: newRule.slug || 'ALL', inline: true },
+                { name: 'Attribute', value: newRule.attribute_key && newRule.attribute_key !== 'ALL' ? `${newRule.attribute_key}=${newRule.attribute_value || 'ALL'}` : 'ALL', inline: true },
                 { name: 'Min Items', value: (newRule.min_items ?? 1).toString(), inline: true }
               ])
               .setColor('#00FF00')
@@ -246,7 +240,7 @@ export class DiscordCommandsService {
       ? rules.map(r =>
           r.legacy
             ? `[LEGACY] Rule: <@&${r.role_id}> (from legacy setup, please migrate or remove)`
-            : `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attribute_key || '-'}=${r.attribute_value || '-'} | Min: ${r.min_items || 0}`
+            : `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attribute_key && r.attribute_key !== 'ALL' ? `${r.attribute_key}=${r.attribute_value || 'ALL'}` : 'ALL'} | Min: ${r.min_items || 1}`
         ).join('\n')
       : 'No rules found.';
       

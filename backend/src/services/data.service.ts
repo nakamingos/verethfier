@@ -116,7 +116,7 @@ export class DataService {
     const marketAddress = '0xd3418772623be1a3cc6b6d45cb46420cedd9154a'.toLowerCase();
 
     // If no attribute filtering needed, use simple query
-    if (!attributeKey || !attributeValue || attributeKey === '' || attributeValue === '') {
+    if (!attributeKey || attributeKey === '' || attributeKey === 'ALL') {
       let query = supabase
         .from('ethscriptions')
         .select('hashId, owner, prevOwner, slug')
@@ -180,6 +180,17 @@ export class DataService {
         const attrs = item.attributes_new;
         if (!attrs || !attrs.values) return false;
         
+        // Check if the attribute key exists
+        const hasKey = attrs.values.hasOwnProperty(keyVariation);
+        if (!hasKey) return false;
+        
+        // If no specific value is required (attributeValue is empty/null/'ALL'), 
+        // just having the key is enough
+        if (!attributeValue || attributeValue === '' || attributeValue === 'ALL') {
+          return true;
+        }
+        
+        // Otherwise, check for specific value match
         const value = attrs.values[keyVariation];
         return value && value.toLowerCase() === attributeValue.toLowerCase();
       });
@@ -187,7 +198,8 @@ export class DataService {
       if (matches.length > 0) {
         matchingItems = matches;
         usedKey = keyVariation;
-        Logger.log(`Found ${matches.length} matches using key variation: "${keyVariation}" (value: "${attributeValue}")`);
+        const matchType = (!attributeValue || attributeValue === '' || attributeValue === 'ALL') ? 'any value' : `value: "${attributeValue}"`;
+        Logger.log(`Found ${matches.length} matches using key variation: "${keyVariation}" (${matchType})`);
         break;
       }
     }
@@ -195,11 +207,15 @@ export class DataService {
     const matchingCount = matchingItems.length;
     
     // Debug logging
-    Logger.log(`Attribute filtering: found ${matchingCount} matching ethscriptions with ${usedKey}='${attributeValue}'`);
+    const valueCondition = (!attributeValue || attributeValue === '' || attributeValue === 'ALL') ? 'any value' : `'${attributeValue}'`;
+    Logger.log(`Attribute filtering: found ${matchingCount} matching ethscriptions with ${usedKey}=${valueCondition}`);
     Logger.log(`User owns ${joinedData.length} total ${slug || 'ethscriptions'} with attributes`);
     
     if (joinedData.length > 0 && matchingCount === 0) {
-      Logger.log(`User's ethscriptions have attributes but none match ${attributeKey}='${attributeValue}'`);
+      const searchCondition = (!attributeValue || attributeValue === '' || attributeValue === 'ALL') ? 
+        `attribute key "${attributeKey}"` : 
+        `${attributeKey}='${attributeValue}'`;
+      Logger.log(`User's ethscriptions have attributes but none match ${searchCondition}`);
       
       // Show what attributes the user actually has
       const userAttrs = joinedData.slice(0, 3).map(item => ({
@@ -208,27 +224,32 @@ export class DataService {
       }));
       Logger.log(`User's asset attributes (first few):`, userAttrs);
       
-      // Check if user has the attribute key but different value
-      const userWithKey = joinedData.filter(item => {
-        const attrs = item.attributes_new;
-        if (!attrs || !attrs.values) return false;
+      // Check if user has the attribute key but different value (only relevant if we were looking for a specific value)
+      if (attributeValue && attributeValue !== '' && attributeValue !== 'ALL') {
+        const userWithKey = joinedData.filter(item => {
+          const attrs = item.attributes_new;
+          if (!attrs || !attrs.values) return false;
+          
+          return Object.keys(attrs.values).some(key => 
+            key.toLowerCase() === attributeKey.toLowerCase()
+          );
+        });
         
-        return Object.keys(attrs.values).some(key => 
-          key.toLowerCase() === attributeKey.toLowerCase()
-        );
-      });
-      
-      if (userWithKey.length > 0) {
-        Logger.log(`User has "${attributeKey}" attribute but with different values:`, 
-          userWithKey.slice(0, 3).map(item => {
-            const attrs = item.attributes_new;
-            const matchingKey = Object.keys(attrs.values).find(key => 
-              key.toLowerCase() === attributeKey.toLowerCase()
-            );
-            return { sha: item.sha, [matchingKey]: attrs.values[matchingKey] };
-          })
-        );
+        if (userWithKey.length > 0) {
+          Logger.log(`User has "${attributeKey}" attribute but with different values:`, 
+            userWithKey.slice(0, 3).map(item => {
+              const attrs = item.attributes_new;
+              const matchingKey = Object.keys(attrs.values).find(key => 
+                key.toLowerCase() === attributeKey.toLowerCase()
+              );
+              return { sha: item.sha, [matchingKey]: attrs.values[matchingKey] };
+            })
+          );
+        } else {
+          Logger.log(`User does not have any "${attributeKey}" attribute`);
+        }
       } else {
+        // If we were looking for any value of the attribute key, show what other keys the user has
         Logger.log(`User does not have any "${attributeKey}" attribute`);
       }
     }

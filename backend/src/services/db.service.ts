@@ -105,8 +105,8 @@ export class DbService {
   ): Promise<any> {
     // Use meaningful defaults instead of NULLs for better database constraints
     const finalSlug = slug || 'ALL';
-    const finalAttrKey = attrKey || '';
-    const finalAttrVal = attrVal || '';
+    const finalAttrKey = attrKey || 'ALL';
+    const finalAttrVal = attrVal || 'ALL';
     const finalMinItems = minItems != null ? minItems : 1;
 
     // Debug logging to help troubleshoot rule creation
@@ -340,8 +340,8 @@ export class DbService {
   ): Promise<any> {
     // Use the same defaults as addRoleMapping for consistent conflict detection
     const finalSlug = slug || 'ALL';
-    const finalAttrKey = attrKey || '';
-    const finalAttrVal = attrVal || '';
+    const finalAttrKey = attrKey || 'ALL';
+    const finalAttrVal = attrVal || 'ALL';
     const finalMinItems = minItems != null ? minItems : 1;
 
     const { data, error } = await supabase
