@@ -1,30 +1,78 @@
-# Database dumps and working files
-# Ignore SQL files in specific locations but keep migrations
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.production
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+.nyc_output
+
+# IDEs and editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.directory
+
+# Temporary working files
+temp/
+*.tmp
+*.temp
+
+# Database dumps and development SQL files
 schema_dump*.sql
 fix_*.sql
 *_dump*.sql
 REMOTE_*.sql
-temp/*.sql
+update_remote_*.sql
 
-# Keep migration files
-!backend/supabase/migrations/*.sql
-!supabase/migrations/*.sql
-
-# Zip files and archives
+# Archive files
 *.zip
 *.tar.gz
 *.rar
 
-# Working/temp files
-schema_dump*.sql
-fix_*.sql
-*_dump*.sql
-REMOTE_*.sql
-
-# IDE/OS files
-.directory
-.DS_Store
-Thumbs.db
-
-# Temporary working files
-temp/
+# Backup files
+backup/
+*backup*
