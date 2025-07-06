@@ -53,8 +53,13 @@ export class DiscordService {
         resolve();
       });
 
-      this.client.login(process.env.DISCORD_BOT_TOKEN);
-    })
+      this.client.on('error', (error) => {
+        Logger.error('Discord bot initialization failed:', error);
+        reject(error);
+      });
+
+      this.client.login(process.env.DISCORD_BOT_TOKEN).catch(reject);
+    });
   }
 
 
