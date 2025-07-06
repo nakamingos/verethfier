@@ -79,8 +79,6 @@ export class DiscordVerificationService {
         Logger.error('Error fetching verification roleId', err);
       }
       
-      Logger.debug('requestVerification: resolved roleId:', roleId);
-      
       if (!roleId) throw new Error('Verification role not found for this message.');
       
       const role = guild.roles.cache.get(roleId);
@@ -108,8 +106,6 @@ export class DiscordVerificationService {
         interaction.message.id,
         channel.id
       );
-      
-      Logger.debug(`Created nonce with messageId: ${interaction.message.id}, channelId: ${channel.id}`);
       
       // Encode the payload (keeping legacy format for compatibility)
       const payloadArr = [
@@ -150,7 +146,6 @@ export class DiscordVerificationService {
       // Store the temp message
       this.tempMessages[nonce] = interaction;
       
-      Logger.debug(`Sent verification link to ${interaction.user.tag}`);
     } catch (error) {
       Logger.error('Error in requestVerification:', error);
       if (interaction.deferred) {
@@ -189,9 +184,6 @@ export class DiscordVerificationService {
 
     const guild = this.client.guilds.cache.get(guildId);
     if (!guild) throw new Error('Guild not found');
-
-    Logger.debug('addUserRole: roleId from payload:', roleId);
-    Logger.debug('addUserRole: guild roles:', guild.roles.cache.map(r => ({ id: r.id, name: r.name })));
 
     const member = await guild.members.fetch(userId);
     if (!member) throw new Error('Member not found');

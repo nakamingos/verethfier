@@ -348,7 +348,7 @@ export class DiscordService {
   async getUser(userId: string): Promise<any> {
     try {
       if (!this.client) {
-        Logger.warn('Discord client not initialized when fetching user');
+        // Silently return null when client isn't initialized (for non-critical name resolution)
         return null;
       }
       const user = await this.client.users.fetch(userId);
@@ -365,7 +365,7 @@ export class DiscordService {
   async getGuild(guildId: string): Promise<any> {
     try {
       if (!this.client) {
-        Logger.warn('Discord client not initialized when fetching guild');
+        // Silently return null when client isn't initialized (for non-critical name resolution)
         return null;
       }
       const guild = await this.client.guilds.fetch(guildId);
@@ -382,7 +382,7 @@ export class DiscordService {
   async getRole(guildId: string, roleId: string): Promise<any> {
     try {
       if (!this.client) {
-        Logger.warn('Discord client not initialized when fetching role');
+        // Silently return null when client isn't initialized (for non-critical name resolution)
         return null;
       }
       const guild = await this.client.guilds.fetch(guildId);

@@ -203,20 +203,6 @@ export class DbService {
     const finalAttrVal = attrVal || 'ALL';
     const finalMinItems = minItems != null ? minItems : 1;
 
-    // Debug logging to help troubleshoot rule creation
-    Logger.debug('Inserting rule into database:', {
-      server_id: serverId,
-      server_name: serverName,
-      channel_id: channelId,
-      channel_name: channelName,
-      slug: finalSlug,
-      role_id: roleId,
-      role_name: roleName,
-      attribute_key: finalAttrKey,
-      attribute_value: finalAttrVal,
-      min_items: finalMinItems
-    });
-
     const { data, error } = await supabase
       .from('verifier_rules')
       .insert({
@@ -295,12 +281,7 @@ export class DbService {
       throw error;
     }
 
-    Logger.debug(`Logged user role: ${userId} -> ${roleId} in ${serverId}`, {
-      user_name: userName,
-      server_name: serverName,
-      role_name: roleName,
-      address: address?.toLowerCase()
-    });
+    // Role assignment logged successfully
   }
 
   // Returns both new rules and legacy role (if present) for a server

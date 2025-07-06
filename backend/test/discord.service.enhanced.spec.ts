@@ -284,7 +284,7 @@ describe('DiscordService - Enhanced Tests', () => {
         const result = await service.getUser('user123');
         
         expect(result).toBeNull();
-        expect(loggerWarnSpy).toHaveBeenCalledWith('Discord client not initialized when fetching user');
+        // No warning logged when client isn't initialized (for non-critical name resolution)
         loggerWarnSpy.mockRestore();
         
         (service as any).client = mockClient;
@@ -320,7 +320,7 @@ describe('DiscordService - Enhanced Tests', () => {
         const result = await service.getGuild('guild123');
         
         expect(result).toBeNull();
-        expect(loggerWarnSpy).toHaveBeenCalledWith('Discord client not initialized when fetching guild');
+        // No warning logged when client isn't initialized (for non-critical name resolution)
         loggerWarnSpy.mockRestore();
         
         (service as any).client = mockClient;
@@ -357,7 +357,7 @@ describe('DiscordService - Enhanced Tests', () => {
         const result = await service.getRole('guild123', 'role123');
         
         expect(result).toBeNull();
-        expect(loggerWarnSpy).toHaveBeenCalledWith('Discord client not initialized when fetching role');
+        // No warning logged when client isn't initialized (for non-critical name resolution)
         loggerWarnSpy.mockRestore();
         
         (service as any).client = mockClient;
