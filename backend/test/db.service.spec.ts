@@ -265,6 +265,107 @@ describe('DbService - Integration Tests', () => {
       expect(typeof service.findRulesByMessageId).toBe('function');
       expect(typeof service.getRulesByChannel).toBe('function');
       expect(typeof service.findConflictingRule).toBe('function');
+      expect(typeof service.checkForDuplicateRule).toBe('function');
+    });
+  });
+
+  describe('checkForDuplicateRule', () => {
+    it('should find existing rule with same criteria for different role', async () => {
+      const isHealthy = await testDb.isHealthy();
+      if (!isHealthy) {
+        console.warn('⚠️  Local Supabase not accessible. Skipping test.');
+        return;
+      }
+
+      // First, create a rule
+      const existingRule = await service.addRoleMapping(
+        'test_server',
+        'Test Server',
+        'test_channel',
+        'Test Channel',
+        'test-collection',
+        'existing-role-id',
+        'Existing Role',
+        'Gold',
+        'rare',
+        1
+      );
+
+      expect(existingRule).toBeDefined();
+
+      // Now check for duplicate with different role
+      const duplicateRule = await service.checkForDuplicateRule(
+        'test_server',
+        'test_channel',
+        'test-collection',
+        'Gold',
+        'rare',
+        1,
+        'different-role-id' // Different role ID
+      );
+
+      expect(duplicateRule).toBeDefined();
+      expect(duplicateRule.role_id).toBe('existing-role-id');
+      expect(duplicateRule.slug).toBe('test-collection');
+      expect(duplicateRule.attribute_key).toBe('Gold');
+      expect(duplicateRule.attribute_value).toBe('rare');
+      expect(duplicateRule.min_items).toBe(1);
+    });
+
+    it('should return null when no duplicate found', async () => {
+      const isHealthy = await testDb.isHealthy();
+      if (!isHealthy) {
+        console.warn('⚠️  Local Supabase not accessible. Skipping test.');
+        return;
+      }
+
+      const result = await service.checkForDuplicateRule(
+        'test_server',
+        'test_channel',
+        'unique-collection',
+        'Unique',
+        'value',
+        99
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it('should exclude same role when checking for duplicates', async () => {
+      const isHealthy = await testDb.isHealthy();
+      if (!isHealthy) {
+        console.warn('⚠️  Local Supabase not accessible. Skipping test.');
+        return;
+      }
+
+      // Create a rule
+      const existingRule = await service.addRoleMapping(
+        'test_server',
+        'Test Server',
+        'test_channel',
+        'Test Channel',
+        'same-collection',
+        'same-role-id',
+        'Same Role',
+        'Silver',
+        'common',
+        2
+      );
+
+      expect(existingRule).toBeDefined();
+
+      // Check for duplicate with same role ID (should return null)
+      const duplicateRule = await service.checkForDuplicateRule(
+        'test_server',
+        'test_channel',
+        'same-collection',
+        'Silver',
+        'common',
+        2,
+        'same-role-id' // Same role ID - should be excluded
+      );
+
+      expect(duplicateRule).toBeNull();
     });
   });
 });

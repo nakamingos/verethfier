@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DiscordCommandsService } from '../src/services/discord-commands.service';
 import { DiscordMessageService } from '../src/services/discord-message.service';
 import { DbService } from '../src/services/db.service';
+import { DiscordService } from '../src/services/discord.service';
 import { MessageFlags, ChannelType } from 'discord.js';
 import { Logger } from '@nestjs/common';
 
@@ -16,12 +17,17 @@ const mockDbService = {
   updateRuleMessageId: jest.fn(),
   getRulesByChannel: jest.fn(),
   findConflictingRule: jest.fn(),
+  checkForDuplicateRule: jest.fn(),
 };
 
 const mockDiscordMessageService = {
   findExistingVerificationMessage: jest.fn(),
   createVerificationMessage: jest.fn(),
   verifyMessageExists: jest.fn(),
+};
+
+const mockDiscordService = {
+  getRole: jest.fn(),
 };
 
 describe('DiscordCommandsService', () => {
@@ -33,6 +39,7 @@ describe('DiscordCommandsService', () => {
         DiscordCommandsService,
         { provide: DbService, useValue: mockDbService },
         { provide: DiscordMessageService, useValue: mockDiscordMessageService },
+        { provide: DiscordService, useValue: mockDiscordService },
       ],
     }).compile();
 
@@ -62,9 +69,9 @@ describe('DiscordCommandsService', () => {
       await service.handleAddRule(mockInteraction);
 
       expect(mockDbService.getLegacyRoles).toHaveBeenCalledWith('guild-id');
-      expect(mockInteraction.reply).toHaveBeenCalledWith({
-        content: expect.stringContaining('migrate or remove the legacy rule'),
-        flags: MessageFlags.Ephemeral
+      expect(mockInteraction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        content: expect.stringContaining('migrate or remove the legacy rule')
       });
     });
 
@@ -94,9 +101,9 @@ describe('DiscordCommandsService', () => {
       } as any;
 
       mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
-      mockDbService.findConflictingRule.mockResolvedValue(null); // No conflicting rule
-      mockDbService.addRoleMapping.mockResolvedValue([{ id: 1 }]); // Returns array with new rule
-      mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
+      mockDbService.checkForDuplicateRule.mockResolvedValue(null); // No duplicate rule
+      mockDbService.getRulesByChannel.mockResolvedValue([]); // No existing rules
+      mockDbService.addRoleMapping.mockResolvedValue({ id: 1, slug: 'test-collection' }); // Returns new rule object
       mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
       mockDbService.updateRuleMessageId.mockResolvedValue({});
 
@@ -115,13 +122,20 @@ describe('DiscordCommandsService', () => {
         1  // min_items now defaults to 1 instead of null
       );
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: expect.arrayContaining([
+        embeds: [
           expect.objectContaining({
             data: expect.objectContaining({
-              title: 'Rule Added'
+              title: '✅ Rule Added',
+              description: expect.stringContaining('Rule 1 for <#channel-id> and <@&role-id> added'),
+              fields: expect.arrayContaining([
+                expect.objectContaining({ name: 'Collection', value: 'test-collection' }),
+                expect.objectContaining({ name: 'Attribute', value: 'ALL' }),
+                expect.objectContaining({ name: 'Min Items', value: '1' })
+              ])
             })
           })
-        ])
+        ],
+        components: []
       });
     });
 
@@ -196,8 +210,8 @@ describe('DiscordCommandsService', () => {
       const call = mockInteraction.editReply.mock.calls[0][0];
       expect(call.embeds).toBeDefined();
       expect(call.embeds.length).toBeGreaterThan(0);
-      expect(call.embeds[0].data.title).toBe('Rule Already Exists');
-      expect(call.embeds[0].data.description).toContain('A rule with the same criteria already exists');
+      expect(call.embeds[0].data.title).toBe('❌ Error Creating Rule');
+      expect(call.embeds[0].data.description).toContain('Failed to create the rule');
       
       // Cleanup
       loggerErrorSpy.mockRestore();
@@ -306,9 +320,11 @@ describe('DiscordCommandsService', () => {
       
       // Check that the reply includes proper formatting for attribute_key only
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: expect.arrayContaining([
+        embeds: [
           expect.objectContaining({
             data: expect.objectContaining({
+              title: '✅ Rule Added',
+              description: expect.stringContaining('Rule 1 for <#channel-id> and <@&role-id> added'),
               fields: expect.arrayContaining([
                 expect.objectContaining({
                   name: 'Attribute',
@@ -317,7 +333,8 @@ describe('DiscordCommandsService', () => {
               ])
             })
           })
-        ])
+        ],
+        components: []
       });
     });
 
@@ -376,9 +393,11 @@ describe('DiscordCommandsService', () => {
       
       // Check that the reply includes proper formatting for attribute_value only
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: expect.arrayContaining([
+        embeds: [
           expect.objectContaining({
             data: expect.objectContaining({
+              title: '✅ Rule Added',
+              description: expect.stringContaining('Rule 1 for <#channel-id> and <@&role-id> added'),
               fields: expect.arrayContaining([
                 expect.objectContaining({
                   name: 'Attribute',
@@ -387,11 +406,104 @@ describe('DiscordCommandsService', () => {
               ])
             })
           })
-        ])
+        ],
+        components: []
       });
     });
 
-    // Remove the old custom validation tests since they're no longer needed
+    describe('duplicate rule detection', () => {
+      it('should warn admin when creating duplicate rule', async () => {
+        const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
+        const mockRole = { id: 'role-id', name: 'Test Role' };
+        const mockInteraction = {
+          id: 'interaction-123',
+          guild: { id: 'guild-id', name: 'test-guild' },
+          user: { id: 'user-id' },
+          channel: {
+            createMessageComponentCollector: jest.fn(() => ({
+              on: jest.fn(),
+              stop: jest.fn(),
+            }))
+          },
+          options: {
+            getChannel: () => mockChannel,
+            getRole: () => mockRole,
+            getString: (key: string) => {
+              if (key === 'slug') return 'test-collection';
+              if (key === 'attribute_key') return 'Gold';
+              if (key === 'attribute_value') return 'rare';
+              return null;
+            },
+            getInteger: () => 1,
+          },
+          deferReply: jest.fn(),
+          editReply: jest.fn(),
+        } as any;
+
+        // Mock existing rule
+        mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+        mockDbService.checkForDuplicateRule.mockResolvedValue({
+          id: 1,
+          role_id: 'existing-role-id',
+          slug: 'test-collection',
+          attribute_key: 'Gold',
+          attribute_value: 'rare',
+          min_items: 1
+        });
+
+        mockDiscordService.getRole.mockResolvedValue({ name: 'Existing Role' });
+
+        await service.handleAddRule(mockInteraction);
+
+        expect(mockDbService.checkForDuplicateRule).toHaveBeenCalledWith(
+          'guild-id',
+          'channel-id',
+          'test-collection',
+          'Gold',
+          'rare',
+          1,
+          'role-id'
+        );
+
+        expect(mockInteraction.editReply).toHaveBeenCalledWith({
+          embeds: expect.arrayContaining([
+            expect.objectContaining({
+              data: expect.objectContaining({
+                title: '⚠️ Duplicate Rule Detected'
+              })
+            })
+          ]),
+          components: expect.any(Array)
+        });
+      });
+
+      it('should proceed normally when no duplicate found', async () => {
+        const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
+        const mockRole = { id: 'role-id', name: 'Test Role' };
+        const mockInteraction = {
+          guild: { id: 'guild-id', name: 'test-guild' },
+          options: {
+            getChannel: () => mockChannel,
+            getRole: () => mockRole,
+            getString: () => null,
+            getInteger: () => null,
+          },
+          deferReply: jest.fn(),
+          editReply: jest.fn(),
+        } as any;
+
+        mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+        mockDbService.checkForDuplicateRule.mockResolvedValue(null);
+        mockDbService.getRulesByChannel.mockResolvedValue([]);
+        mockDbService.addRoleMapping.mockResolvedValue({ id: 1, slug: 'ALL' });
+        mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-123');
+
+        await service.handleAddRule(mockInteraction);
+
+        expect(mockDbService.checkForDuplicateRule).toHaveBeenCalled();
+        expect(mockDbService.addRoleMapping).toHaveBeenCalled();
+      });
+    });
   });
 
   describe('handleRemoveRule', () => {

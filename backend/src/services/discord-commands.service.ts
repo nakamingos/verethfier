@@ -1,10 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ChatInputCommandInteraction, EmbedBuilder, MessageFlags, ChannelType, GuildTextBasedChannel } from 'discord.js';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { ChatInputCommandInteraction, EmbedBuilder, MessageFlags, ChannelType, GuildTextBasedChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel, Role } from 'discord.js';
 import { DbService } from './db.service';
 import { DiscordMessageService } from './discord-message.service';
+import { DiscordService } from './discord.service';
 
 @Injectable()
 export class DiscordCommandsService {
+  // Store pending rules for confirmation flow
+  private pendingRules: Map<string, any> = new Map();
+
   /**
    * Initialize the service with the Discord client.
    * This service doesn't directly use the client but maintains consistency.
@@ -15,91 +19,218 @@ export class DiscordCommandsService {
 
   constructor(
     private readonly dbSvc: DbService,
-    private readonly messageSvc: DiscordMessageService
+    private readonly messageSvc: DiscordMessageService,
+    @Inject(forwardRef(() => DiscordService))
+    private readonly discordSvc: DiscordService
   ) {}
 
   async handleAddRule(interaction: ChatInputCommandInteraction): Promise<void> {
-    // Check if there are legacy roles that need to be migrated
-    const legacyRolesResult = await this.dbSvc.getLegacyRoles(interaction.guild.id);
-    const legacyRoles = legacyRolesResult.data;
-    
-    if (legacyRoles && legacyRoles.length > 0) {
-      await interaction.reply({
-        content: 'You must migrate or remove the legacy rule(s) for this server before adding new rules. Use /setup migrate-legacy-rule or /setup remove-legacy-rule.',
-        flags: MessageFlags.Ephemeral
-      });
-      return;
-    }
-    
-    const channel = interaction.options.getChannel('channel');
-    if (!channel) {
-      await interaction.reply({
-        content: 'Channel not found or not specified.',
-        flags: MessageFlags.Ephemeral
-      });
-      return;
-    }
-    
-    const role = interaction.options.getRole('role');
-    if (!role) {
-      await interaction.reply({
-        content: 'Role not found or not specified.',
-        flags: MessageFlags.Ephemeral
-      });
-      return;
-    }
-    
-    const slug = interaction.options.getString('slug') || 'ALL';
-    const attrKey = interaction.options.getString('attribute_key') || 'ALL';
-    const attrVal = interaction.options.getString('attribute_value') || 'ALL';
-    const minItems = interaction.options.getInteger('min_items') || 1;
-    
-    // Defer the reply early to prevent timeout
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    
-    // Debug logging to help troubleshoot rule creation
-    Logger.debug('Creating rule with parameters:', {
-      serverId: interaction.guild.id,
-      serverName: interaction.guild.name,
-      channelId: channel.id,
-      channelName: channel.name,
-      slug,
-      roleId: role.id,
-      attrKey,
-      attrVal,
-      minItems
-    });
-    
     try {
-      const existingRule = await this.dbSvc.findConflictingRule(
-        interaction.guild.id,
-        channel.id,
-        role.id,
-        slug,
-        attrKey,
-        attrVal,
-        minItems
-      );
+      await interaction.deferReply({ ephemeral: true });
+
+      // Check if there are legacy roles that need to be migrated
+      const legacyRolesResult = await this.dbSvc.getLegacyRoles(interaction.guild.id);
+      const legacyRoles = legacyRolesResult.data;
       
-      if (existingRule) {
-        Logger.debug('Found conflicting rule:', existingRule);
+      if (legacyRoles && legacyRoles.length > 0) {
         await interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle('Rule Already Exists')
-              .setDescription(`A rule with the same criteria already exists for <#${channel.id}> and <@&${role.id}>.\n\n**Existing Rule:**\n- Slug: ${existingRule.slug || 'ALL'}\n- Attribute: ${existingRule.attribute_key && existingRule.attribute_key !== 'ALL' ? (existingRule.attribute_value && existingRule.attribute_value !== 'ALL' ? `${existingRule.attribute_key}=${existingRule.attribute_value}` : `${existingRule.attribute_key} (any value)`) : (existingRule.attribute_value && existingRule.attribute_value !== 'ALL' ? `ALL=${existingRule.attribute_value}` : 'ALL')}\n- Min Items: ${existingRule.min_items || 1}\n\nUse \`/setup list-rules\` to see all existing rules.`)
-              .setColor('#FF9900') // Orange color for warning
-          ]
+          content: 'You must migrate or remove the legacy rule(s) for this server before adding new rules. Use /setup migrate-legacy-rule or /setup remove-legacy-rule.'
         });
         return;
       }
+
+      const channel = interaction.options.getChannel('channel') as TextChannel;
+      const role = interaction.options.getRole('role') as Role;
+      const slug = interaction.options.getString('slug') || 'ALL';
+      const attributeKey = interaction.options.getString('attribute_key') || 'ALL';
+      const attributeValue = interaction.options.getString('attribute_value') || 'ALL';
+      const minItems = interaction.options.getInteger('min_items') || 1;
+
+      if (!channel || !role) {
+        await interaction.editReply('Channel and role are required.');
+        return;
+      }
+
+      // Check for duplicate rules first
+      const existingRule = await this.dbSvc.checkForDuplicateRule(
+        interaction.guild.id,
+        channel.id,
+        slug,
+        attributeKey,
+        attributeValue,
+        minItems,
+        role.id // Exclude the same role (not really duplicate if same role)
+      );
+
+      if (existingRule) {
+        // Found a matching rule for a different role - warn the admin
+        await this.showDuplicateRuleWarning(
+          interaction,
+          existingRule,
+          {
+            channel,
+            role,
+            slug,
+            attributeKey,
+            attributeValue,
+            minItems
+          }
+        );
+        return;
+      }
+
+      // No duplicate found, proceed with normal rule creation
+      await this.createRuleDirectly(interaction, {
+        channel,
+        role,
+        slug,
+        attributeKey,
+        attributeValue,
+        minItems
+      });
+
     } catch (error) {
-      Logger.debug('Error checking for conflicting rule (this is normal if no conflict):', error);
+      Logger.error('Error in handleAddRule:', error);
+      if (interaction.deferred) {
+        await interaction.editReply('An error occurred while adding the rule.');
+      } else {
+        await interaction.reply({ content: 'An error occurred while adding the rule.', ephemeral: true });
+      }
     }
+  }
+
+  private async showDuplicateRuleWarning(
+    interaction: ChatInputCommandInteraction,
+    existingRule: any,
+    newRuleData: {
+      channel: TextChannel;
+      role: Role;
+      slug: string;
+      attributeKey: string;
+      attributeValue: string;
+      minItems: number;
+    }
+  ): Promise<void> {
+    // Get the existing role name for display
+    const existingRole = await this.discordSvc.getRole(interaction.guild.id, existingRule.role_id);
     
-    let rule;
+    // Format attribute display for both rules
+    const formatAttribute = (key: string, value: string) => {
+      if (key !== 'ALL' && value !== 'ALL') return `${key}=${value}`;
+      if (key !== 'ALL' && value === 'ALL') return `${key} (any value)`;
+      if (key === 'ALL' && value !== 'ALL') return `ALL=${value}`;
+      return 'ALL';
+    };
+
+    const existingAttr = formatAttribute(existingRule.attribute_key, existingRule.attribute_value);
+    const newAttr = formatAttribute(newRuleData.attributeKey, newRuleData.attributeValue);
+
+    const embed = new EmbedBuilder()
+      .setColor(0xFFAA00) // Orange for warning
+      .setTitle('⚠️ Duplicate Rule Detected')
+      .setDescription('A rule with the same criteria already exists for a different role.')
+      .addFields(
+        {
+          name: '📋 Existing Rule',
+          value: `**Role:** ${existingRole?.name || 'Unknown Role'}\n**Collection:** ${existingRule.slug}\n**Attribute:** ${existingAttr}\n**Min Items:** ${existingRule.min_items}`,
+          inline: true
+        },
+        {
+          name: '🆕 New Rule (Proposed)',
+          value: `**Role:** ${newRuleData.role.name}\n**Collection:** ${newRuleData.slug}\n**Attribute:** ${newAttr}\n**Min Items:** ${newRuleData.minItems}`,
+          inline: true
+        },
+        {
+          name: '❓ What happens if you proceed?',
+          value: 'Users meeting these criteria will receive **both roles**. This might be intentional (role stacking) or an error.',
+          inline: false
+        }
+      );
+
+    const row = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(`confirm_duplicate_${interaction.id}`)
+          .setLabel('Create Anyway')
+          .setStyle(ButtonStyle.Danger)
+          .setEmoji('✅'),
+        new ButtonBuilder()
+          .setCustomId(`cancel_duplicate_${interaction.id}`)
+          .setLabel('Cancel')
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji('❌')
+      );
+
+    await interaction.editReply({
+      embeds: [embed],
+      components: [row]
+    });
+
+    // Store the new rule data for later use if confirmed
+    this.pendingRules.set(interaction.id, newRuleData);
+
+    // Set up button interaction handler
+    const filter = (i: any) => i.customId.endsWith(`_${interaction.id}`) && i.user.id === interaction.user.id;
+    const collector = interaction.channel?.createMessageComponentCollector({ filter, time: 60000 });
+
+    collector?.on('collect', async (i) => {
+      if (i.customId.startsWith('confirm_duplicate_')) {
+        await i.deferUpdate();
+        await this.createRuleDirectly(interaction, newRuleData, true);
+        this.pendingRules.delete(interaction.id);
+      } else if (i.customId.startsWith('cancel_duplicate_')) {
+        await i.deferUpdate();
+        await interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x808080)
+              .setTitle('❌ Rule Creation Cancelled')
+              .setDescription('The rule was not created.')
+          ],
+          components: []
+        });
+        this.pendingRules.delete(interaction.id);
+      }
+      collector.stop();
+    });
+
+    collector?.on('end', (collected) => {
+      if (collected.size === 0) {
+        // Timeout - clean up
+        this.pendingRules.delete(interaction.id);
+        interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x808080)
+              .setTitle('⏰ Request Timed Out')
+              .setDescription('Rule creation was cancelled due to timeout.')
+          ],
+          components: []
+        }).catch(() => {}); // Ignore errors if interaction is no longer valid
+      }
+    });
+  }
+
+  private async createRuleDirectly(
+    interaction: ChatInputCommandInteraction,
+    ruleData: {
+      channel: TextChannel;
+      role: Role;
+      slug: string;
+      attributeKey: string;
+      attributeValue: string;
+      minItems: number;
+    },
+    isDuplicateConfirmed: boolean = false
+  ): Promise<void> {
+    const { channel, role, slug, attributeKey, attributeValue, minItems } = ruleData;
+
+    // Check for existing verification setup
+    const existingRules = await this.dbSvc.getRulesByChannel(interaction.guild.id, channel.id);
+    
+    let newRule;
     try {
-      rule = await this.dbSvc.addRoleMapping(
+      newRule = await this.dbSvc.addRoleMapping(
         interaction.guild.id,
         interaction.guild.name,
         channel.id,
@@ -107,101 +238,118 @@ export class DiscordCommandsService {
         slug,
         role.id,
         role.name,
-        attrKey,
-        attrVal,
+        attributeKey,
+        attributeValue,
         minItems
       );
     } catch (error) {
       Logger.error('Error creating rule:', error);
-      
-      // Check for duplicate rule error (Supabase/PostgreSQL constraint violation)
-      if (error.code === '23505' || error.message?.includes('duplicate') || error.message?.includes('already exists')) {
-        await interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle('Rule Already Exists')
-              .setDescription(`A rule with the same criteria already exists for <#${channel.id}> and <@&${role.id}>. Use \`/setup list-rules\` to see existing rules.`)
-              .setColor('#FF9900') // Orange color for warning
-          ]
-        });
-        return;
-      }
-      
-      // Generic error for other database issues
-      await interaction.editReply({
-        content: 'Failed to create rule. Please check your parameters and try again.'
-      });
-      return;
-    }
-    
-    Logger.debug('addRoleMapping result:', rule);
-    const newRule = rule;
-    
-    // Check for existing Wallet Verification message in the Discord channel
-    let existingVerificationMessageId = null;
-    try {
-      if (channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement) {
-        existingVerificationMessageId = await this.messageSvc.findExistingVerificationMessage(channel as GuildTextBasedChannel);
-      }
-    } catch (err) {
-      Logger.error('Error checking for existing Wallet Verification message in Discord channel', err);
-    }
-
-    // If we found an existing verification message, use its ID for the new rule
-    if (existingVerificationMessageId) {
-      // Update the new rule with the existing message_id
-      await this.dbSvc.updateRuleMessageId(newRule.id, existingVerificationMessageId);
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle('Rule Added')
-            .setDescription(`Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added using existing verification message.`)
-            .addFields([
-              { name: 'Collection', value: newRule.slug || 'ALL', inline: true },
-              { name: 'Attribute', value: newRule.attribute_key && newRule.attribute_key !== 'ALL' ? (newRule.attribute_value && newRule.attribute_value !== 'ALL' ? `${newRule.attribute_key}=${newRule.attribute_value}` : `${newRule.attribute_key} (any value)`) : (newRule.attribute_value && newRule.attribute_value !== 'ALL' ? `ALL=${newRule.attribute_value}` : 'ALL'), inline: true },
-              { name: 'Min Items', value: (newRule.min_items ?? 1).toString(), inline: true }
-            ])
-            .setColor('#00FF00')
-        ]
+            .setColor(0xFF0000)
+            .setTitle('❌ Error Creating Rule')
+            .setDescription('Failed to create the rule. Please try again.')
+        ],
+        components: []
       });
-    } else {
-      // No existing verification message found, create a new one
-      try {
-        if (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement) {
-          await interaction.editReply({
-            content: 'Selected channel is not a text or announcement channel.'
-          });
-          return;
-        }
-        
-        const messageId = await this.messageSvc.createVerificationMessage(channel as GuildTextBasedChannel);
-        
-        // Wait for DB update to complete before replying
-        await this.dbSvc.updateRuleMessageId(newRule.id, messageId);
-        
-        // Optionally, add a short delay to ensure DB consistency
-        await new Promise(res => setTimeout(res, 100));
-        
-        await interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle('Rule Added')
-              .setDescription(`Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added with new verification message.`)
-              .addFields([
-                { name: 'Collection', value: newRule.slug || 'ALL', inline: true },
-                { name: 'Attribute', value: newRule.attribute_key && newRule.attribute_key !== 'ALL' ? (newRule.attribute_value && newRule.attribute_value !== 'ALL' ? `${newRule.attribute_key}=${newRule.attribute_value}` : `${newRule.attribute_key} (any value)`) : (newRule.attribute_value && newRule.attribute_value !== 'ALL' ? `ALL=${newRule.attribute_value}` : 'ALL'), inline: true },
-                { name: 'Min Items', value: (newRule.min_items ?? 1).toString(), inline: true }
-              ])
-              .setColor('#00FF00')
-          ]
+      return;
+    }
+
+    const formatAttribute = (key: string, value: string) => {
+      if (key !== 'ALL' && value !== 'ALL') return `${key}=${value}`;
+      if (key !== 'ALL' && value === 'ALL') return `${key} (any value)`;
+      if (key === 'ALL' && value !== 'ALL') return `ALL=${value}`;
+      return 'ALL';
+    };
+
+    if (existingRules.length > 0) {
+      // Use existing verification message
+      const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle(isDuplicateConfirmed ? '✅ Duplicate Rule Created' : '✅ Rule Added')
+        .setDescription(`Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added using existing verification message.`)
+        .addFields(
+          { name: 'Collection', value: slug, inline: true },
+          { name: 'Attribute', value: formatAttribute(attributeKey, attributeValue), inline: true },
+          { name: 'Min Items', value: minItems.toString(), inline: true }
+        );
+
+      if (isDuplicateConfirmed) {
+        embed.addFields({
+          name: '⚠️ Note',
+          value: 'This rule has the same criteria as an existing rule. Users meeting these criteria will receive multiple roles.',
+          inline: false
         });
-      } catch (err) {
-        Logger.error('Failed to send Verify Now message', err);
+      }
+
+      await interaction.editReply({ embeds: [embed], components: [] });
+    } else {
+      // Create new verification message
+      await this.createNewVerificationSetup(interaction, channel, role, slug, attributeKey, attributeValue, minItems, isDuplicateConfirmed, newRule);
+    }
+  }
+
+  private async createNewVerificationSetup(
+    interaction: ChatInputCommandInteraction,
+    channel: TextChannel,
+    role: Role,
+    slug: string,
+    attributeKey: string,
+    attributeValue: string,
+    minItems: number,
+    isDuplicateConfirmed: boolean = false,
+    newRule: any
+  ): Promise<void> {
+    try {
+      if (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement) {
         await interaction.editReply({
-          content: 'Failed to send Verify Now message. Please check my permissions and try again.'
+          content: 'Selected channel is not a text or announcement channel.',
+          components: []
         });
         return;
       }
+      
+      const messageId = await this.messageSvc.createVerificationMessage(channel as GuildTextBasedChannel);
+      
+      // Wait for DB update to complete before replying
+      await this.dbSvc.updateRuleMessageId(newRule.id, messageId);
+      
+      // Optionally, add a short delay to ensure DB consistency
+      await new Promise(res => setTimeout(res, 100));
+
+      const formatAttribute = (key: string, value: string) => {
+        if (key !== 'ALL' && value !== 'ALL') return `${key}=${value}`;
+        if (key !== 'ALL' && value === 'ALL') return `${key} (any value)`;
+        if (key === 'ALL' && value !== 'ALL') return `ALL=${value}`;
+        return 'ALL';
+      };
+
+      const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle(isDuplicateConfirmed ? '✅ Duplicate Rule Created' : '✅ Rule Added')
+        .setDescription(`Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added with new verification message.`)
+        .addFields(
+          { name: 'Collection', value: slug, inline: true },
+          { name: 'Attribute', value: formatAttribute(attributeKey, attributeValue), inline: true },
+          { name: 'Min Items', value: minItems.toString(), inline: true }
+        );
+
+      if (isDuplicateConfirmed) {
+        embed.addFields({
+          name: '⚠️ Note',
+          value: 'This rule has the same criteria as an existing rule. Users meeting these criteria will receive multiple roles.',
+          inline: false
+        });
+      }
+
+      await interaction.editReply({ embeds: [embed], components: [] });
+    } catch (err) {
+      Logger.error('Failed to send Verify Now message', err);
+      await interaction.editReply({
+        content: 'Failed to send Verify Now message. Please check my permissions and try again.',
+        components: []
+      });
     }
   }
 

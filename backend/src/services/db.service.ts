@@ -91,6 +91,50 @@ export class DbService {
   }
 
   // New methods for v2:
+  
+  /**
+   * Check if a rule with the same criteria already exists for a different role
+   */
+  async checkForDuplicateRule(
+    serverId: string,
+    channelId: string,
+    slug: string,
+    attributeKey: string,
+    attributeValue: string,
+    minItems: number,
+    excludeRoleId?: string
+  ): Promise<any> {
+    // Use the same defaults as addRoleMapping for consistent comparison
+    const finalSlug = slug || 'ALL';
+    const finalAttrKey = attributeKey || 'ALL';
+    const finalAttrVal = attributeValue || 'ALL';
+    const finalMinItems = minItems != null ? minItems : 1;
+
+    let query = supabase
+      .from('verifier_rules')
+      .select('*')
+      .eq('server_id', serverId)
+      .eq('channel_id', channelId)
+      .eq('slug', finalSlug)
+      .eq('attribute_key', finalAttrKey)
+      .eq('attribute_value', finalAttrVal)
+      .eq('min_items', finalMinItems);
+
+    // Exclude the current role if we're checking for updates
+    if (excludeRoleId) {
+      query = query.neq('role_id', excludeRoleId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      Logger.error('Error checking for duplicate rules:', error);
+      throw error;
+    }
+
+    return data && data.length > 0 ? data[0] : null;
+  }
+
   async addRoleMapping(
     serverId: string,
     serverName: string,
