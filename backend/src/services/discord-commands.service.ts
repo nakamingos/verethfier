@@ -1,8 +1,9 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-import { ChatInputCommandInteraction, EmbedBuilder, MessageFlags, ChannelType, GuildTextBasedChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel, Role } from 'discord.js';
+import { ChatInputCommandInteraction, EmbedBuilder, MessageFlags, ChannelType, GuildTextBasedChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel, Role, Client } from 'discord.js';
 import { DbService } from './db.service';
 import { DiscordMessageService } from './discord-message.service';
 import { DiscordService } from './discord.service';
+import { VerificationRule } from '@/models/verification-rule.interface';
 import { AdminFeedback } from './utils/admin-feedback.util';
 
 @Injectable()
@@ -14,7 +15,7 @@ export class DiscordCommandsService {
    * Initialize the service with the Discord client.
    * This service doesn't directly use the client but maintains consistency.
    */
-  initialize(client: any): void {
+  initialize(client: Client): void {
     // No client needed for this service
   }
 

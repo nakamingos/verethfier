@@ -1,7 +1,11 @@
-// Utility for matching a rule against assets and channelId
-export function matchesRule(
-  rule: any,
-  assets: any[],
+import { VerificationRule, Asset } from '@/models/verification-rule.interface';
+
+/**
+ * Utility for matching a rule against assets and channelId
+ */
+export function matchRule(
+  rule: Partial<VerificationRule>,
+  assets: Asset[],
   channelId?: string
 ): boolean {
   // slug wildcard: empty string or 'ALL'

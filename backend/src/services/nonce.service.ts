@@ -2,13 +2,14 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { Inject, Injectable } from '@nestjs/common';
 import dotenv from 'dotenv';
+import { CONSTANTS } from '@/constants';
 
 // Load environment variables
 dotenv.config();
 
-const NONCE_EXPIRY = Number(process.env.NONCE_EXPIRY) || 300000;
+const NONCE_EXPIRY = Number(process.env.NONCE_EXPIRY) || CONSTANTS.DEFAULT_NONCE_EXPIRY;
 
-interface NonceData {
+export interface NonceData {
   nonce: string;
   messageId?: string;
   channelId?: string;

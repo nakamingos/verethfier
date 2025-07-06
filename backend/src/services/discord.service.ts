@@ -1,23 +1,29 @@
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
-import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, CacheType, ChannelType, ChatInputCommandInteraction, Client, EmbedBuilder, Events, GatewayIntentBits, GuildTextBasedChannel, InteractionResponse, MessageFlags, PermissionFlagsBits, REST, Routes, SlashCommandBuilder } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, CacheType, ChannelType, ChatInputCommandInteraction, Client, EmbedBuilder, Events, GatewayIntentBits, GuildTextBasedChannel, InteractionResponse, MessageFlags, PermissionFlagsBits, REST, Routes, SlashCommandBuilder, AutocompleteInteraction } from 'discord.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
 dotenv.config();
+
+// Cache environment variables
+const EXPIRY = Number(process.env.NONCE_EXPIRY);
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
+const DISCORD_ENABLED = Number(process.env.DISCORD);
+const BASE_URL = process.env.BASE_URL;
 
 import { NonceService } from '@/services/nonce.service';
 import { DbService } from '@/services/db.service';
 import { DiscordMessageService } from '@/services/discord-message.service';
 import { DiscordVerificationService } from '@/services/discord-verification.service';
 import { DiscordCommandsService } from '@/services/discord-commands.service';
-
-const EXPIRY = Number(process.env.NONCE_EXPIRY);
+import { CONSTANTS } from '@/constants';
 
 @Injectable()
 export class DiscordService {
 
   private client: Client | null = null;
-  private rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
+  private rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
   
   constructor(
     @Inject(NonceService) private nonceSvc: NonceService,
@@ -27,8 +33,11 @@ export class DiscordService {
     @Inject(forwardRef(() => DiscordCommandsService))
     private readonly discordCommandsSvc: DiscordCommandsService,
   ) {
+    // Don't initialize during tests or when Discord is disabled
+    const isTestEnvironment = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+    
     // Initialize Discord bot asynchronously without blocking constructor
-    if (Number(process.env.DISCORD) && process.env.DISCORD_BOT_TOKEN) {
+    if (DISCORD_ENABLED && DISCORD_BOT_TOKEN && !isTestEnvironment) {
       setImmediate(() => {
         this.initializeBot()
           .then(() => this.createSlashCommands())
@@ -37,7 +46,11 @@ export class DiscordService {
           });
       });
     } else {
-      Logger.warn('Discord integration disabled or bot token missing - continuing without Discord functionality');
+      if (isTestEnvironment) {
+        Logger.debug('Discord initialization skipped in test environment');
+      } else {
+        Logger.warn('Discord integration disabled or bot token missing - continuing without Discord functionality');
+      }
     }
   }
 
@@ -53,8 +66,8 @@ export class DiscordService {
 
       // Set a timeout to prevent hanging
       const timeout = setTimeout(() => {
-        reject(new Error('Discord bot initialization timed out after 10 seconds'));
-      }, 10000);
+        reject(new Error(`Discord bot initialization timed out after ${CONSTANTS.DISCORD_INITIALIZATION_TIMEOUT / 1000} seconds`));
+      }, CONSTANTS.DISCORD_INITIALIZATION_TIMEOUT);
 
       this.client.on(Events.ClientReady, (readyClient) => {
         clearTimeout(timeout);
@@ -72,7 +85,7 @@ export class DiscordService {
         reject(error);
       });
 
-      this.client.login(process.env.DISCORD_BOT_TOKEN).catch((error) => {
+      this.client.login(DISCORD_BOT_TOKEN).catch((error) => {
         clearTimeout(timeout);
         reject(error);
       });
@@ -219,12 +232,12 @@ export class DiscordService {
     Logger.debug('Reloading application /slash commands.', `${commands.length} commands`);
     try {
       await this.rest.put(
-        Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
+        Routes.applicationCommands(DISCORD_CLIENT_ID),
         { body: commands },
       );
       Logger.debug('Successfully reloaded application /slash commands.', `${commands.length} commands`);
     } catch (error) {
-      console.error(error);
+      Logger.error('Failed to register slash commands:', error);
     }
   }
 

@@ -6,7 +6,7 @@ import { DiscordVerificationService } from './discord-verification.service';
 import { DataService }   from './data.service';
 import { DbService }     from './db.service';
 import { DecodedData }   from '@/models/app.interface';
-import { matchesRule }   from './utils/match-rule.util';
+import { matchRule }   from './utils/match-rule.util';
 
 @Injectable()
 export class VerifyService {
@@ -221,7 +221,7 @@ export class VerifyService {
     const rules = await this.dbSvc.getRoleMappings(
       payload.discordId
     );
-    const matched = rules.filter(r => matchesRule(r, assets, channelId));
+    const matched = rules.filter(r => matchRule(r, assets, channelId));
     if (!matched.length) {
       const errorMsg = 'No matching assets found for verification requirements';
       await this.discordVerificationSvc.throwError(payload.nonce, errorMsg);

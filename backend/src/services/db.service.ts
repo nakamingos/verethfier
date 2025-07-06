@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import { CONSTANTS } from '@/constants';
+import { DbResult, ServerRecord, LegacyRoleRecord } from '@/models/db.interface';
 
 // Load environment variables
 dotenv.config();
@@ -24,7 +26,7 @@ export class DbService {
     serverId: string, 
     serverName: string,
     roleId: string
-  ): Promise<any> {
+  ): Promise<DbResult<ServerRecord> | null> {
 
     const { data, error } = await supabase
       .from('verifier_servers')
@@ -305,7 +307,7 @@ export class DbService {
   }
 
   // Get all legacy roles for a guild (by guild/server id)
-  async getLegacyRoles(serverId: string): Promise<{ data: Array<{ role_id: string, name: string }>, error: any }> {
+  async getLegacyRoles(serverId: string): Promise<DbResult<LegacyRoleRecord[]>> {
     const { data, error } = await supabase
       .from('verifier_servers')
       .select('role_id, name')
