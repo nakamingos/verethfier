@@ -219,4 +219,56 @@ export class DiscordService {
   async findExistingVerificationMessage(channel: GuildTextBasedChannel): Promise<string | null> {
     return this.discordMessageSvc.findExistingVerificationMessage(channel);
   }
+
+  /**
+   * Get Discord user information by user ID
+   */
+  async getUser(userId: string): Promise<any> {
+    try {
+      if (!this.client) {
+        Logger.warn('Discord client not initialized when fetching user');
+        return null;
+      }
+      const user = await this.client.users.fetch(userId);
+      return user;
+    } catch (error) {
+      Logger.warn(`Failed to fetch user ${userId}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Get Discord guild information by guild ID
+   */
+  async getGuild(guildId: string): Promise<any> {
+    try {
+      if (!this.client) {
+        Logger.warn('Discord client not initialized when fetching guild');
+        return null;
+      }
+      const guild = await this.client.guilds.fetch(guildId);
+      return guild;
+    } catch (error) {
+      Logger.warn(`Failed to fetch guild ${guildId}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Get Discord role information by guild ID and role ID
+   */
+  async getRole(guildId: string, roleId: string): Promise<any> {
+    try {
+      if (!this.client) {
+        Logger.warn('Discord client not initialized when fetching role');
+        return null;
+      }
+      const guild = await this.client.guilds.fetch(guildId);
+      const role = await guild.roles.fetch(roleId);
+      return role;
+    } catch (error) {
+      Logger.warn(`Failed to fetch role ${roleId} in guild ${guildId}:`, error.message);
+      return null;
+    }
+  }
 }

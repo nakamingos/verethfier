@@ -204,6 +204,45 @@ describe('DbService - Integration Tests', () => {
         )
       ).resolves.not.toThrow();
     });
+
+    it('should log user role with names', async () => {
+      const isHealthy = await testDb.isHealthy();
+      if (!isHealthy) {
+        console.warn('⚠️  Local Supabase not accessible. Skipping test.');
+        return;
+      }
+
+      await service.logUserRole(
+        'test_user_123',
+        'test_server_456', 
+        'test_role_789',
+        '0x1234567890abcdef',
+        'TestUser',
+        'TestServer',
+        'TestRole'
+      );
+      
+      // The method should complete without throwing an error
+      expect(true).toBe(true);
+    });
+
+    it('should log user role without names (backward compatibility)', async () => {
+      const isHealthy = await testDb.isHealthy();
+      if (!isHealthy) {
+        console.warn('⚠️  Local Supabase not accessible. Skipping test.');
+        return;
+      }
+
+      await service.logUserRole(
+        'test_user_456',
+        'test_server_789', 
+        'test_role_123',
+        '0xabcdef1234567890'
+      );
+      
+      // The method should complete without throwing an error
+      expect(true).toBe(true);
+    });
   });
 
   describe('service structure validation', () => {

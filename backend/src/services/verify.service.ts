@@ -80,6 +80,19 @@ export class VerifyService {
           
           try {
             Logger.log(`Assigning role: ${rule.role_id} to user: ${payload.userId}`);
+            
+            // Get user, guild, and role information for logging (with fallbacks)
+            let user = null, guild = null, role = null;
+            try {
+              [user, guild, role] = await Promise.all([
+                this.discordSvc.getUser(payload.userId),
+                this.discordSvc.getGuild(payload.discordId),
+                this.discordSvc.getRole(payload.discordId, rule.role_id)
+              ]);
+            } catch (discordError) {
+              Logger.warn(`Discord API calls failed for role assignment:`, discordError.message);
+            }
+            
             await this.discordVerificationSvc.addUserRole(
               payload.userId,
               rule.role_id,
@@ -91,7 +104,10 @@ export class VerifyService {
               payload.userId,
               payload.discordId,
               rule.role_id,
-              address
+              address,
+              user?.username || `User-${payload.userId}`,
+              guild?.name || `Guild-${payload.discordId}`,
+              role?.name || `Role-${rule.role_id}`
             );
             assignedRoles.push(rule.role_id);
             Logger.log(`✅ Successfully assigned role: ${rule.role_id} for rule ${rule.id}: slug=${rule.slug}, attr=${rule.attribute_key}=${rule.attribute_value}, min_items=${rule.min_items}`);
@@ -132,6 +148,19 @@ export class VerifyService {
       
       const legacyRoleId = await this.dbSvc.getServerRole(payload.discordId);
       Logger.log(`Legacy path: Assigning role ${legacyRoleId}`);
+      
+      // Get user, guild, and role information for logging (with fallbacks)
+      let user = null, guild = null, role = null;
+      try {
+        [user, guild, role] = await Promise.all([
+          this.discordSvc.getUser(payload.userId),
+          this.discordSvc.getGuild(payload.discordId),
+          this.discordSvc.getRole(payload.discordId, legacyRoleId)
+        ]);
+      } catch (discordError) {
+        Logger.warn(`Discord API calls failed for legacy role assignment:`, discordError.message);
+      }
+      
       await this.discordVerificationSvc.addUserRole(
         payload.userId,
         legacyRoleId,
@@ -143,7 +172,10 @@ export class VerifyService {
         payload.userId,
         payload.discordId,
         legacyRoleId,
-        address
+        address,
+        user?.username || `User-${payload.userId}`,
+        guild?.name || `Guild-${payload.discordId}`,
+        role?.name || `Role-${legacyRoleId}`
       );
       Logger.log(`✅ Legacy path: Successfully assigned role: ${legacyRoleId}`);
       return { message: 'Verification successful (legacy)', address };
@@ -173,6 +205,19 @@ export class VerifyService {
 
     for (const r of matched) {
       Logger.log(`Multi-rule path: Assigning role ${r.role_id} for rule ${r.id}: slug=${r.slug}, attr=${r.attribute_key}=${r.attribute_value}, min_items=${r.min_items}`);
+      
+      // Get user, guild, and role information for logging (with fallbacks)
+      let user = null, guild = null, role = null;
+      try {
+        [user, guild, role] = await Promise.all([
+          this.discordSvc.getUser(payload.userId),
+          this.discordSvc.getGuild(payload.discordId),
+          this.discordSvc.getRole(payload.discordId, r.role_id)
+        ]);
+      } catch (discordError) {
+        Logger.warn(`Discord API calls failed for multi-rule assignment:`, discordError.message);
+      }
+      
       await this.discordVerificationSvc.addUserRole(
         payload.userId,
         r.role_id,
@@ -184,7 +229,10 @@ export class VerifyService {
         payload.userId,
         payload.discordId,
         r.role_id,
-        address
+        address,
+        user?.username || `User-${payload.userId}`,
+        guild?.name || `Guild-${payload.discordId}`,
+        role?.name || `Role-${r.role_id}`
       );
       Logger.log(`✅ Multi-rule path: Successfully assigned role: ${r.role_id} for rule ${r.id}: slug=${r.slug}, attr=${r.attribute_key}=${r.attribute_value}, min_items=${r.min_items}`);
     }

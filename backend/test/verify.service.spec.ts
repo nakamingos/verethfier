@@ -14,7 +14,10 @@ const mockNonceService = {
 };
 const mockDiscordService = {
   addUserRole: jest.fn(),
-  throwError: jest.fn()
+  throwError: jest.fn(),
+  getUser: jest.fn().mockResolvedValue({ username: 'testuser' }),
+  getGuild: jest.fn().mockResolvedValue({ name: 'Test Guild' }),
+  getRole: jest.fn().mockResolvedValue({ name: 'Test Role' })
 };
 const mockDiscordVerificationService = {
   addUserRole: jest.fn(),
@@ -131,7 +134,7 @@ describe('VerifyService', () => {
     expect(mockDbService.findRulesByMessageId).toHaveBeenCalledWith('guild123', 'ch-456', 'msg-123');
     expect(mockDataService.checkAssetOwnershipWithCriteria).toHaveBeenCalledWith('0xabc', 'test-collection', 'trait', 'rare', 1);
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('user123', 'role-123', 'guild123', '0xabc', 'nonce123');
-    expect(mockDbService.logUserRole).toHaveBeenCalledWith('user123', 'guild123', 'role-123', '0xabc');
+    expect(mockDbService.logUserRole).toHaveBeenCalledWith('user123', 'guild123', 'role-123', '0xabc', 'testuser', 'Test Guild', 'Test Role');
     expect(result.message).toContain('message-based');
     expect(result.assignedRoles).toEqual(['role-123']);
   });
