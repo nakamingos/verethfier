@@ -44,7 +44,13 @@ if (typeof process !== 'undefined' && process.stdout && process.stderr) {
   };
   
   process.stderr.write = function(chunk, encoding, callback) {
-    // Suppress all stderr during tests (including NestJS Logger errors)
+    // Allow test failures and Jest error messages to show through
+    if (typeof chunk === 'string') {
+      if (chunk.includes('FAIL') || chunk.includes('Error:') || chunk.includes('expect(')) {
+        return originalStderrWrite.call(this, chunk, encoding, callback);
+      }
+    }
+    // Suppress other stderr during tests
     if (typeof callback === 'function') {
       callback();
     }
