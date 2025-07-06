@@ -68,6 +68,17 @@ export class DiscordService {
     await this.registerSlashCommands();
 
     this.client.on('interactionCreate', async (interaction) => {
+      // Handle autocomplete interactions
+      if (interaction.isAutocomplete()) {
+        if (interaction.commandName === 'setup' && interaction.options.getSubcommand() === 'add-rule') {
+          const focusedOption = interaction.options.getFocused(true);
+          if (focusedOption.name === 'role') {
+            await this.handleRoleAutocomplete(interaction);
+          }
+        }
+        return;
+      }
+
       // Handle command interactions (admin)
       if (interaction.isChatInputCommand()) {
         const { commandName } = interaction;
@@ -162,7 +173,7 @@ export class DiscordService {
           sc.setName('add-rule')
             .setDescription('Add a new verification rule')
             .addChannelOption(option => option.setName('channel').setDescription('Channel').setRequired(true))
-            .addRoleOption(option => option.setName('role').setDescription('Role').setRequired(true))
+            .addStringOption(option => option.setName('role').setDescription('Select existing role or type new role name to create').setRequired(true).setAutocomplete(true))
             .addStringOption(option => option.setName('slug').setDescription('Asset slug (leave empty for ALL collections)'))
             .addStringOption(option => option.setName('attribute_key').setDescription('Attribute key (leave empty for ALL attributes)'))
             .addStringOption(option => option.setName('attribute_value').setDescription('Attribute value (leave empty for ALL values)'))
@@ -270,6 +281,71 @@ export class DiscordService {
     } catch (error) {
       Logger.warn(`Failed to fetch role ${roleId} in guild ${guildId}:`, error.message);
       return null;
+    }
+  }
+
+  /**
+   * Handles role autocomplete for the add-rule command.
+   * @param interaction - The autocomplete interaction.
+   */
+  async handleRoleAutocomplete(interaction: any): Promise<void> {
+    try {
+      const focusedValue = interaction.options.getFocused().toLowerCase();
+      const guild = interaction.guild;
+      
+      if (!guild) {
+        await interaction.respond([]);
+        return;
+      }
+
+      // Get bot member to check role hierarchy
+      const botMember = guild.members.me;
+      if (!botMember) {
+        await interaction.respond([]);
+        return;
+      }
+
+      // Get bot's highest role position
+      const botHighestRole = botMember.roles.highest;
+
+      // Get all roles in the guild that the bot can assign
+      const roles = guild.roles.cache
+        .filter(role => role.name !== '@everyone')
+        .filter(role => role.name.toLowerCase().includes(focusedValue))
+        .filter(role => {
+          // Bot can only assign roles that are lower in hierarchy than its highest role
+          return role.position < botHighestRole.position;
+        })
+        .filter(role => {
+          // Also check if the role is manageable by the bot
+          return role.editable;
+        })
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .first(24); // Discord allows max 25 choices, save 1 for "create new" option
+
+      const choices = roles.map(role => ({
+        name: role.name,
+        value: role.name
+      }));
+
+      // Check if any role (manageable or not) already exists with the focused value
+      const existingRoleWithName = guild.roles.cache.find(role => 
+        role.name.toLowerCase() === focusedValue.toLowerCase()
+      );
+
+      // Add option to create new role if there's space, user has typed something, 
+      // and no role with that name already exists
+      if (choices.length < 25 && focusedValue.length > 0 && !existingRoleWithName) {
+        choices.push({
+          name: `💡 Create new role: "${focusedValue}"`,
+          value: focusedValue
+        });
+      }
+
+      await interaction.respond(choices);
+    } catch (error) {
+      Logger.error('Error in handleRoleAutocomplete:', error);
+      await interaction.respond([]);
     }
   }
 }

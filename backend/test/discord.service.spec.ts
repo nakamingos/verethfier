@@ -148,4 +148,92 @@ describe('DiscordService', () => {
     await service.findExistingVerificationMessage(mockChannel);
     expect(mockDiscordMessageService.findExistingVerificationMessage).toHaveBeenCalledWith(mockChannel);
   });
+
+  describe('handleRoleAutocomplete', () => {
+    it('should not suggest creating new role when role already exists', async () => {
+      const existingRole = {
+        id: 'existing-role-id',
+        name: 'poop',
+        position: 1,
+        editable: true
+      };
+
+      const botMember = {
+        roles: {
+          highest: { position: 5 }
+        }
+      };
+
+      const mockGuild = {
+        members: { me: botMember },
+        roles: {
+          cache: {
+            filter: jest.fn().mockReturnThis(),
+            sort: jest.fn().mockReturnThis(),
+            first: jest.fn().mockReturnValue([existingRole]),
+            find: jest.fn().mockReturnValue(existingRole) // Found existing role
+          }
+        }
+      };
+
+      const mockInteraction = {
+        guild: mockGuild,
+        options: {
+          getFocused: jest.fn().mockReturnValue('poop')
+        },
+        respond: jest.fn()
+      };
+
+      await service.handleRoleAutocomplete(mockInteraction);
+
+      expect(mockInteraction.respond).toHaveBeenCalledWith([
+        { name: 'poop', value: 'poop' }
+      ]); // Should only show existing role, no "Create new role" option
+    });
+
+    it('should suggest creating new role when role does not exist', async () => {
+      const botMember = {
+        roles: {
+          highest: { position: 5 }
+        }
+      };
+
+      const mockGuild = {
+        members: { me: botMember },
+        roles: {
+          cache: {
+            filter: jest.fn().mockReturnThis(),
+            sort: jest.fn().mockReturnThis(),
+            first: jest.fn().mockReturnValue([]), // No matching roles found
+            find: jest.fn().mockReturnValue(undefined) // No existing role with this name
+          }
+        }
+      };
+
+      const mockInteraction = {
+        guild: mockGuild,
+        options: {
+          getFocused: jest.fn().mockReturnValue('unique-role-name')
+        },
+        respond: jest.fn()
+      };
+
+      await service.handleRoleAutocomplete(mockInteraction);
+
+      expect(mockInteraction.respond).toHaveBeenCalledWith([
+        { name: '💡 Create new role: "unique-role-name"', value: 'unique-role-name' }
+      ]); // Should show "Create new role" option
+    });
+
+    it('should handle errors gracefully', async () => {
+      const mockInteraction = {
+        guild: null, // This will cause an early return
+        respond: jest.fn()
+      };
+
+      await service.handleRoleAutocomplete(mockInteraction);
+
+      expect(mockInteraction.respond).toHaveBeenCalledWith([]);
+    });
+  });
 });

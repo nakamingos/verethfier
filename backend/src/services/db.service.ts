@@ -427,6 +427,40 @@ export class DbService {
     }
     return data;
   }
+
+  async checkForExactDuplicateRule(
+    serverId: string,
+    channelId: string,
+    slug: string,
+    attributeKey: string,
+    attributeValue: string,
+    minItems: number,
+    roleId: string
+  ): Promise<any> {
+    // Use the same defaults as addRoleMapping for consistent comparison
+    const finalSlug = slug || 'ALL';
+    const finalAttrKey = attributeKey || 'ALL';
+    const finalAttrVal = attributeValue || 'ALL';
+    const finalMinItems = minItems != null ? minItems : 1;
+
+    const { data, error } = await supabase
+      .from('verifier_rules')
+      .select('*')
+      .eq('server_id', serverId)
+      .eq('channel_id', channelId)
+      .eq('slug', finalSlug)
+      .eq('attribute_key', finalAttrKey)
+      .eq('attribute_value', finalAttrVal)
+      .eq('min_items', finalMinItems)
+      .eq('role_id', roleId);
+
+    if (error) {
+      Logger.error('Error checking for exact duplicate rules:', error);
+      throw error;
+    }
+
+    return data && data.length > 0 ? data[0] : null;
+  }
 }
 
 // create table

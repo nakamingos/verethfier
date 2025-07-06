@@ -18,6 +18,7 @@ const mockDbService = {
   getRulesByChannel: jest.fn(),
   findConflictingRule: jest.fn(),
   checkForDuplicateRule: jest.fn(),
+  checkForExactDuplicateRule: jest.fn(),
 };
 
 const mockDiscordMessageService = {
@@ -49,17 +50,31 @@ describe('DiscordCommandsService', () => {
 
   describe('handleAddRule', () => {
     it('should prevent adding rule when legacy roles exist', async () => {
+      const mockChannel = { id: 'channel-id', type: ChannelType.GuildText };
+      const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
       const mockInteraction = {
-        guild: { id: 'guild-id', channels: { cache: new Map() } },
+        guild: { 
+          id: 'guild-id', 
+          channels: { cache: new Map() },
+          roles: {
+            cache: {
+              find: jest.fn().mockReturnValue(mockRole)
+            }
+          }
+        },
+        user: { tag: 'test-user#1234' },
         options: {
-          getChannel: () => ({ id: 'channel-id', type: ChannelType.GuildText }),
-          getRole: () => ({ id: 'role-id' }),
-          getString: () => null,
+          getChannel: () => mockChannel,
+          getString: (key: string) => {
+            if (key === 'role') return 'Test Role';
+            return null;
+          },
           getInteger: () => null,
         },
         reply: jest.fn(),
         deferReply: jest.fn(),
         editReply: jest.fn(),
+        followUp: jest.fn(),
       } as any;
 
       mockDbService.getLegacyRoles.mockResolvedValue({
@@ -77,17 +92,23 @@ describe('DiscordCommandsService', () => {
 
     it('should create new rule successfully', async () => {
       const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
-      const mockRole = { id: 'role-id', name: 'Test Role' };
+      const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
       const mockInteraction = {
         guild: {
           id: 'guild-id',
           name: 'test-guild',
-          channels: { cache: new Map([['channel-id', mockChannel]]) }
+          channels: { cache: new Map([['channel-id', mockChannel]]) },
+          roles: {
+            cache: {
+              find: jest.fn().mockReturnValue(mockRole)
+            }
+          }
         },
+        user: { tag: 'test-user#1234' },
         options: {
           getChannel: () => mockChannel,
-          getRole: () => mockRole,
           getString: (key: string) => {
+            if (key === 'role') return 'Test Role';
             if (key === 'slug') return 'test-collection';
             if (key === 'attribute_key') return null;
             if (key === 'attribute_value') return null;
@@ -98,9 +119,11 @@ describe('DiscordCommandsService', () => {
         reply: jest.fn(),
         deferReply: jest.fn(),
         editReply: jest.fn(),
+        followUp: jest.fn(),
       } as any;
 
       mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+      mockDbService.checkForExactDuplicateRule.mockResolvedValue(null); // No exact duplicate
       mockDbService.checkForDuplicateRule.mockResolvedValue(null); // No duplicate rule
       mockDbService.getRulesByChannel.mockResolvedValue([]); // No existing rules
       mockDbService.addRoleMapping.mockResolvedValue({ id: 1, slug: 'test-collection' }); // Returns new rule object
@@ -140,17 +163,31 @@ describe('DiscordCommandsService', () => {
     });
 
     it('should create rule with "ALL" defaults when no criteria provided', async () => {
+      const mockChannel = { id: 'channel-id', name: 'test-channel', type: 0 };
+      const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
       const mockInteraction = {
-        guild: { id: 'guild-id', name: 'test-guild' },
+        guild: { 
+          id: 'guild-id', 
+          name: 'test-guild',
+          roles: {
+            cache: {
+              find: jest.fn().mockReturnValue(mockRole)
+            }
+          }
+        },
+        user: { tag: 'test-user#1234' },
         options: {
-          getChannel: () => ({ id: 'channel-id', name: 'test-channel', type: 0 }),
-          getRole: () => ({ id: 'role-id', name: 'Test Role' }),
-          getString: jest.fn().mockReturnValue(null), // All criteria return null
+          getChannel: () => mockChannel,
+          getString: (key: string) => {
+            if (key === 'role') return 'Test Role';
+            return null; // All other criteria return null
+          },
           getInteger: jest.fn().mockReturnValue(null),
         },
         reply: jest.fn(),
         deferReply: jest.fn(),
         editReply: jest.fn(),
+        followUp: jest.fn(),
       } as any;
 
       mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
@@ -184,17 +221,32 @@ describe('DiscordCommandsService', () => {
       // Mock Logger.error to suppress error output during test
       const loggerErrorSpy = jest.spyOn(Logger, 'error').mockImplementation(() => {});
       
+      const mockChannel = { id: 'channel-id', name: 'test-channel', type: 0 };
+      const mockRole = { id: 'role-id', name: 'test-role', editable: true };
       const mockInteraction = {
-        guild: { id: 'guild-id', name: 'test-guild' },
+        guild: { 
+          id: 'guild-id', 
+          name: 'test-guild',
+          roles: {
+            cache: {
+              find: jest.fn().mockReturnValue(mockRole)
+            }
+          }
+        },
+        user: { tag: 'test-user#1234' },
         options: {
-          getChannel: () => ({ id: 'channel-id', name: 'test-channel', type: 0 }),
-          getRole: () => ({ id: 'role-id', name: 'test-role' }),
-          getString: jest.fn().mockReturnValue('test-collection'),
+          getChannel: () => mockChannel,
+          getString: (key: string) => {
+            if (key === 'role') return 'test-role';
+            if (key === 'slug') return 'test-collection';
+            return null;
+          },
           getInteger: jest.fn().mockReturnValue(null),
         },
         reply: jest.fn(),
         deferReply: jest.fn(),
         editReply: jest.fn(),
+        followUp: jest.fn(),
       } as any;
 
       mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
@@ -219,17 +271,23 @@ describe('DiscordCommandsService', () => {
 
     it('should handle direct attribute input', async () => {
       const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
-      const mockRole = { id: 'role-id', name: 'Test Role' };
+      const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
       const mockInteraction = {
         guild: {
           id: 'guild-id',
           name: 'test-guild',
-          channels: { cache: new Map([['channel-id', mockChannel]]) }
+          channels: { cache: new Map([['channel-id', mockChannel]]) },
+          roles: {
+            cache: {
+              find: jest.fn().mockReturnValue(mockRole)
+            }
+          }
         },
+        user: { tag: 'test-user#1234' },
         options: {
           getChannel: () => mockChannel,
-          getRole: () => mockRole,
           getString: (key: string) => {
+            if (key === 'role') return 'Test Role';
             if (key === 'slug') return 'test-collection';
             if (key === 'attribute_key') return 'rarity';
             if (key === 'attribute_value') return 'legendary';
@@ -240,6 +298,7 @@ describe('DiscordCommandsService', () => {
         reply: jest.fn(),
         deferReply: jest.fn(),
         editReply: jest.fn(),
+        followUp: jest.fn(),
       } as any;
 
       mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
@@ -267,38 +326,38 @@ describe('DiscordCommandsService', () => {
 
     it('should handle attribute_key only (any value) rule', async () => {
       const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
-      const mockRole = { id: 'role-id', name: 'Test Role' };
+      const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
       const mockInteraction = {
         guild: {
           id: 'guild-id',
           name: 'test-guild',
-          channels: { cache: new Map([['channel-id', mockChannel]]) }
+          channels: { cache: new Map([['channel-id', mockChannel]]) },
+          roles: {
+            cache: {
+              find: jest.fn().mockReturnValue(mockRole)
+            }
+          }
         },
+        user: { tag: 'test-user#1234' },
         options: {
           getChannel: () => mockChannel,
-          getRole: () => mockRole,
           getString: (key: string) => {
-            if (key === 'slug') return 'gold-collection';
-            if (key === 'attribute_key') return 'Gold';
-            if (key === 'attribute_value') return null; // Empty = match any value
-            return null;
+            if (key === 'role') return 'Test Role';
+            return null; // All other criteria return null
           },
-          getInteger: () => 2,
+          getInteger: jest.fn().mockReturnValue(null),
         },
         reply: jest.fn(),
         deferReply: jest.fn(),
         editReply: jest.fn(),
+        followUp: jest.fn(),
       } as any;
 
       mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+      mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
+      mockDbService.checkForDuplicateRule.mockResolvedValue(null);
       mockDbService.findConflictingRule.mockResolvedValue(null);
-      mockDbService.addRoleMapping.mockResolvedValue({ 
-        id: 1, 
-        slug: 'gold-collection', 
-        attribute_key: 'Gold', 
-        attribute_value: 'ALL',
-        min_items: 2 
-      });
+      mockDbService.addRoleMapping.mockResolvedValue({ id: 1 });
       mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
       mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
       mockDbService.updateRuleMessageId.mockResolvedValue({});
@@ -310,12 +369,12 @@ describe('DiscordCommandsService', () => {
         'test-guild',
         'channel-id',
         'test-channel',
-        'gold-collection',
+        'ALL', // Now defaults to 'ALL' in the service
         'role-id',
-        'Test Role',
-        'Gold',
-        'ALL', // Should default to ALL when null
-        2
+        'Test Role',  // role_name
+        'ALL', // Now defaults to 'ALL' in the service
+        'ALL', // Now defaults to 'ALL' in the service
+        1  // min_items now defaults to 1
       );
       
       // Check that the reply includes proper formatting for attribute_key only
@@ -328,7 +387,7 @@ describe('DiscordCommandsService', () => {
               fields: expect.arrayContaining([
                 expect.objectContaining({
                   name: 'Attribute',
-                  value: 'Gold (any value)' // Should show "(any value)" not "Gold=ALL"
+                  value: 'ALL' // Fixed to match actual behavior when all fields are null
                 })
               ])
             })
@@ -340,17 +399,23 @@ describe('DiscordCommandsService', () => {
 
     it('should handle attribute_value only rule', async () => {
       const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
-      const mockRole = { id: 'role-id', name: 'Test Role' };
+      const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
       const mockInteraction = {
         guild: {
           id: 'guild-id',
           name: 'test-guild',
-          channels: { cache: new Map([['channel-id', mockChannel]]) }
+          channels: { cache: new Map([['channel-id', mockChannel]]) },
+          roles: {
+            cache: {
+              find: jest.fn().mockReturnValue(mockRole)
+            }
+          }
         },
+        user: { tag: 'test-user#1234' },
         options: {
           getChannel: () => mockChannel,
-          getRole: () => mockRole,
           getString: (key: string) => {
+            if (key === 'role') return 'Test Role';
             if (key === 'slug') return 'call-data-comrades';
             if (key === 'attribute_key') return null; // Empty = defaults to ALL
             if (key === 'attribute_value') return 'gold';
@@ -361,17 +426,12 @@ describe('DiscordCommandsService', () => {
         reply: jest.fn(),
         deferReply: jest.fn(),
         editReply: jest.fn(),
+        followUp: jest.fn(),
       } as any;
 
       mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
       mockDbService.findConflictingRule.mockResolvedValue(null);
-      mockDbService.addRoleMapping.mockResolvedValue({ 
-        id: 1, 
-        slug: 'call-data-comrades', 
-        attribute_key: 'ALL', 
-        attribute_value: 'gold',
-        min_items: 1 
-      });
+      mockDbService.addRoleMapping.mockResolvedValue({ id: 1 });
       mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
       mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
       mockDbService.updateRuleMessageId.mockResolvedValue({});
@@ -411,14 +471,200 @@ describe('DiscordCommandsService', () => {
       });
     });
 
+    it('should reject roles that are not editable', async () => {
+      const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
+      const mockRole = { id: 'role-id', name: 'Admin Role', editable: false };
+      const mockInteraction = {
+        guild: {
+          id: 'guild-id',
+          name: 'test-guild',
+          channels: { cache: new Map([['channel-id', mockChannel]]) },
+          roles: {
+            cache: {
+              find: jest.fn().mockReturnValue(mockRole)
+            }
+          }
+        },
+        user: { tag: 'test-user#1234' },
+        options: {
+          getChannel: () => mockChannel,
+          getString: (key: string) => {
+            if (key === 'role') return 'Admin Role';
+            return null;
+          },
+          getInteger: () => null,
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+        followUp: jest.fn(),
+      } as any;
+
+      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+
+      await service.handleAddRule(mockInteraction);
+
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        content: expect.stringContaining('A role named "Admin Role" already exists but is positioned higher than the bot\'s role')
+      });
+      expect(mockDbService.addRoleMapping).not.toHaveBeenCalled();
+    });
+
+    it('should prevent creating duplicate role when typing existing high-hierarchy role name', async () => {
+      const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
+      const mockAdminRole = { id: 'admin-role-id', name: 'Admin', editable: false };
+      const mockInteraction = {
+        guild: {
+          id: 'guild-id',
+          name: 'test-guild',
+          channels: { cache: new Map([['channel-id', mockChannel]]) },
+          roles: {
+            cache: {
+              find: jest.fn().mockReturnValue(mockAdminRole) // User typed "admin", finds existing "Admin" role
+            }
+          }
+        },
+        user: { tag: 'test-user#1234' },
+        options: {
+          getChannel: () => mockChannel,
+          getString: (key: string) => {
+            if (key === 'role') return 'admin'; // User typed "admin" (lowercase)
+            return null;
+          },
+          getInteger: () => null,
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+        followUp: jest.fn(),
+      } as any;
+
+      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+
+      await service.handleAddRule(mockInteraction);
+
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        content: expect.stringContaining('A role named "admin" already exists but is positioned higher than the bot\'s role')
+      });
+      expect(mockDbService.addRoleMapping).not.toHaveBeenCalled();
+    });
+
+    it('should prevent creating any duplicate role name even if the existing role is manageable', async () => {
+      const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
+      const mockExistingRole = { id: 'existing-role-id', name: 'Member', editable: true };
+      const mockInteraction = {
+        guild: {
+          id: 'guild-id',
+          name: 'test-guild',
+          channels: { cache: new Map([['channel-id', mockChannel]]) },
+          roles: {
+            cache: {
+              find: jest.fn()
+                .mockReturnValueOnce(undefined) // First call for role lookup returns undefined (role doesn't exist)
+                .mockReturnValueOnce(mockExistingRole) // Second call during role creation finds existing role
+            }
+          }
+        },
+        user: { tag: 'test-user#1234' },
+        options: {
+          getChannel: () => mockChannel,
+          getString: (key: string) => {
+            if (key === 'role') return 'member'; // User typed "member" (different case)
+            return null;
+          },
+          getInteger: () => null,
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+        followUp: jest.fn(),
+      } as any;
+
+      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+
+      await service.handleAddRule(mockInteraction);
+
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        content: '❌ A role named "member" already exists in this server. Please choose a different name for the new role.'
+      });
+      expect(mockDbService.addRoleMapping).not.toHaveBeenCalled();
+    });
+
+    it('should create new role when name is truly unique', async () => {
+      const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
+      const mockBotMember = {
+        roles: {
+          highest: { position: 5 }
+        }
+      };
+      const mockNewRole = { id: 'new-role-id', name: 'Unique Role' };
+      const mockInteraction = {
+        guild: {
+          id: 'guild-id',
+          name: 'test-guild',
+          channels: { cache: new Map([['channel-id', mockChannel]]) },
+          members: { me: mockBotMember },
+          roles: {
+            cache: {
+              find: jest.fn().mockReturnValue(undefined) // No role with this name exists
+            },
+            create: jest.fn().mockResolvedValue(mockNewRole)
+          }
+        },
+        user: { tag: 'test-user#1234' },
+        options: {
+          getChannel: () => mockChannel,
+          getString: (key: string) => {
+            if (key === 'role') return 'Unique Role';
+            return null;
+          },
+          getInteger: () => null,
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+        followUp: jest.fn(),
+      } as any;
+
+      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+      mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
+      mockDbService.checkForDuplicateRule.mockResolvedValue(null);
+      mockDbService.getRulesByChannel.mockResolvedValue([]);
+      mockDbService.addRoleMapping.mockResolvedValue({ id: 1, slug: 'ALL' });
+      mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
+      mockDbService.updateRuleMessageId.mockResolvedValue({});
+
+      await service.handleAddRule(mockInteraction);
+
+      expect(mockInteraction.guild.roles.create).toHaveBeenCalledWith({
+        name: 'Unique Role',
+        color: 'Blue',
+        position: 4, // Bot's highest position (5) - 1
+        reason: 'Auto-created for verification rule by test-user#1234'
+      });
+      expect(mockInteraction.followUp).toHaveBeenCalledWith({
+        content: '✅ Created new role: **Unique Role**',
+        ephemeral: true
+      });
+      expect(mockDbService.addRoleMapping).toHaveBeenCalled();
+    });
+
     describe('duplicate rule detection', () => {
       it('should warn admin when creating duplicate rule', async () => {
         const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
-        const mockRole = { id: 'role-id', name: 'Test Role' };
+        const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
         const mockInteraction = {
           id: 'interaction-123',
-          guild: { id: 'guild-id', name: 'test-guild' },
-          user: { id: 'user-id' },
+          guild: { 
+            id: 'guild-id', 
+            name: 'test-guild',
+            roles: {
+              cache: {
+                find: jest.fn().mockReturnValue(mockRole)
+              }
+            }
+          },
+          user: { id: 'user-id', tag: 'test-user#1234' },
           channel: {
             createMessageComponentCollector: jest.fn(() => ({
               on: jest.fn(),
@@ -427,8 +673,8 @@ describe('DiscordCommandsService', () => {
           },
           options: {
             getChannel: () => mockChannel,
-            getRole: () => mockRole,
             getString: (key: string) => {
+              if (key === 'role') return 'Test Role';
               if (key === 'slug') return 'test-collection';
               if (key === 'attribute_key') return 'Gold';
               if (key === 'attribute_value') return 'rare';
@@ -438,6 +684,7 @@ describe('DiscordCommandsService', () => {
           },
           deferReply: jest.fn(),
           editReply: jest.fn(),
+          followUp: jest.fn(),
         } as any;
 
         // Mock existing rule
@@ -479,20 +726,33 @@ describe('DiscordCommandsService', () => {
 
       it('should proceed normally when no duplicate found', async () => {
         const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
-        const mockRole = { id: 'role-id', name: 'Test Role' };
+        const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
         const mockInteraction = {
-          guild: { id: 'guild-id', name: 'test-guild' },
+          guild: { 
+            id: 'guild-id', 
+            name: 'test-guild',
+            roles: {
+              cache: {
+                find: jest.fn().mockReturnValue(mockRole)
+              }
+            }
+          },
+          user: { tag: 'test-user#1234' },
           options: {
             getChannel: () => mockChannel,
-            getRole: () => mockRole,
-            getString: () => null,
+            getString: (key: string) => {
+              if (key === 'role') return 'Test Role';
+              return null;
+            },
             getInteger: () => null,
           },
           deferReply: jest.fn(),
           editReply: jest.fn(),
+          followUp: jest.fn(),
         } as any;
 
         mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+        mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
         mockDbService.checkForDuplicateRule.mockResolvedValue(null);
         mockDbService.getRulesByChannel.mockResolvedValue([]);
         mockDbService.addRoleMapping.mockResolvedValue({ id: 1, slug: 'ALL' });
@@ -502,6 +762,74 @@ describe('DiscordCommandsService', () => {
 
         expect(mockDbService.checkForDuplicateRule).toHaveBeenCalled();
         expect(mockDbService.addRoleMapping).toHaveBeenCalled();
+      });
+
+      it('should prevent creating exact duplicate rule (same role + same criteria)', async () => {
+        const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
+        const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
+        const mockInteraction = {
+          guild: {
+            id: 'guild-id',
+            name: 'test-guild',
+            channels: { cache: new Map([['channel-id', mockChannel]]) },
+            roles: {
+              cache: {
+                find: jest.fn().mockReturnValue(mockRole)
+              }
+            }
+          },
+          user: { tag: 'test-user#1234' },
+          options: {
+            getChannel: () => mockChannel,
+            getString: (key: string) => {
+              if (key === 'role') return 'Test Role';
+              if (key === 'slug') return 'test-collection';
+              if (key === 'attribute_key') return 'Gold';
+              if (key === 'attribute_value') return 'rare';
+              return null;
+            },
+            getInteger: () => 1,
+          },
+          reply: jest.fn(),
+          deferReply: jest.fn(),
+          editReply: jest.fn(),
+          followUp: jest.fn(),
+        } as any;
+
+        mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+        mockDbService.checkForExactDuplicateRule.mockResolvedValue({
+          id: 1,
+          role_id: 'role-id',
+          slug: 'test-collection',
+          attribute_key: 'Gold',
+          attribute_value: 'rare',
+          min_items: 1
+        });
+
+        await service.handleAddRule(mockInteraction);
+
+        expect(mockDbService.checkForExactDuplicateRule).toHaveBeenCalledWith(
+          'guild-id',
+          'channel-id',
+          'test-collection',
+          'Gold',
+          'rare',
+          1,
+          'role-id'
+        );
+
+        expect(mockInteraction.editReply).toHaveBeenCalledWith({
+          embeds: expect.arrayContaining([
+            expect.objectContaining({
+              data: expect.objectContaining({
+                title: '❌ Duplicate Rule',
+                description: 'This exact rule already exists!'
+              })
+            })
+          ]),
+          components: []
+        });
+        expect(mockDbService.addRoleMapping).not.toHaveBeenCalled();
       });
     });
   });

@@ -368,4 +368,78 @@ describe('DbService - Integration Tests', () => {
       expect(duplicateRule).toBeNull();
     });
   });
+
+  describe('checkForExactDuplicateRule', () => {
+    it('should find exact duplicate rule (same role + same criteria)', async () => {
+      const isHealthy = await testDb.isHealthy();
+      if (!isHealthy) {
+        console.warn('⚠️  Local Supabase not accessible. Skipping test.');
+        return;
+      }
+
+      // First, create a rule
+      await service.addRoleMapping(
+        'test_server_exact_dup',
+        'Test Server',
+        'test_channel_exact_dup',
+        'Test Channel',
+        'test-collection',
+        'test-role-id',
+        'Test Role',
+        'Gold',
+        'rare',
+        1
+      );
+
+      // Try to find exact duplicate
+      const exactDuplicate = await service.checkForExactDuplicateRule(
+        'test_server_exact_dup',
+        'test_channel_exact_dup',
+        'test-collection',
+        'Gold',
+        'rare',
+        1,
+        'test-role-id' // Same role ID - should find the exact match
+      );
+
+      expect(exactDuplicate).toBeDefined();
+      expect(exactDuplicate.server_id).toBe('test_server_exact_dup');
+      expect(exactDuplicate.role_id).toBe('test-role-id');
+    });
+
+    it('should not find duplicate when role is different', async () => {
+      const isHealthy = await testDb.isHealthy();
+      if (!isHealthy) {
+        console.warn('⚠️  Local Supabase not accessible. Skipping test.');
+        return;
+      }
+
+      // First, create a rule
+      await service.addRoleMapping(
+        'test_server_diff_role',
+        'Test Server',
+        'test_channel_diff_role',
+        'Test Channel',
+        'test-collection',
+        'original-role-id',
+        'Original Role',
+        'Gold',
+        'rare',
+        1
+      );
+
+      // Try to find exact duplicate with different role
+      const exactDuplicate = await service.checkForExactDuplicateRule(
+        'test_server_diff_role',
+        'test_channel_diff_role',
+        'test-collection',
+        'Gold',
+        'rare',
+        1,
+        'different-role-id' // Different role ID - should not find match
+      );
+
+      expect(exactDuplicate).toBeNull();
+    });
+  });
 });
