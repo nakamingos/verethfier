@@ -116,7 +116,9 @@ export class DataService {
     const marketAddress = '0xd3418772623be1a3cc6b6d45cb46420cedd9154a'.toLowerCase();
 
     // If no attribute filtering needed, use simple query
-    if (!attributeKey || attributeKey === '' || attributeKey === 'ALL') {
+    // Only skip attribute filtering if BOTH key and value are 'ALL' or empty
+    if ((!attributeKey || attributeKey === '' || attributeKey === 'ALL') && 
+        (!attributeValue || attributeValue === '' || attributeValue === 'ALL')) {
       let query = supabase
         .from('ethscriptions')
         .select('hashId, owner, prevOwner, slug')
@@ -165,17 +167,30 @@ export class DataService {
     }
 
     // Filter by attribute key/value (case-insensitive)
-    const possibleKeys = [
-      attributeKey,
-      attributeKey.charAt(0).toUpperCase() + attributeKey.slice(1).toLowerCase(),
-      attributeKey.toLowerCase(),
-      attributeKey.toUpperCase()
-    ];
-
     let matchingItems = [];
     let usedKey = attributeKey;
 
-    for (const keyVariation of possibleKeys) {
+    if (attributeKey === 'ALL') {
+      // Special case: search all attribute keys for the specified value
+      matchingItems = joinedData.filter(item => {
+        const attrs = item.attributes_new;
+        if (!attrs || !attrs.values) return false;
+        
+        // Search through all attribute keys for the specified value (case-insensitive)
+        return Object.values(attrs.values).some(value => 
+          value && value.toString().toLowerCase() === attributeValue.toLowerCase()
+        );
+      });
+    } else {
+      // Original logic for specific attribute key
+      const possibleKeys = [
+        attributeKey,
+        attributeKey.charAt(0).toUpperCase() + attributeKey.slice(1).toLowerCase(),
+        attributeKey.toLowerCase(),
+        attributeKey.toUpperCase()
+      ];
+
+      for (const keyVariation of possibleKeys) {
       const matches = joinedData.filter(item => {
         const attrs = item.attributes_new;
         if (!attrs || !attrs.values) return false;
@@ -203,6 +218,7 @@ export class DataService {
         break;
       }
     }
+    } // Close the else block
 
     const matchingCount = matchingItems.length;
     
