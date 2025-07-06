@@ -87,7 +87,7 @@ export class DiscordCommandsService {
           embeds: [
             new EmbedBuilder()
               .setTitle('Rule Already Exists')
-              .setDescription(`A rule with the same criteria already exists for <#${channel.id}> and <@&${role.id}>.\n\n**Existing Rule:**\n- Slug: ${existingRule.slug || 'ALL'}\n- Attribute: ${existingRule.attribute_key && existingRule.attribute_key !== 'ALL' ? `${existingRule.attribute_key}=${existingRule.attribute_value || 'ALL'}` : 'ALL'}\n- Min Items: ${existingRule.min_items || 1}\n\nUse \`/setup list-rules\` to see all existing rules.`)
+              .setDescription(`A rule with the same criteria already exists for <#${channel.id}> and <@&${role.id}>.\n\n**Existing Rule:**\n- Slug: ${existingRule.slug || 'ALL'}\n- Attribute: ${existingRule.attribute_key && existingRule.attribute_key !== 'ALL' ? (existingRule.attribute_value && existingRule.attribute_value !== 'ALL' ? `${existingRule.attribute_key}=${existingRule.attribute_value}` : `${existingRule.attribute_key} (any value)`) : (existingRule.attribute_value && existingRule.attribute_value !== 'ALL' ? `ALL=${existingRule.attribute_value}` : 'ALL')}\n- Min Items: ${existingRule.min_items || 1}\n\nUse \`/setup list-rules\` to see all existing rules.`)
               .setColor('#FF9900') // Orange color for warning
           ]
         });
@@ -158,7 +158,7 @@ export class DiscordCommandsService {
             .setDescription(`Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added using existing verification message.`)
             .addFields([
               { name: 'Collection', value: newRule.slug || 'ALL', inline: true },
-              { name: 'Attribute', value: newRule.attribute_key && newRule.attribute_key !== 'ALL' ? `${newRule.attribute_key}=${newRule.attribute_value || 'ALL'}` : 'ALL', inline: true },
+              { name: 'Attribute', value: newRule.attribute_key && newRule.attribute_key !== 'ALL' ? (newRule.attribute_value && newRule.attribute_value !== 'ALL' ? `${newRule.attribute_key}=${newRule.attribute_value}` : `${newRule.attribute_key} (any value)`) : (newRule.attribute_value && newRule.attribute_value !== 'ALL' ? `ALL=${newRule.attribute_value}` : 'ALL'), inline: true },
               { name: 'Min Items', value: (newRule.min_items ?? 1).toString(), inline: true }
             ])
             .setColor('#00FF00')
@@ -189,7 +189,7 @@ export class DiscordCommandsService {
               .setDescription(`Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added with new verification message.`)
               .addFields([
                 { name: 'Collection', value: newRule.slug || 'ALL', inline: true },
-                { name: 'Attribute', value: newRule.attribute_key && newRule.attribute_key !== 'ALL' ? `${newRule.attribute_key}=${newRule.attribute_value || 'ALL'}` : 'ALL', inline: true },
+                { name: 'Attribute', value: newRule.attribute_key && newRule.attribute_key !== 'ALL' ? (newRule.attribute_value && newRule.attribute_value !== 'ALL' ? `${newRule.attribute_key}=${newRule.attribute_value}` : `${newRule.attribute_key} (any value)`) : (newRule.attribute_value && newRule.attribute_value !== 'ALL' ? `ALL=${newRule.attribute_value}` : 'ALL'), inline: true },
                 { name: 'Min Items', value: (newRule.min_items ?? 1).toString(), inline: true }
               ])
               .setColor('#00FF00')
@@ -240,7 +240,7 @@ export class DiscordCommandsService {
       ? rules.map(r =>
           r.legacy
             ? `[LEGACY] Rule: <@&${r.role_id}> (from legacy setup, please migrate or remove)`
-            : `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attribute_key && r.attribute_key !== 'ALL' ? `${r.attribute_key}=${r.attribute_value || 'ALL'}` : 'ALL'} | Min: ${r.min_items || 1}`
+            : `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attribute_key && r.attribute_key !== 'ALL' ? (r.attribute_value && r.attribute_value !== 'ALL' ? `${r.attribute_key}=${r.attribute_value}` : `${r.attribute_key} (any value)`) : (r.attribute_value && r.attribute_value !== 'ALL' ? `ALL=${r.attribute_value}` : 'ALL')} | Min: ${r.min_items || 1}`
         ).join('\n')
       : 'No rules found.';
       

@@ -251,6 +251,146 @@ describe('DiscordCommandsService', () => {
       );
     });
 
+    it('should handle attribute_key only (any value) rule', async () => {
+      const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
+      const mockRole = { id: 'role-id', name: 'Test Role' };
+      const mockInteraction = {
+        guild: {
+          id: 'guild-id',
+          name: 'test-guild',
+          channels: { cache: new Map([['channel-id', mockChannel]]) }
+        },
+        options: {
+          getChannel: () => mockChannel,
+          getRole: () => mockRole,
+          getString: (key: string) => {
+            if (key === 'slug') return 'gold-collection';
+            if (key === 'attribute_key') return 'Gold';
+            if (key === 'attribute_value') return null; // Empty = match any value
+            return null;
+          },
+          getInteger: () => 2,
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
+      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+      mockDbService.findConflictingRule.mockResolvedValue(null);
+      mockDbService.addRoleMapping.mockResolvedValue({ 
+        id: 1, 
+        slug: 'gold-collection', 
+        attribute_key: 'Gold', 
+        attribute_value: 'ALL',
+        min_items: 2 
+      });
+      mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
+      mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
+      mockDbService.updateRuleMessageId.mockResolvedValue({});
+
+      await service.handleAddRule(mockInteraction);
+
+      expect(mockDbService.addRoleMapping).toHaveBeenCalledWith(
+        'guild-id',
+        'test-guild',
+        'channel-id',
+        'test-channel',
+        'gold-collection',
+        'role-id',
+        'Test Role',
+        'Gold',
+        'ALL', // Should default to ALL when null
+        2
+      );
+      
+      // Check that the reply includes proper formatting for attribute_key only
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        embeds: expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              fields: expect.arrayContaining([
+                expect.objectContaining({
+                  name: 'Attribute',
+                  value: 'Gold (any value)' // Should show "(any value)" not "Gold=ALL"
+                })
+              ])
+            })
+          })
+        ])
+      });
+    });
+
+    it('should handle attribute_value only rule', async () => {
+      const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
+      const mockRole = { id: 'role-id', name: 'Test Role' };
+      const mockInteraction = {
+        guild: {
+          id: 'guild-id',
+          name: 'test-guild',
+          channels: { cache: new Map([['channel-id', mockChannel]]) }
+        },
+        options: {
+          getChannel: () => mockChannel,
+          getRole: () => mockRole,
+          getString: (key: string) => {
+            if (key === 'slug') return 'call-data-comrades';
+            if (key === 'attribute_key') return null; // Empty = defaults to ALL
+            if (key === 'attribute_value') return 'gold';
+            return null;
+          },
+          getInteger: () => 1,
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
+      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
+      mockDbService.findConflictingRule.mockResolvedValue(null);
+      mockDbService.addRoleMapping.mockResolvedValue({ 
+        id: 1, 
+        slug: 'call-data-comrades', 
+        attribute_key: 'ALL', 
+        attribute_value: 'gold',
+        min_items: 1 
+      });
+      mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
+      mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
+      mockDbService.updateRuleMessageId.mockResolvedValue({});
+
+      await service.handleAddRule(mockInteraction);
+
+      expect(mockDbService.addRoleMapping).toHaveBeenCalledWith(
+        'guild-id',
+        'test-guild',
+        'channel-id',
+        'test-channel',
+        'call-data-comrades',
+        'role-id',
+        'Test Role',
+        'ALL', // Should default to ALL when null
+        'gold',
+        1
+      );
+      
+      // Check that the reply includes proper formatting for attribute_value only
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        embeds: expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              fields: expect.arrayContaining([
+                expect.objectContaining({
+                  name: 'Attribute',
+                  value: 'ALL=gold' // Should show "ALL=gold" not just "ALL"
+                })
+              ])
+            })
+          })
+        ])
+      });
+    });
+
     // Remove the old custom validation tests since they're no longer needed
   });
 
