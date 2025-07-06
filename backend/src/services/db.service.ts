@@ -174,7 +174,15 @@ export class DbService {
     if (error) throw error;
   }
 
-  async logUserRole(userId: string, serverId: string, roleId: string, address: string): Promise<void> {
+  async logUserRole(
+    userId: string, 
+    serverId: string, 
+    roleId: string, 
+    address: string,
+    userName?: string,
+    serverName?: string,
+    roleName?: string
+  ): Promise<void> {
     const { error } = await supabase
       .from('verifier_user_roles')
       .insert({
@@ -182,9 +190,23 @@ export class DbService {
         server_id: serverId,
         role_id: roleId,
         address: address?.toLowerCase(),
-        assigned_at: new Date().toISOString()
+        assigned_at: new Date().toISOString(),
+        user_name: userName || null,
+        server_name: serverName || null,
+        role_name: roleName || null
       });
-    if (error) throw error;
+
+    if (error) {
+      Logger.error('Error logging user role:', error);
+      throw error;
+    }
+
+    Logger.debug(`Logged user role: ${userId} -> ${roleId} in ${serverId}`, {
+      user_name: userName,
+      server_name: serverName,
+      role_name: roleName,
+      address: address?.toLowerCase()
+    });
   }
 
   // Returns both new rules and legacy role (if present) for a server
