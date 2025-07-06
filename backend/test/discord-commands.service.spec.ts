@@ -49,62 +49,6 @@ describe('DiscordCommandsService', () => {
   });
 
   describe('handleAddRule', () => {
-    it('should prevent adding rule when legacy roles exist', async () => {
-      const mockChannel = { id: 'channel-id', type: ChannelType.GuildText };
-      const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
-      const mockInteraction = {
-        guild: { 
-          id: 'guild-id', 
-          channels: { cache: new Map() },
-          roles: {
-            cache: {
-              find: jest.fn().mockReturnValue(mockRole)
-            }
-          }
-        },
-        user: { tag: 'test-user#1234' },
-        options: {
-          getChannel: () => mockChannel,
-          getString: (key: string) => {
-            if (key === 'role') return 'Test Role';
-            return null;
-          },
-          getInteger: () => null,
-        },
-        reply: jest.fn(),
-        deferReply: jest.fn(),
-        editReply: jest.fn(),
-        followUp: jest.fn(),
-      } as any;
-
-      mockDbService.getLegacyRoles.mockResolvedValue({
-        data: [{ role_id: 'legacy-role' }]
-      });
-
-      await service.handleAddRule(mockInteraction);
-
-      expect(mockDbService.getLegacyRoles).toHaveBeenCalledWith('guild-id');
-      expect(mockInteraction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
-      expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: [
-          expect.objectContaining({
-            data: {
-              color: 0xFF0000, // Red color for error
-              title: '❌ Legacy Rules Exist',
-              description: 'You must migrate or remove the legacy rule(s) for this server before adding new rules.',
-              fields: [
-                {
-                  name: '💡 What you can do:',
-                  value: '• Contact an administrator to migrate legacy rules to the new format\n• Legacy rules can be manually removed from the database if no longer needed',
-                  inline: false
-                }
-              ]
-            }
-          })
-        ]
-      });
-    });
-
     it('should create new rule successfully', async () => {
       const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
       const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
@@ -976,22 +920,25 @@ describe('DiscordCommandsService', () => {
           id: 1,
           channel_id: 'channel-id',
           role_id: 'role-id',
-          collection: 'test-collection',
-          legacy: true
+          server_id: 'guild-id',
+          slug: 'test-collection',
+          attribute_key: 'test-attr',
+          attribute_value: 'test-value',
+          min_items: 1
         }
       ];
-      mockDbService.getAllRulesWithLegacy.mockResolvedValue(mockRules);
+      mockDbService.getRoleMappings.mockResolvedValue(mockRules);
 
       await service.handleListRules(mockInteraction);
 
-      expect(mockDbService.getAllRulesWithLegacy).toHaveBeenCalledWith('guild-id');
+      expect(mockDbService.getRoleMappings).toHaveBeenCalledWith('guild-id');
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
         embeds: [
           expect.objectContaining({
             data: {
               color: 0xC3FF00, // Lime color for info
               title: '📋 Verification Rules',
-              description: '[LEGACY] Rule: <@&role-id> (from legacy setup, please migrate or remove)\n\n⚠️ [LEGACY] rules are from the old setup and may assign outdated roles. Please migrate to the new rules system and remove legacy rules.'
+              description: 'ID: 1 | Channel: <#channel-id> | Role: <@&role-id> | Slug: test-collection | Attr: test-attr=test-value | Min: 1'
             }
           })
         ]

@@ -32,7 +32,6 @@ export const DISCORD_COMMAND_CONSTANTS = {
   ERRORS: {
     CHANNEL_REQUIRED: 'Channel and role are required.',
     RULE_ID_REQUIRED: 'Rule ID is required.',
-    LEGACY_RULES_EXIST: 'You must migrate or remove the legacy rule(s) for this server before adding new rules.',
     EXACT_DUPLICATE: 'This exact rule already exists!',
     ROLE_HIERARCHY_ISSUE: 'Role is positioned higher than the bot\'s role and cannot be managed.',
     DUPLICATE_ROLE_NAME: 'A role with this name already exists in this server.',
@@ -40,17 +39,13 @@ export const DISCORD_COMMAND_CONSTANTS = {
     ROLE_CREATION_FAILED: 'Failed to create the Discord role.',
     RULE_DELETION_FAILED: 'Failed to delete the rule. Please try again.',
     RULE_REMOVAL_FAILED: 'Failed to remove the verification rule.',
-    LEGACY_REMOVAL_FAILED: 'Failed to remove legacy roles. Please try again.',
-    MIGRATION_FAILED: 'Failed to migrate legacy role.',
   },
   
   // Success messages
   SUCCESS: {
     RULE_CREATED: 'Verification rule created successfully!',
     RULE_DELETED: 'Rule deleted successfully.',
-    LEGACY_REMOVED: 'Legacy rules removed successfully.',
     ROLE_CREATED: 'Created new role',
-    MIGRATION_COMPLETE: 'Legacy rules migrated successfully.',
   },
   
   // Warning messages

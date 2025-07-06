@@ -50,8 +50,8 @@ export class DiscordCommandsService {
     try {
       await interaction.deferReply({ ephemeral: true });
 
-      // Validate input and check for legacy rules
-      const params = await this.validateInputAndLegacyRules(interaction);
+      // Validate input parameters
+      const params = await this.validateInputParams(interaction);
       if (!params) {
         return; // Error already handled
       }
@@ -370,22 +370,18 @@ export class DiscordCommandsService {
     // Defer the reply early to prevent timeout
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     
-    const rules = await this.dbSvc.getAllRulesWithLegacy(
-      interaction.guild.id
+    // Get only modern verification rules (filter out legacy migration rule)
+    const allRules = await this.dbSvc.getRoleMappings(interaction.guild.id);
+    const modernRules = allRules.filter(rule => 
+      rule.server_id !== '000000000000000000' && 
+      rule.role_id !== 'legacy_role'
     );
     
-    let desc = rules.length
-      ? rules.map(r =>
-          r.legacy
-            ? `[LEGACY] Rule: <@&${r.role_id}> (from legacy setup, please migrate or remove)`
-            : `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attribute_key && r.attribute_key !== 'ALL' ? (r.attribute_value && r.attribute_value !== 'ALL' ? `${r.attribute_key}=${r.attribute_value}` : `${r.attribute_key} (any value)`) : (r.attribute_value && r.attribute_value !== 'ALL' ? `ALL=${r.attribute_value}` : 'ALL')} | Min: ${r.min_items || 1}`
+    let desc = modernRules.length
+      ? modernRules.map(r =>
+          `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attribute_key && r.attribute_key !== 'ALL' ? (r.attribute_value && r.attribute_value !== 'ALL' ? `${r.attribute_key}=${r.attribute_value}` : `${r.attribute_key} (any value)`) : (r.attribute_value && r.attribute_value !== 'ALL' ? `ALL=${r.attribute_value}` : 'ALL')} | Min: ${r.min_items || 1}`
         ).join('\n')
-      : 'No rules found.';
-      
-    if (rules.some(r => r.legacy)) {
-      desc +=
-        '\n\n⚠️ [LEGACY] rules are from the old setup and may assign outdated roles. Please migrate to the new rules system and remove legacy rules.';
-    }
+      : 'No verification rules found.';
     
     await interaction.editReply({
       embeds: [AdminFeedback.info('Verification Rules', desc)]
@@ -479,10 +475,10 @@ export class DiscordCommandsService {
   }
 
   /**
-   * Validates that no legacy rules exist and extracts input parameters
+   * Validates basic input parameters for rule creation.
    * @returns Input parameters if valid, null if validation failed (error already sent to user)
    */
-  private async validateInputAndLegacyRules(interaction: ChatInputCommandInteraction): Promise<{
+  private async validateInputParams(interaction: ChatInputCommandInteraction): Promise<{
     channel: TextChannel;
     roleName: string;
     slug: string;
@@ -490,24 +486,6 @@ export class DiscordCommandsService {
     attributeValue: string;
     minItems: number;
   } | null> {
-    // Check if there are legacy roles that need to be migrated
-    const legacyRolesResult = await this.dbSvc.getLegacyRoles(interaction.guild.id);
-    const legacyRoles = legacyRolesResult.data;
-    
-    if (legacyRoles && legacyRoles.length > 0) {
-      await interaction.editReply({
-        embeds: [AdminFeedback.error(
-          'Legacy Rules Exist',
-          'You must migrate or remove the legacy rule(s) for this server before adding new rules.',
-          [
-            'Contact an administrator to migrate legacy rules to the new format',
-            'Legacy rules can be manually removed from the database if no longer needed'
-          ]
-        )]
-      });
-      return null;
-    }
-
     const channel = interaction.options.getChannel('channel') as TextChannel;
     const roleName = interaction.options.getString('role');
     const slug = interaction.options.getString('slug') || 'ALL';

@@ -1,7 +1,14 @@
 # Database dumps and working files
-*.sql
-!supabase/migrations/*.sql  # Keep migration files
-!supabase/seed.sql         # Keep seed files if you have them
+# Ignore SQL files in specific locations but keep migrations
+schema_dump*.sql
+fix_*.sql
+*_dump*.sql
+REMOTE_*.sql
+temp/*.sql
+
+# Keep migration files
+!backend/supabase/migrations/*.sql
+!supabase/migrations/*.sql
 
 # Zip files and archives
 *.zip

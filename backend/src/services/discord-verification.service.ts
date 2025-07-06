@@ -178,7 +178,8 @@ export class DiscordVerificationService {
     roleId: string,
     guildId: string,
     address: string,
-    nonce: string
+    nonce: string,
+    ruleId?: string
   ): Promise<void> {
     if (!this.client) throw new Error('Discord bot not initialized');
 
@@ -198,12 +199,36 @@ export class DiscordVerificationService {
 
     // Add the role - don't send success message here as there might be more roles coming
     await member.roles.add(role);
+
+    // Legacy tracking (keep for backwards compatibility)
     await this.dbSvc.addServerToUser(
       userId, 
       guildId, 
       role.name,
       address
     );
+
+    // Enhanced tracking (if enhanced table exists and we have a rule)
+    try {
+      const hasEnhancedTracking = await this.dbSvc.checkEnhancedTrackingExists();
+      if (hasEnhancedTracking && ruleId) {
+        await this.dbSvc.trackRoleAssignment({
+          userId,
+          serverId: guildId,
+          roleId,
+          ruleId,
+          address,
+          userName: member.displayName || member.user.username,
+          serverName: guild.name,
+          roleName: role.name,
+          expiresInHours: undefined // No expiration by default
+        });
+        Logger.debug(`📝 Tracked role assignment for user ${userId} in enhanced table`);
+      }
+    } catch (error) {
+      // Don't fail the role assignment if enhanced tracking fails
+      Logger.error('Failed to track role assignment in enhanced table:', error.message);
+    }
   }
 
   /**
@@ -327,5 +352,195 @@ export class DiscordVerificationService {
     const rule = await this.dbSvc.findRuleByMessageId(guildId, channelId, messageId);
     if (rule && rule.role_id) return rule.role_id;
     return null;
+  }
+
+  // =======================================
+  // DYNAMIC ROLE MANAGEMENT METHODS
+  // =======================================
+
+  /**
+   * Remove a Discord role from a user
+   * Used for dynamic role revocation when holdings no longer meet criteria
+   */
+  async removeUserRole(userId: string, serverId: string, roleId: string): Promise<boolean> {
+    if (!this.client) {
+      Logger.error('Discord client not initialized');
+      return false;
+    }
+
+    try {
+      const guild = await this.client.guilds.fetch(serverId);
+      if (!guild) {
+        Logger.error(`Guild ${serverId} not found`);
+        return false;
+      }
+
+      const member = await guild.members.fetch(userId);
+      if (!member) {
+        Logger.debug(`Member ${userId} not found in guild ${serverId}`);
+        return false;
+      }
+
+      const role = await guild.roles.fetch(roleId);
+      if (!role) {
+        Logger.error(`Role ${roleId} not found in guild ${serverId}`);
+        return false;
+      }
+
+      // Check if user actually has the role
+      if (!member.roles.cache.has(roleId)) {
+        Logger.debug(`User ${userId} doesn't have role ${roleId} in guild ${serverId}`);
+        return true; // Consider this success since the desired state is achieved
+      }
+
+      await member.roles.remove(role, 'Dynamic role verification: holdings no longer meet criteria');
+      Logger.log(`✅ Removed role "${role.name}" from user ${userId} in ${guild.name}`);
+      return true;
+
+    } catch (error) {
+      Logger.error(`Failed to remove role ${roleId} from user ${userId} in guild ${serverId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Add a Discord role to a user (dynamic version)
+   * Used for dynamic role assignment - different signature from the verification flow method
+   */
+  async addUserRoleDynamic(userId: string, serverId: string, roleId: string): Promise<boolean> {
+    if (!this.client) {
+      Logger.error('Discord client not initialized');
+      return false;
+    }
+
+    try {
+      const guild = await this.client.guilds.fetch(serverId);
+      if (!guild) {
+        Logger.error(`Guild ${serverId} not found`);
+        return false;
+      }
+
+      const member = await guild.members.fetch(userId);
+      if (!member) {
+        Logger.debug(`Member ${userId} not found in guild ${serverId}`);
+        return false;
+      }
+
+      const role = await guild.roles.fetch(roleId);
+      if (!role) {
+        Logger.error(`Role ${roleId} not found in guild ${serverId}`);
+        return false;
+      }
+
+      // Check if user already has the role
+      if (member.roles.cache.has(roleId)) {
+        Logger.debug(`User ${userId} already has role ${roleId} in guild ${serverId}`);
+        return true;
+      }
+
+      await member.roles.add(role, 'Dynamic role verification: holdings meet criteria');
+      Logger.log(`✅ Added role "${role.name}" to user ${userId} in ${guild.name}`);
+      return true;
+
+    } catch (error) {
+      Logger.error(`Failed to add role ${roleId} to user ${userId} in guild ${serverId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if a user is still in a Discord server
+   * Used to clean up role assignments for users who left
+   */
+  async isUserInServer(userId: string, serverId: string): Promise<boolean> {
+    if (!this.client) {
+      Logger.error('Discord client not initialized');
+      return false;
+    }
+
+    try {
+      const guild = await this.client.guilds.fetch(serverId);
+      if (!guild) {
+        Logger.error(`Guild ${serverId} not found`);
+        return false;
+      }
+
+      const member = await guild.members.fetch(userId);
+      return !!member;
+
+    } catch (error) {
+      // User likely left the server
+      Logger.debug(`User ${userId} not found in guild ${serverId}:`, error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Get Discord user and server names for enhanced tracking
+   */
+  async getDiscordNames(userId: string, serverId: string): Promise<{
+    userName?: string;
+    serverName?: string;
+    roleName?: string;
+  }> {
+    if (!this.client) {
+      return {};
+    }
+
+    try {
+      const guild = await this.client.guilds.fetch(serverId);
+      const member = await guild.members.fetch(userId);
+      
+      return {
+        userName: member.displayName || member.user.username,
+        serverName: guild.name
+      };
+    } catch (error) {
+      Logger.debug(`Failed to get Discord names for user ${userId} in server ${serverId}:`, error.message);
+      return {};
+    }
+  }
+
+  /**
+   * Get Discord role name by role ID
+   */
+  async getRoleName(serverId: string, roleId: string): Promise<string | undefined> {
+    if (!this.client) {
+      return undefined;
+    }
+
+    try {
+      const guild = await this.client.guilds.fetch(serverId);
+      const role = await guild.roles.fetch(roleId);
+      return role?.name;
+    } catch (error) {
+      Logger.debug(`Failed to get role name for role ${roleId} in server ${serverId}:`, error.message);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get guild member by user ID
+   */
+  async getGuildMember(serverId: string, userId: string): Promise<any> {
+    if (!this.client) {
+      Logger.error('Discord client not initialized');
+      return null;
+    }
+
+    try {
+      const guild = await this.client.guilds.fetch(serverId);
+      if (!guild) {
+        Logger.error(`Guild ${serverId} not found`);
+        return null;
+      }
+
+      const member = await guild.members.fetch(userId);
+      return member;
+
+    } catch (error) {
+      Logger.debug(`Failed to get guild member ${userId} in server ${serverId}:`, error.message);
+      return null;
+    }
   }
 }
