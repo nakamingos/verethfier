@@ -142,7 +142,7 @@ export class DataService {
     const effectiveMinItems = minItems;
     
     // Add debug logging
-    Logger.log(`checkAssetOwnershipWithCriteria: address=${address}, slug=${slug}, attr=${attributeKey}=${attributeValue}, minItems=${minItems}, effectiveMinItems=${effectiveMinItems}`);
+    Logger.debug(`checkAssetOwnershipWithCriteria: address=${address?.slice(0,6)}...${address?.slice(-4)}, slug=${slug}, attr=${attributeKey}=${attributeValue}, minItems=${minItems}, effectiveMinItems=${effectiveMinItems}`);
     
     address = address.toLowerCase();
     const marketAddress = '0xd3418772623be1a3cc6b6d45cb46420cedd9154a'.toLowerCase();
@@ -256,8 +256,8 @@ export class DataService {
     
     // Debug logging
     const valueCondition = (!attributeValue || attributeValue === '' || attributeValue === 'ALL') ? 'any value' : `'${attributeValue}'`;
-    Logger.log(`Attribute filtering: found ${matchingCount} matching ethscriptions with ${usedKey}=${valueCondition}`);
-    Logger.log(`User owns ${joinedData.length} total ${slug || 'ethscriptions'} with attributes`);
+    Logger.debug(`Attribute filtering: found ${matchingCount} matching ethscriptions with ${usedKey}=${valueCondition}`);
+    Logger.debug(`User owns ${joinedData.length} total ${slug || 'ethscriptions'} with attributes`);
     
     if (joinedData.length > 0 && matchingCount === 0) {
       const searchCondition = (!attributeValue || attributeValue === '' || attributeValue === 'ALL') ? 

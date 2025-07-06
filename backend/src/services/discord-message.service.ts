@@ -49,11 +49,8 @@ export class DiscordMessageService {
         return null;
       }
 
-      Logger.debug(`Searching for existing verification messages in channel ${channel.id}, bot user ID: ${botUserId}`);
-
       // Fetch recent messages from the channel (last 100 messages should be enough)
       const messages = await channel.messages.fetch({ limit: 100 });
-      Logger.debug(`Fetched ${messages.size} messages from channel ${channel.id}`);
       
       let botMessagesCount = 0;
       let botMessagesWithButtonsCount = 0;
@@ -73,7 +70,6 @@ export class DiscordMessageService {
               const components = actionRow.components;
               for (const component of components) {
                 if (component.type === 2) { // ButtonComponent type
-                  Logger.debug(`Found existing bot message with button: ${messageId}`);
                   return messageId;
                 }
               }
@@ -82,7 +78,6 @@ export class DiscordMessageService {
         }
       }
       
-      Logger.debug(`Search complete for channel ${channel.id}: found ${botMessagesCount} bot messages, ${botMessagesWithButtonsCount} with buttons, 0 returned as verification messages`);
       return null;
     } catch (error) {
       Logger.error('Error searching for existing verification message:', error);
@@ -114,7 +109,6 @@ export class DiscordMessageService {
       components: [verifyButton],
     });
 
-    Logger.debug(`Created new verification message: ${sentMessage.id}`);
     return sentMessage.id;
   }
 

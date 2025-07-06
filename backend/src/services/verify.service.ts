@@ -59,12 +59,12 @@ export class VerifyService {
     
     // Invalidate the nonce after retrieving the data to prevent replay attacks
     await this.nonceSvc.invalidateNonce(payload.userId);
-    Logger.log(`Nonce deleted for userId: ${payload.userId}`);
+    Logger.debug(`Nonce deleted for userId: ${payload.userId}`);
 
     // --- Message-based verification (takes precedence if messageId is present) ---
     // This is the new verification system that uses specific rules for Discord messages
     if (messageId && channelId) {
-      Logger.log(`Message-based verification for messageId: ${messageId}, channelId: ${channelId}`);
+      Logger.debug(`Message-based verification for messageId: ${messageId}, channelId: ${channelId}`);
       
       // Get ALL rules that match this message (not just the first one)
       const rules = await this.dbSvc.findRulesByMessageId(
@@ -80,7 +80,7 @@ export class VerifyService {
         throw new Error(errorMsg);
       }
 
-      Logger.log(`Found ${rules.length} rules for messageId: ${messageId}`);
+      Logger.debug(`Found ${rules.length} rules for messageId: ${messageId}`);
       
       const assignedRoles = [];
       let hasMatchingAssets = false;
@@ -91,7 +91,7 @@ export class VerifyService {
           continue;
         }
         
-        Logger.log(`Processing rule ${rule.id}: slug=${rule.slug}, attr=${rule.attribute_key}=${rule.attribute_value}, min_items=${rule.min_items}`);
+    Logger.debug(`Processing rule ${rule.id}: slug=${rule.slug}, attr=${rule.attribute_key}=${rule.attribute_value}, min_items=${rule.min_items}`);
         
         // Check asset ownership against the rule criteria
         const matchingAssets = await this.dataSvc.checkAssetOwnershipWithCriteria(
@@ -102,14 +102,14 @@ export class VerifyService {
           rule.min_items != null ? rule.min_items : 1
         );
         
-        Logger.log(`Rule ${rule.id}: Address ${address} owns ${matchingAssets} matching assets (required: ${rule.min_items != null ? rule.min_items : 1})`);
+        Logger.debug(`Rule ${rule.id}: Address ${address?.slice(0,6)}...${address?.slice(-4)} owns ${matchingAssets} matching assets (required: ${rule.min_items != null ? rule.min_items : 1})`);
         
         const requiredMinItems = rule.min_items != null ? rule.min_items : 1;
         if (matchingAssets >= requiredMinItems) {
           hasMatchingAssets = true;
           
           try {
-            Logger.log(`Assigning role: ${rule.role_id} to user: ${payload.userId}`);
+            Logger.debug(`Assigning role: ${rule.role_id} to user: ${payload.userId}`);
             
             // Get user, guild, and role information for logging (with fallbacks)
             let user = null, guild = null, role = null;
@@ -140,7 +140,7 @@ export class VerifyService {
               role?.name || `Role-${rule.role_id}`
             );
             assignedRoles.push(rule.role_id);
-            Logger.log(`✅ Successfully assigned role: ${rule.role_id} for rule ${rule.id}: slug=${rule.slug}, attr=${rule.attribute_key}=${rule.attribute_value}, min_items=${rule.min_items}`);
+            Logger.debug(`✅ Role assigned for rule ${rule.id} (${rule.slug})`);
           } catch (error) {
             Logger.error(`❌ Failed to assign role ${rule.role_id}:`, error.message);
             // Continue with other roles even if one fails
@@ -168,7 +168,7 @@ export class VerifyService {
         // Log the error but don't fail the verification process
       }
       
-      Logger.log(`Message-based verification completed. Assigned ${assignedRoles.length} roles: ${assignedRoles.join(', ')}`);
+      Logger.log(`✅ User verification completed (${assignedRoles.length} roles assigned)`);
       return { 
         message: `Verification successful (message-based) - ${assignedRoles.length} roles assigned`, 
         address,
@@ -180,7 +180,7 @@ export class VerifyService {
     if (payload.role) {
       // Check if the user owns any assets in the collection
       const assetCount = await this.dataSvc.checkAssetOwnership(address);
-      Logger.log(`Legacy path: Address ${address} owns ${assetCount} assets`);
+      Logger.debug(`Legacy path: Address ${address?.slice(0,6)}...${address?.slice(-4)} owns ${assetCount} assets`);
       
       if (!assetCount || assetCount === 0) {
         const errorMsg = 'Address does not own any assets in the collection';
@@ -189,7 +189,7 @@ export class VerifyService {
       }
       
       const legacyRoleId = await this.dbSvc.getServerRole(payload.discordId);
-      Logger.log(`Legacy path: Assigning role ${legacyRoleId}`);
+      Logger.debug(`Legacy path: Assigning role ${legacyRoleId}`);
       
       // Get user, guild, and role information for logging (with fallbacks)
       let user = null, guild = null, role = null;
@@ -232,7 +232,7 @@ export class VerifyService {
         // Log the error but don't fail the verification process
       }
       
-      Logger.log(`✅ Legacy path: Successfully assigned role: ${legacyRoleId}`);
+      Logger.log(`✅ Legacy verification completed`);
       return { message: 'Verification successful (legacy)', address };
     }
 
@@ -241,7 +241,7 @@ export class VerifyService {
     
     // Verify the user owns at least one asset
     if (!assets || assets.length === 0) {
-      Logger.log(`Multi-rule path: Address ${address} owns no assets`);
+      Logger.debug(`Multi-rule path: Address ${address?.slice(0,6)}...${address?.slice(-4)} owns no assets`);
       const errorMsg = 'Address does not own any assets in the collection';
       await this.discordVerificationSvc.throwError(payload.nonce, errorMsg);
       throw new Error(errorMsg);
@@ -260,7 +260,7 @@ export class VerifyService {
 
     const assignedRoleIds = [];
     for (const r of matched) {
-      Logger.log(`Multi-rule path: Assigning role ${r.role_id} for rule ${r.id}: slug=${r.slug}, attr=${r.attribute_key}=${r.attribute_value}, min_items=${r.min_items}`);
+      Logger.debug(`Multi-rule path: Assigning role ${r.role_id} for rule ${r.id}: slug=${r.slug}, attr=${r.attribute_key}=${r.attribute_value}, min_items=${r.min_items}`);
       
       // Get user, guild, and role information for logging (with fallbacks)
       let user = null, guild = null, role = null;
@@ -291,7 +291,7 @@ export class VerifyService {
         role?.name || `Role-${r.role_id}`
       );
       assignedRoleIds.push(r.role_id);
-      Logger.log(`✅ Multi-rule path: Successfully assigned role: ${r.role_id} for rule ${r.id}: slug=${r.slug}, attr=${r.attribute_key}=${r.attribute_value}, min_items=${r.min_items}`);
+      Logger.debug(`✅ Multi-rule path: Successfully assigned role: ${r.role_id} for rule ${r.id}: slug=${r.slug}, attr=${r.attribute_key}=${r.attribute_value}, min_items=${r.min_items}`);
     }
     
     // Send verification complete message with all assigned roles
