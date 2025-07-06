@@ -1,15 +1,15 @@
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
-
 import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, CacheType, ChannelType, ChatInputCommandInteraction, Client, EmbedBuilder, Events, GatewayIntentBits, GuildTextBasedChannel, InteractionResponse, MessageFlags, PermissionFlagsBits, REST, Routes, SlashCommandBuilder } from 'discord.js';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 import { NonceService } from '@/services/nonce.service';
 import { DbService } from '@/services/db.service';
 import { DiscordMessageService } from '@/services/discord-message.service';
 import { DiscordVerificationService } from '@/services/discord-verification.service';
 import { DiscordCommandsService } from '@/services/discord-commands.service';
-
-import dotenv from 'dotenv';
-dotenv.config();
 
 const EXPIRY = Number(process.env.NONCE_EXPIRY);
 
@@ -27,10 +27,17 @@ export class DiscordService {
     @Inject(forwardRef(() => DiscordCommandsService))
     private readonly discordCommandsSvc: DiscordCommandsService,
   ) {
-    if (Number(process.env.DISCORD)) {
-      this.initializeBot()
-        .then(() => this.createSlashCommands())
-        .catch((error) => Logger.error('Failed to initialize bot', error));
+    // Initialize Discord bot asynchronously without blocking constructor
+    if (Number(process.env.DISCORD) && process.env.DISCORD_BOT_TOKEN) {
+      setImmediate(() => {
+        this.initializeBot()
+          .then(() => this.createSlashCommands())
+          .catch((error) => {
+            Logger.error('Failed to initialize Discord bot - continuing without Discord functionality', error.message);
+          });
+      });
+    } else {
+      Logger.warn('Discord integration disabled or bot token missing - continuing without Discord functionality');
     }
   }
 
@@ -44,7 +51,13 @@ export class DiscordService {
     return new Promise((resolve, reject) => {
       this.client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+      // Set a timeout to prevent hanging
+      const timeout = setTimeout(() => {
+        reject(new Error('Discord bot initialization timed out after 10 seconds'));
+      }, 10000);
+
       this.client.on(Events.ClientReady, (readyClient) => {
+        clearTimeout(timeout);
         Logger.debug('Discord bot initialized.', readyClient.user.tag);
         // Initialize the new services with the client
         this.discordMessageSvc.initialize(this.client);
@@ -54,11 +67,15 @@ export class DiscordService {
       });
 
       this.client.on('error', (error) => {
+        clearTimeout(timeout);
         Logger.error('Discord bot initialization failed:', error);
         reject(error);
       });
 
-      this.client.login(process.env.DISCORD_BOT_TOKEN).catch(reject);
+      this.client.login(process.env.DISCORD_BOT_TOKEN).catch((error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
     });
   }
 

@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-
 import { createClient } from '@supabase/supabase-js';
-
 import dotenv from 'dotenv';
+
+// Load environment variables
 dotenv.config();
 
 // Use specific environment variables for DB Service

@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ButtonInteraction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, CacheType, Client, MessageFlags } from 'discord.js';
+import dotenv from 'dotenv';
 import { DbService } from './db.service';
 import { NonceService } from './nonce.service';
+
+// Load environment variables
+dotenv.config();
 
 const EXPIRY = Number(process.env.NONCE_EXPIRY);
 

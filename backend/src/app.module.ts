@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
-// import { HttpModule } from '@nestjs/axios';
 
 import { AppController } from '@/app.controller';
 import { AppService } from '@/app.service';
