@@ -5,6 +5,7 @@ import { DiscordVerificationService } from '../src/services/discord-verification
 import { DiscordCommandsService } from '../src/services/discord-commands.service';
 import { DbService } from '../src/services/db.service';
 import { NonceService } from '../src/services/nonce.service';
+import { VerificationService } from '../src/services/verification.service';
 import { Logger } from '@nestjs/common';
 
 // Mock Discord.js client and related objects
@@ -106,6 +107,10 @@ const mockDiscordCommandsService = {
   handleRecoverVerification: jest.fn(),
 };
 
+const mockVerificationService = {
+  verifyWallet: jest.fn(),
+};
+
 describe('DiscordService - Enhanced Tests', () => {
   let service: DiscordService;
   let originalEnv: NodeJS.ProcessEnv;
@@ -134,6 +139,7 @@ describe('DiscordService - Enhanced Tests', () => {
         { provide: DiscordMessageService, useValue: mockDiscordMessageService },
         { provide: DiscordVerificationService, useValue: mockDiscordVerificationService },
         { provide: DiscordCommandsService, useValue: mockDiscordCommandsService },
+        { provide: VerificationService, useValue: mockVerificationService },
       ],
     }).compile();
     service = module.get<DiscordService>(DiscordService);
@@ -771,11 +777,15 @@ describe('DiscordService - Enhanced Tests', () => {
         customId: 'requestVerification'
       };
 
+      // Mock the handleVerificationRequest method that's now called instead
+      const handleVerificationRequestSpy = jest.spyOn(service, 'handleVerificationRequest').mockResolvedValue();
+
       if (interactionCallback) {
         await interactionCallback(buttonInteraction);
       }
 
-      expect(mockDiscordVerificationService.requestVerification).toHaveBeenCalledWith(buttonInteraction);
+      expect(handleVerificationRequestSpy).toHaveBeenCalledWith(buttonInteraction);
+      handleVerificationRequestSpy.mockRestore();
     });
   });
 });
