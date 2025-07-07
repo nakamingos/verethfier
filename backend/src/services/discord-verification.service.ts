@@ -195,17 +195,29 @@ export class DiscordVerificationService {
 
     // Use unified tracking in verifier_user_roles table
     try {
-      await this.dbSvc.trackRoleAssignment({
+      const assignmentData = {
         userId,
         serverId: guildId,
         roleId,
-        ruleId: ruleId || 'legacy', // Use 'legacy' as fallback for legacy verification flows
+        ruleId: ruleId || null, // Use null instead of 'legacy' for bigint field
         address,
         userName: member.displayName || member.user.username,
         serverName: guild.name,
         roleName: role.name,
         expiresInHours: undefined // No expiration by default
+      };
+      
+      Logger.debug('🎯 Discord assignment data:', {
+        userName: assignmentData.userName,
+        serverName: assignmentData.serverName,
+        roleName: assignmentData.roleName,
+        userDisplayName: member.displayName,
+        userUsername: member.user.username,
+        guildName: guild.name,
+        roleName_direct: role.name
       });
+
+      await this.dbSvc.trackRoleAssignment(assignmentData);
       Logger.debug(`📝 Tracked role assignment for user ${userId} in unified table`);
     } catch (error) {
       Logger.error('Failed to track role assignment in unified table:', error.message);

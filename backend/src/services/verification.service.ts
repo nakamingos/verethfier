@@ -183,7 +183,7 @@ export class VerificationService {
       userId,
       serverId,
       roleId,
-      ruleId: ruleId || 'unknown',
+      ruleId: ruleId || null, // Use null instead of 'unknown' for bigint field
       address,
       userName: metadata?.userName,
       serverName: metadata?.serverName,
