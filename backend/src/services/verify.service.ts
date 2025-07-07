@@ -84,8 +84,9 @@ export class VerifyService {
 
       Logger.debug(`Found ${rules.length} rules for messageId: ${messageId}`);
       
-      // Use the unified verification service to verify the user against all rules
-      const verificationResult = await this.verificationSvc.verifyUserAgainstRules(address, rules);
+      // Use the unified verification engine to verify the user against all rules
+      const ruleIds = rules.map(rule => rule.id);
+      const verificationResult = await this.verificationSvc.verifyUserBulk(payload.userId, ruleIds, address);
       const { validRules, invalidRules, matchingAssetCounts } = verificationResult;
       
       const assignedRoles = [];
@@ -220,8 +221,9 @@ export class VerifyService {
         return { message: 'Verification successful (legacy fallback)', address };
       }
       
-      // Use unified verification for legacy rules
-      const verificationResult = await this.verificationSvc.verifyUserAgainstRules(address, legacyRules);
+      // Use unified verification engine for legacy rules
+      const legacyRuleIds = legacyRules.map(rule => rule.id);
+      const verificationResult = await this.verificationSvc.verifyUserBulk(payload.userId, legacyRuleIds, address);
       const { validRules } = verificationResult;
       
       if (validRules.length === 0) {
@@ -285,8 +287,9 @@ export class VerifyService {
       throw new Error(errorMsg);
     }
     
-    // Use unified verification to check all rules
-    const verificationResult = await this.verificationSvc.verifyUserAgainstRules(address, rules);
+    // Use unified verification engine to check all rules
+    const ruleIds = rules.map(rule => rule.id);
+    const verificationResult = await this.verificationSvc.verifyUserBulk(payload.userId, ruleIds, address);
     const { validRules, matchingAssetCounts } = verificationResult;
     
     if (validRules.length === 0) {
