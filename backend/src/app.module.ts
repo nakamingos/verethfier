@@ -20,6 +20,8 @@ import { VerificationService } from './services/verification.service';
 import { VerificationEngine } from './services/verification-engine.service';
 import { DynamicRoleService } from './services/dynamic-role.service';
 import { SimpleRoleMonitorService } from './services/simple-role-monitor.service';
+import { QueryOptimizer } from './services/query-optimizer.service';
+import { CacheService } from './services/cache.service';
 import { CONSTANTS } from '@/constants';
 
 @Module({
@@ -61,7 +63,9 @@ import { CONSTANTS } from '@/constants';
     VerificationService,
     VerificationEngine,
     DynamicRoleService,
-    SimpleRoleMonitorService
+    SimpleRoleMonitorService,
+    QueryOptimizer,
+    CacheService
   ],
 })
 export class AppModule {}

@@ -1,21 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
+import { EnvironmentConfig } from '@/config/environment.config';
 import { CONSTANTS } from '@/constants';
 import { DbResult, ServerRecord, LegacyRoleRecord } from '@/models/db.interface';
 
-// Load environment variables
-dotenv.config();
+// Validate environment and create optimized Supabase client
+EnvironmentConfig.validate();
 
-// Use specific environment variables for DB Service
-const supabaseUrl = process.env.DB_SUPABASE_URL;
-const supabaseKey = process.env.DB_SUPABASE_KEY || process.env.SUPABASE_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('DB_SUPABASE_URL and DB_SUPABASE_KEY must be set in environment variables');
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(
+  EnvironmentConfig.DB_SUPABASE_URL!,
+  EnvironmentConfig.DB_SUPABASE_KEY!,
+  {
+    db: {
+      schema: 'public',
+    },
+    auth: {
+      persistSession: false, // Disable auth for better performance
+    },
+    global: {
+      headers: {
+        'x-application-name': 'verethfier-backend',
+      },
+    },
+  }
+);
 
 import { VerifierRole } from '@/models/verifier-role.interface';
 
