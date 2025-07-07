@@ -55,7 +55,7 @@ describe('VerificationService', () => {
     service = module.get<VerificationService>(VerificationService);
   });
 
-  describe('verifyUserAgainstRule (legacy method)', () => {
+  describe('verifyUserAgainstRule (unified verification)', () => {
     it('should verify modern rule successfully', async () => {
       const rule = {
         id: 1,
@@ -90,37 +90,37 @@ describe('VerificationService', () => {
       expect(mockVerificationEngine.verifyUser).toHaveBeenCalledWith('unknown', 1, '0xabc');
     });
 
-    it('should verify legacy rule successfully', async () => {
-      const legacyRule = {
+    it('should verify rule with specific collection/attribute criteria', async () => {
+      const specificRule = {
         id: 2,
-        slug: 'legacy_collection',
-        attribute_key: 'legacy_attribute',
-        attribute_value: 'legacy_value',
+        slug: 'special_collection',
+        attribute_key: 'rarity',
+        attribute_value: 'legendary',
         min_items: 1,
-        role_id: 'legacy-role',
+        role_id: 'special-role',
         server_id: 'server-123',
         channel_id: 'channel-123',
         server_name: 'Test Server',
         channel_name: 'Test Channel',
-        role_name: 'Legacy Role',
+        role_name: 'Special Role',
         message_id: null
       };
 
-      // Mock the VerificationEngine response for legacy rule
+      // Mock the VerificationEngine response for specific rule
       mockVerificationEngine.verifyUser.mockResolvedValue({
         isValid: true,
-        ruleType: 'legacy',
+        ruleType: 'modern',
         userId: 'unknown',
         ruleId: 2,
         address: '0xdef',
-        rule: legacyRule,
-        matchingAssetCount: 5
+        rule: specificRule,
+        matchingAssetCount: 3
       });
 
-      const result = await service.verifyUserAgainstRule('0xdef', legacyRule);
+      const result = await service.verifyUserAgainstRule('0xdef', specificRule);
 
       expect(result.isValid).toBe(true);
-      expect(result.matchingAssetCount).toBe(5);
+      expect(result.matchingAssetCount).toBe(3);
       expect(mockVerificationEngine.verifyUser).toHaveBeenCalledWith('unknown', 2, '0xdef');
     });
 
@@ -160,10 +160,11 @@ describe('VerificationService', () => {
   });
 
   describe('getAllRulesForServer', () => {
-    it('should return rules from unified database', async () => {
+    it('should return all rules from unified database', async () => {
       const mockRules = [
         { id: 1, slug: 'collection1', server_id: 'server-123' },
-        { id: 2, slug: 'legacy_collection', server_id: 'server-123' }
+        { id: 2, slug: 'special_collection', server_id: 'server-123' },
+        { id: 3, slug: 'ALL', server_id: 'server-123' }
       ];
 
       mockDbService.getRoleMappings.mockResolvedValue(mockRules);

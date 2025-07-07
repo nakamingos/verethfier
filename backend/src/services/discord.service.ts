@@ -241,13 +241,12 @@ export class DiscordService {
   }
 
   /**
-   * Unified verification request handler that routes between legacy and modern verification.
+   * Unified verification request handler for all rule types.
    * 
-   * This single handler:
-   * 1. Receives 'requestVerification' interactions
-   * 2. Looks up the rule for that server in verifier_rules  
-   * 3. Routes to either handleLegacyVerification() or handleModernVerification() based on rule.slug === 'legacy_collection'
-   * 4. Eliminates duplicate interaction handling code
+   * This handler transparently processes verification requests for both legacy
+   * and modern rules using the unified verification engine. The system automatically
+   * detects rule types and applies appropriate verification logic without requiring
+   * separate code paths.
    * 
    * @param interaction - The button interaction triggered when a user clicks "Verify Now"
    */
@@ -262,14 +261,14 @@ export class DiscordService {
       const channel = interaction.channel;
       if (!channel || !('id' in channel)) throw new Error('Channel not found');
       
-      // Look up rules for this server using the unified verification service
+      // Use unified verification service - handles both legacy and modern rules transparently
       const rules = await this.verificationSvc.getRulesByMessageId(
         guild.id,
         channel.id,
         interaction.message.id
       );
       
-      // If no message-based rules found, try to get all server rules for legacy handling
+      // If no message-based rules found, try to get all server rules
       let serverRules = [];
       if (!rules || rules.length === 0) {
         serverRules = await this.verificationSvc.getAllRulesForServer(guild.id);
@@ -281,19 +280,8 @@ export class DiscordService {
         throw new Error('No verification rules found for this server or message.');
       }
       
-      // Check if any rule is a legacy rule (slug === 'legacy_collection')
-      const hasLegacyRule = allRules.some(rule => 
-        rule.slug === 'legacy_collection' || 
-        rule.attribute_key === 'legacy_attribute'
-      );
-      
-      if (hasLegacyRule) {
-        // Route to legacy verification handling
-        await this.handleLegacyVerification(interaction);
-      } else {
-        // Route to modern verification handling
-        await this.handleModernVerification(interaction);
-      }
+      // Route to unified verification handling - no need for legacy-specific routing
+      await this.handleUnifiedVerification(interaction);
       
     } catch (error) {
       Logger.error('Error in handleVerificationRequest:', error);
@@ -315,24 +303,15 @@ export class DiscordService {
   }
 
   /**
-   * Handles legacy verification flow.
-   * Delegates to the existing Discord verification service for legacy users.
+   * Handles verification flow using the unified verification system.
    * 
-   * @param interaction - The button interaction for legacy verification
-   */
-  async handleLegacyVerification(interaction: ButtonInteraction<CacheType>): Promise<void> {
-    Logger.debug('Routing to legacy verification flow');
-    return this.discordVerificationSvc.requestVerification(interaction);
-  }
-
-  /**
-   * Handles modern verification flow.
-   * Delegates to the existing Discord verification service for modern rules.
+   * This method transparently processes both legacy and modern rules through
+   * the unified verification service, eliminating the need for separate handlers.
    * 
-   * @param interaction - The button interaction for modern verification
+   * @param interaction - The button interaction for verification
    */
-  async handleModernVerification(interaction: ButtonInteraction<CacheType>): Promise<void> {
-    Logger.debug('Routing to modern verification flow');
+  async handleUnifiedVerification(interaction: ButtonInteraction<CacheType>): Promise<void> {
+    Logger.debug('Routing to unified verification flow');
     return this.discordVerificationSvc.requestVerification(interaction);
   }
 
@@ -344,7 +323,7 @@ export class DiscordService {
    * 
    * @param interaction - The button interaction triggered when a user clicks "Verify Now"
    * @returns Promise that resolves when verification request is processed
-   * @deprecated Use handleVerificationRequest() instead for unified routing
+   * @deprecated Use handleUnifiedVerification() instead for unified routing
    */
   async requestVerification(interaction: ButtonInteraction<CacheType>): Promise<void> {
     return this.discordVerificationSvc.requestVerification(interaction);
@@ -425,7 +404,7 @@ export class DiscordService {
   }
 
   /**
-   * Helper to get the correct roleId for verification, supporting both legacy and new rules.
+   * Helper to get the correct roleId for verification using the unified system.
    */
   async getVerificationRoleId(guildId: string, channelId: string, messageId: string): Promise<string | null> {
     return this.discordVerificationSvc.getVerificationRoleId(guildId, channelId, messageId);

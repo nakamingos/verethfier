@@ -36,8 +36,6 @@ describe('AppController', () => {
         discordId: '',
         discordName: '',
         discordIcon: '',
-        role: '',
-        roleName: '',
         nonce: 'n',
         expiry: body.data.expiry,
       };
@@ -108,9 +106,7 @@ describe('AppController', () => {
         avatar: 'avatar_url',
         discordId: 'guild123',
         discordName: 'Test Guild',
-        discordIcon: 'icon_url',
-        role: 'role123',
-        roleName: 'Test Role',
+        discordIconURL: 'icon_url',
         nonce: 'nonce123',
         expiry: Date.now() / 1000 + 3600,
         address: '0xabc123'
@@ -120,9 +116,21 @@ describe('AppController', () => {
         signature: 'valid_signature',
       };
       
+      const expectedTransformed = {
+        userId: 'user123',
+        userTag: 'User#1234',
+        avatar: 'avatar_url',
+        discordId: 'guild123',
+        discordName: 'Test Guild',
+        discordIcon: 'icon_url',
+        nonce: 'nonce123',
+        expiry: completeData.expiry,
+        address: '0xabc123'
+      };
+      
       await controller.verify(body as any);
       
-      expect(mockVerifyService.verifySignatureFlow).toHaveBeenCalledWith(completeData, 'valid_signature');
+      expect(mockVerifyService.verifySignatureFlow).toHaveBeenCalledWith(expectedTransformed, 'valid_signature');
     });
   });
 });

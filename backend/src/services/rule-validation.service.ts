@@ -36,11 +36,12 @@ export class RuleValidationService {
         valid: false,
         errorResponse: {
           embeds: [AdminFeedback.error(
-            'Legacy Rules Exist',
-            'You must migrate or remove the legacy rule(s) for this server before adding new rules.',
+            'Legacy Rules Found',
+            'Legacy rules were detected for this server. The unified system handles all rule types transparently.',
             [
-              'Use `/setup migrate-legacy-rule` to migrate legacy rules',
-              'Use `/setup remove-legacy-rule` to remove legacy rules'
+              'Use `/setup add-rule` to create new verification rules',
+              'Use `/setup list-rules` to view all existing rules',
+              'Contact support if you need assistance with rule migration'
             ]
           )]
         }

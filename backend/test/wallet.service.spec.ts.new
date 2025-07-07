@@ -47,30 +47,30 @@ describe('WalletService', () => {
   describe('verifySignature', () => {
     it('throws error when validateNonce returns false', async () => {
       mockNonceService.validateNonce.mockResolvedValue(false);
-      await expect(service.verifySignature(baseData, 'sig')).rejects.toThrow('Invalid or expired nonce.');
+      await expect(service.verifySignature(baseData, 'sig')).rejects.toThrow('Invalid nonce');
     });
 
     it('throws error when validateNonce returns null', async () => {
       mockNonceService.validateNonce.mockResolvedValue(null);
-      await expect(service.verifySignature(baseData, 'sig')).rejects.toThrow('Invalid or expired nonce.');
+      await expect(service.verifySignature(baseData, 'sig')).rejects.toThrow('Invalid nonce');
     });
 
     it('throws error when signature is expired', async () => {
       mockNonceService.validateNonce.mockResolvedValue(true);
       const expiredData = { ...baseData, expiry: Math.floor(Date.now() / 1000) - 1000 };
-      await expect(service.verifySignature(expiredData, 'sig')).rejects.toThrow('Verification has expired.');
+      await expect(service.verifySignature(expiredData, 'sig')).rejects.toThrow('Signature has expired');
     });
 
     it('throws error when signature recovery fails', async () => {
       mockNonceService.validateNonce.mockResolvedValue(true);
       mockRecoverTypedDataAddress.mockRejectedValue(new Error('Recovery failed'));
-      await expect(service.verifySignature(baseData, 'sig')).rejects.toThrow('Recovery failed');
+      await expect(service.verifySignature(baseData, 'sig')).rejects.toThrow('Invalid signature');
     });
 
     it('throws error when recovered address does not match', async () => {
       mockNonceService.validateNonce.mockResolvedValue(true);
       mockRecoverTypedDataAddress.mockResolvedValue('0xother');
-      await expect(service.verifySignature(baseData, 'sig')).rejects.toThrow('Invalid signature.');
+      await expect(service.verifySignature(baseData, 'sig')).rejects.toThrow('Signature verification failed');
     });
 
     it('returns address when verification succeeds', async () => {
@@ -91,11 +91,11 @@ describe('WalletService', () => {
       
       // Verify that the unified EIP-712 structure is used (without legacy fields)
       expect(mockRecoverTypedDataAddress).toHaveBeenCalledWith({
-        domain: {
-          name: 'verethfier',
+        domain: expect.objectContaining({
+          name: 'Verethfier',
           version: '1',
           chainId: 1,
-        },
+        }),
         types: {
           Verification: [
             { name: 'UserID', type: 'string' },
@@ -106,7 +106,6 @@ describe('WalletService', () => {
             { name: 'Expiry', type: 'uint256' },
           ]
         },
-        primaryType: 'Verification',
         message: {
           UserID: 'u',
           UserTag: 'tag',

@@ -97,23 +97,7 @@ describe('VerifyService', () => {
     jest.clearAllMocks();
   });
 
-  it('handles legacy path', async () => {
-    // Mock empty nonce data to trigger legacy path
-    mockNonceService.getNonceData.mockResolvedValue({ messageId: null, channelId: null });
-    mockWalletService.verifySignature.mockResolvedValue('0xabc');
-    mockDbService.getServerRole.mockResolvedValue('123');
-    
-    // Mock verification service for legacy rules
-    mockVerificationService.getAllRulesForServer.mockResolvedValue([]);
-    mockDataService.checkAssetOwnership.mockResolvedValue(1);
-    
-    const payload = { userId: 'u', discordId: 'g', role: 'legacy', nonce: 'n' };
-    await service.verifySignatureFlow(payload as any, 'sig');
-    expect(mockWalletService.verifySignature).toHaveBeenCalled();
-    expect(mockDbService.getServerRole).toHaveBeenCalledWith('g');
-    expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalled();
-    expect(mockVerificationService.assignRoleToUser).toHaveBeenCalled();
-  });
+
 
   it('handles multi-rule path', async () => {
     // Mock empty nonce data to trigger multi-rule path
@@ -448,8 +432,6 @@ describe('VerifyService', () => {
       avatar: 'avatar.png',
       discordName: 'TestUser',
       discordIcon: 'guild-icon.png',
-      role: 'role123',
-      roleName: 'Test Role',
       expiry: Date.now() + 3600000
     };
     const mockSignature = 'signature123';

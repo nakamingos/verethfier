@@ -197,22 +197,22 @@ describe('DiscordVerificationService', () => {
   });
 
   describe('getVerificationRoleId', () => {
-    it('should return legacy role ID when available', async () => {
-      mockDbService.getServerRole.mockResolvedValue('legacy-role-id');
+    it('should return server role ID when available', async () => {
+      mockDbService.getServerRole.mockResolvedValue('server-role-id');
 
       const result = await service.getVerificationRoleId('guild-id', 'channel-id', 'message-id');
 
-      expect(result).toBe('legacy-role-id');
+      expect(result).toBe('server-role-id');
       expect(mockDbService.getServerRole).toHaveBeenCalledWith('guild-id');
     });
 
-    it('should return new rule role ID when legacy not available', async () => {
+    it('should return message-specific rule role ID when server role not available', async () => {
       mockDbService.getServerRole.mockResolvedValue(null);
-      mockDbService.findRuleByMessageId.mockResolvedValue({ role_id: 'new-role-id' });
+      mockDbService.findRuleByMessageId.mockResolvedValue({ role_id: 'message-role-id' });
 
       const result = await service.getVerificationRoleId('guild-id', 'channel-id', 'message-id');
 
-      expect(result).toBe('new-role-id');
+      expect(result).toBe('message-role-id');
       expect(mockDbService.findRuleByMessageId).toHaveBeenCalledWith('guild-id', 'channel-id', 'message-id');
     });
 

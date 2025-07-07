@@ -174,109 +174,10 @@ export class VerifyService {
       };
     }
 
-    // --- Legacy path ---
-    if (payload.role) {
-      Logger.debug(`Legacy verification path for address: ${address}`);
-      
-      // In the unified system, legacy users are handled through special legacy rules
-      // Get all rules for the server and check if any are legacy rules
-      const allRules = await this.verificationSvc.getAllRulesForServer(payload.discordId);
-      const legacyRules = allRules.filter(rule => 
-        rule.slug === 'legacy_collection' || 
-        rule.attribute_key === 'legacy_attribute'
-      );
-      
-      if (legacyRules.length === 0) {
-        // No legacy rules found, fallback to general asset ownership check
-        const assetCount = await this.dataSvc.checkAssetOwnership(address);
-        Logger.debug(`Legacy path (fallback): Address ${address?.slice(0,6)}...${address?.slice(-4)} owns ${assetCount} assets`);
-        
-        if (!assetCount || assetCount === 0) {
-          const errorMsg = 'Address does not own any assets in the collection';
-          await this.discordVerificationSvc.throwError(payload.nonce, errorMsg);
-          throw new Error(errorMsg);
-        }
-        
-        const legacyRoleId = await this.dbSvc.getServerRole(payload.discordId);
-        Logger.debug(`Legacy path (fallback): Assigning role ${legacyRoleId}`);
-        
-        await this.discordVerificationSvc.addUserRole(
-          payload.userId,
-          legacyRoleId,
-          payload.discordId,
-          address,
-          payload.nonce
-        );
-
-        await this.verificationSvc.assignRoleToUser(
-          payload.userId,
-          payload.discordId,
-          legacyRoleId,
-          address,
-          undefined,
-          { userName: `User-${payload.userId}`, serverName: `Guild-${payload.discordId}`, roleName: `Role-${legacyRoleId}` }
-        );
-        
-        Logger.log(`✅ Legacy verification completed (fallback)`);
-        return { message: 'Verification successful (legacy fallback)', address };
-      }
-      
-      // Use unified verification engine for legacy rules
-      const legacyRuleIds = legacyRules.map(rule => rule.id);
-      const verificationResult = await this.verificationSvc.verifyUserBulk(payload.userId, legacyRuleIds, address);
-      const { validRules } = verificationResult;
-      
-      if (validRules.length === 0) {
-        const errorMsg = 'Address does not meet legacy verification requirements';
-        await this.discordVerificationSvc.throwError(payload.nonce, errorMsg);
-        throw new Error(errorMsg);
-      }
-      
-      const assignedRoles = [];
-      for (const rule of validRules) {
-        try {
-          await this.discordVerificationSvc.addUserRole(
-            payload.userId,
-            rule.role_id,
-            payload.discordId,
-            address,
-            payload.nonce
-          );
-
-          await this.verificationSvc.assignRoleToUser(
-            payload.userId,
-            payload.discordId,
-            rule.role_id,
-            address,
-            rule.id.toString(),
-            { userName: `User-${payload.userId}`, serverName: `Guild-${payload.discordId}`, roleName: rule.role_name || `Role-${rule.role_id}` }
-          );
-
-          assignedRoles.push(rule.role_id);
-          Logger.debug(`✅ Legacy role assigned: ${rule.role_id}`);
-        } catch (error) {
-          Logger.error(`❌ Failed to assign legacy role ${rule.role_id}:`, error.message);
-        }
-      }
-      
-      // Send verification complete message with the assigned roles
-      try {
-        await this.discordVerificationSvc.sendVerificationComplete(
-          payload.discordId,
-          payload.nonce,
-          assignedRoles
-        );
-      } catch (error) {
-        Logger.error('Failed to send verification complete message (legacy):', error);
-        // Log the error but don't fail the verification process
-      }
-      
-      Logger.log(`✅ Legacy verification completed (${assignedRoles.length} roles assigned)`);
-      return { message: `Verification successful (legacy) - ${assignedRoles.length} roles assigned`, address };
-    }
-
-    // --- New multi-rule path ---
-    Logger.debug(`Multi-rule verification path for address: ${address}`);
+    // --- Unified verification path ---
+    // This path handles all cases: legacy rules, modern rules, and mixed scenarios
+    // The VerificationEngine automatically detects rule types and applies appropriate logic
+    Logger.debug(`Unified verification path for address: ${address}`);
     
     // Get all rules for the current guild using the unified verification service
     const rules = await this.verificationSvc.getAllRulesForServer(payload.discordId);
@@ -287,7 +188,7 @@ export class VerifyService {
       throw new Error(errorMsg);
     }
     
-    // Use unified verification engine to check all rules
+    // Use unified verification engine to check all rules (both legacy and modern)
     const ruleIds = rules.map(rule => rule.id);
     const verificationResult = await this.verificationSvc.verifyUserBulk(payload.userId, ruleIds, address);
     const { validRules, matchingAssetCounts } = verificationResult;
@@ -301,7 +202,7 @@ export class VerifyService {
     const assignedRoleIds = [];
     for (const rule of validRules) {
       const assetCount = matchingAssetCounts.get(rule.id.toString()) || 0;
-      Logger.debug(`Multi-rule path: Assigning role ${rule.role_id} for rule ${rule.id}: ${assetCount} matching assets`);
+      Logger.debug(`Unified verification: Assigning role ${rule.role_id} for rule ${rule.id}: ${assetCount} matching assets`);
       
       try {
         await this.discordVerificationSvc.addUserRole(
@@ -322,7 +223,7 @@ export class VerifyService {
         );
 
         assignedRoleIds.push(rule.role_id);
-        Logger.debug(`✅ Multi-rule path: Successfully assigned role: ${rule.role_id} for rule ${rule.id}`);
+        Logger.debug(`✅ Unified verification: Successfully assigned role: ${rule.role_id} for rule ${rule.id}`);
       } catch (error) {
         Logger.error(`❌ Failed to assign role ${rule.role_id} for rule ${rule.id}:`, error.message);
       }
@@ -336,11 +237,15 @@ export class VerifyService {
         assignedRoleIds
       );
     } catch (error) {
-      Logger.error('Failed to send verification complete message (multi-rule):', error);
+      Logger.error('Failed to send verification complete message:', error);
       // Log the error but don't fail the verification process
     }
     
-    Logger.log(`✅ Multi-rule verification completed (${assignedRoleIds.length} roles assigned)`);
-    return { message: `Verification successful (multi-rule) - ${assignedRoleIds.length} roles assigned`, address, assignedRoles: assignedRoleIds };
+    Logger.log(`✅ Unified verification completed (${assignedRoleIds.length} roles assigned)`);
+    return { 
+      message: `Verification successful - ${assignedRoleIds.length} roles assigned`, 
+      address, 
+      assignedRoles: assignedRoleIds 
+    };
   }
 }

@@ -7,7 +7,8 @@
  * This interface is used throughout the verification flow to pass user,
  * Discord server, and verification metadata between services.
  * 
- * Note: Some fields (role, roleName) are legacy and will be removed in v3.
+ * The unified verification system handles both legacy and modern rules
+ * transparently without requiring legacy-specific fields.
  */
 export interface DecodedData {
   address: string;      // Ethereum wallet address being verified
@@ -17,8 +18,6 @@ export interface DecodedData {
   discordId: string;    // Discord server/guild ID
   discordName: string;  // Discord server/guild name
   discordIcon: string;  // Discord server/guild icon URL
-  role: string;         // Legacy: Discord role ID (TODO: Remove in v3)
-  roleName: string;     // Legacy: Discord role name (TODO: Remove in v3)
   nonce: string;        // Cryptographic nonce for replay protection
   expiry: number;       // Unix timestamp when verification expires
 };
