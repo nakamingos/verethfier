@@ -161,10 +161,12 @@ export class VerificationService {
   }
 
   /**
-   * Get rules by message ID
+   * Get rules by message ID (deprecated - now uses channel-based lookup)
+   * @deprecated Use getRulesForChannel instead
    */
   async getRulesByMessageId(serverId: string, channelId: string, messageId: string): Promise<VerifierRole[]> {
-    return await this.dbSvc.findRulesByMessageId(serverId, channelId, messageId);
+    // Simplified: just return all rules for the channel instead of message-specific rules
+    return await this.dbSvc.getRulesByChannel(serverId, channelId);
   }
 
   /**

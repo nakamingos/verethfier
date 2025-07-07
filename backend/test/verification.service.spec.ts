@@ -69,8 +69,7 @@ describe('VerificationService', () => {
         channel_id: 'channel-123',
         server_name: 'Test Server',
         channel_name: 'Test Channel',
-        role_name: 'Test Role',
-        message_id: null
+        role_name: 'Test Role'
       };
 
       // Mock the VerificationEngine response
@@ -103,8 +102,7 @@ describe('VerificationService', () => {
         channel_id: 'channel-123',
         server_name: 'Test Server',
         channel_name: 'Test Channel',
-        role_name: 'Special Role',
-        message_id: null
+        role_name: 'Special Role'
       };
 
       // Mock the VerificationEngine response for specific rule
@@ -137,8 +135,7 @@ describe('VerificationService', () => {
         channel_id: 'channel-123',
         server_name: 'Test Server',
         channel_name: 'Test Channel',
-        role_name: 'Test Role',
-        message_id: null
+        role_name: 'Test Role'
       };
 
       // Mock the VerificationEngine response for failed verification

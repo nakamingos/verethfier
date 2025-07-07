@@ -63,26 +63,25 @@ export class VerifyService {
     await this.nonceSvc.invalidateNonce(payload.userId);
     Logger.debug(`Nonce deleted for userId: ${payload.userId}`);
 
-    // --- Message-based verification (takes precedence if messageId is present) ---
-    // This is the new verification system that uses specific rules for Discord messages
-    if (messageId && channelId) {
-      Logger.debug(`Message-based verification for messageId: ${messageId}, channelId: ${channelId}`);
+    // --- Channel-based verification (simplified approach) ---
+    // Get all rules for the channel where the verification button was clicked
+    if (channelId) {
+      Logger.debug(`Channel-based verification for channelId: ${channelId}`);
       
-      // Get ALL rules that match this message using the unified verification service
-      const rules = await this.verificationSvc.getRulesByMessageId(
+      // Get ALL rules that apply to this channel
+      const rules = await this.verificationSvc.getRulesForChannel(
         payload.discordId,
-        channelId,
-        messageId
+        channelId
       );
       
       if (!rules || rules.length === 0) {
-        Logger.warn(`No rules found for messageId: ${messageId}, channelId: ${channelId}`);
-        const errorMsg = 'No verification rules found for this request';
+        Logger.warn(`No rules found for channelId: ${channelId}`);
+        const errorMsg = 'No verification rules found for this channel';
         await this.discordVerificationSvc.throwError(payload.nonce, errorMsg);
         throw new Error(errorMsg);
       }
 
-      Logger.debug(`Found ${rules.length} rules for messageId: ${messageId}`);
+      Logger.debug(`Found ${rules.length} rules for channelId: ${channelId}`);
       
       // Use the unified verification engine to verify the user against all rules
       const ruleIds = rules.map(rule => rule.id);

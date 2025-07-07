@@ -106,6 +106,7 @@ const mockDiscordCommandsService = {
 
 const mockVerificationService = {
   getRulesByMessageId: jest.fn(),
+  getRulesForChannel: jest.fn(),
   getAllRulesForServer: jest.fn(),
   verifyUserAgainstRules: jest.fn(),
   assignRoleToUser: jest.fn(),
@@ -794,8 +795,8 @@ describe('DiscordService - Enhanced Tests', () => {
         message: { id: 'message123' }
       };
 
-      // Mock VerificationService to return rules (any type)
-      mockVerificationService.getRulesByMessageId.mockResolvedValue([
+      // Mock VerificationService to return rules for channel
+      mockVerificationService.getRulesForChannel.mockResolvedValue([
         { id: 1, slug: 'test_collection', role_id: 'role123' }
       ]);
 
@@ -816,8 +817,9 @@ describe('DiscordService - Enhanced Tests', () => {
         message: { id: 'message123' }
       };
 
-      // Mock VerificationService to return legacy rules
-      mockVerificationService.getRulesByMessageId.mockResolvedValue([
+      // Mock VerificationService to return no channel rules, fallback to server rules
+      mockVerificationService.getRulesForChannel.mockResolvedValue([]);
+      mockVerificationService.getAllRulesForServer.mockResolvedValue([
         { id: 1, slug: 'legacy_collection', role_id: 'role123' }
       ]);
 

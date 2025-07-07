@@ -261,14 +261,13 @@ export class DiscordService {
       const channel = interaction.channel;
       if (!channel || !('id' in channel)) throw new Error('Channel not found');
       
-      // Use unified verification service - handles both legacy and modern rules transparently
-      const rules = await this.verificationSvc.getRulesByMessageId(
+      // Get all rules for this channel (simplified approach - no more message_id tracking)
+      const rules = await this.verificationSvc.getRulesForChannel(
         guild.id,
-        channel.id,
-        interaction.message.id
+        channel.id
       );
       
-      // If no message-based rules found, try to get all server rules
+      // If no channel rules found, fall back to all server rules for backwards compatibility
       let serverRules = [];
       if (!rules || rules.length === 0) {
         serverRules = await this.verificationSvc.getAllRulesForServer(guild.id);
@@ -277,7 +276,7 @@ export class DiscordService {
       const allRules = rules && rules.length > 0 ? rules : serverRules;
       
       if (!allRules || allRules.length === 0) {
-        throw new Error('No verification rules found for this server or message.');
+        throw new Error('No verification rules found for this server or channel.');
       }
       
       // Route to unified verification handling - no need for legacy-specific routing
@@ -411,12 +410,11 @@ export class DiscordService {
   }
 
   /**
-   * Searches for existing Wallet Verification messages in a Discord channel.
-   * Looks for messages with "Wallet Verification" embed title and "Verify Now" button.
+   * Check if there's already a verification message in the specified channel
    * @param channel - The Discord channel to search in
-   * @returns The message ID of the existing verification message, or null if not found
+   * @returns True if a verification message exists, false otherwise
    */
-  async findExistingVerificationMessage(channel: GuildTextBasedChannel): Promise<string | null> {
+  async findExistingVerificationMessage(channel: GuildTextBasedChannel): Promise<boolean> {
     return this.discordMessageSvc.findExistingVerificationMessage(channel);
   }
 

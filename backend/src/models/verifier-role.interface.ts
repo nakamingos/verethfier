@@ -10,7 +10,7 @@ export interface VerifierRole {
   attribute_key: string | null;
   attribute_value: string | null;
   min_items: number | null;
-  message_id: string | null;
+  // message_id removed - using channel-based verification
   // ...other fields as needed
 }
 

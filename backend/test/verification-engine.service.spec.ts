@@ -43,8 +43,7 @@ describe('VerificationEngine', () => {
         channel_id: 'channel-123',
         server_name: 'Test Server',
         channel_name: 'Test Channel',
-        role_name: 'Test Role',
-        message_id: null
+        role_name: 'Test Role'
       };
 
       mockDbService.getRuleById.mockResolvedValue(rule);
@@ -83,8 +82,7 @@ describe('VerificationEngine', () => {
         channel_id: 'channel-123',
         server_name: 'Test Server',
         channel_name: 'Test Channel',
-        role_name: 'Legacy Role',
-        message_id: null
+        role_name: 'Legacy Role'
       };
 
       mockDbService.getRuleById.mockResolvedValue(legacyRule);
@@ -123,8 +121,7 @@ describe('VerificationEngine', () => {
         channel_id: 'channel-123',
         server_name: 'Test Server',
         channel_name: 'Test Channel',
-        role_name: 'Test Role',
-        message_id: null
+        role_name: 'Test Role'
       };
 
       mockDbService.getRuleById.mockResolvedValue(rule);
@@ -151,8 +148,7 @@ describe('VerificationEngine', () => {
         channel_id: 'channel-123',
         server_name: 'Test Server',
         channel_name: 'Test Channel',
-        role_name: 'Legacy Role',
-        message_id: null
+        role_name: 'Legacy Role'
       };
 
       mockDbService.getRuleById.mockResolvedValue(legacyRule);
@@ -188,7 +184,6 @@ describe('VerificationEngine', () => {
         server_name: 'Test Server',
         channel_name: 'Test Channel',
         role_name: 'Test Role',
-        message_id: null
       };
 
       mockDbService.getRuleById.mockResolvedValue(rule);
@@ -216,7 +211,6 @@ describe('VerificationEngine', () => {
         server_name: 'Test Server',
         channel_name: 'Test Channel',
         role_name: 'Role 1',
-        message_id: null
       };
 
       const rule2: VerifierRole = {
@@ -231,7 +225,6 @@ describe('VerificationEngine', () => {
         server_name: 'Test Server',
         channel_name: 'Test Channel',
         role_name: 'Role 2',
-        message_id: null
       };
 
       mockDbService.getRuleById
@@ -268,7 +261,6 @@ describe('VerificationEngine', () => {
           server_name: 'Test Server',
           channel_name: 'Test Channel',
           role_name: 'Role 1',
-          message_id: null
         }
       ];
 
@@ -299,7 +291,6 @@ describe('VerificationEngine', () => {
         server_name: 'Test Server',
         channel_name: 'Test Channel',
         role_name: 'Test Role',
-        message_id: null
       };
 
       // Use a test method to access the private method
@@ -320,7 +311,6 @@ describe('VerificationEngine', () => {
         server_name: 'Test Server',
         channel_name: 'Test Channel',
         role_name: 'Test Role',
-        message_id: null
       };
 
       const ruleType = (engine as any).detectRuleType(modernRule);

@@ -218,14 +218,13 @@ export class RulePersistenceService {
   ): Promise<{success: boolean, messageId?: string}> {
     try {
       // Check for existing verification message
-      const existingMessageId = await this.messageSvc.findExistingVerificationMessage(channel);
+      const hasExistingMessage = await this.messageSvc.findExistingVerificationMessage(channel);
       
-      if (existingMessageId) {
-        // Update existing message with new rule info
-        await this.dbSvc.updateRuleMessageId(ruleId, existingMessageId);
+      if (hasExistingMessage) {
+        // Verification message already exists, no need to create a new one
         return {
           success: true,
-          messageId: existingMessageId
+          messageId: 'existing' // We don't track specific message IDs anymore
         };
       }
 
@@ -233,7 +232,7 @@ export class RulePersistenceService {
       const newMessageId = await this.messageSvc.createVerificationMessage(channel);
 
       if (newMessageId) {
-        await this.dbSvc.updateRuleMessageId(ruleId, newMessageId);
+        // Note: We no longer track message_id in the database for channel-based verification
         return {
           success: true,
           messageId: newMessageId

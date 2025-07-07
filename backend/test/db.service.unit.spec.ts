@@ -395,7 +395,7 @@ describe('DbService - Unit Tests', () => {
         server_id: 'server1',
         role_id: 'role1',
         address: '0xabc123',
-        assigned_at: expect.any(String),
+        verified_at: expect.any(String),
         user_name: 'TestUser',
         server_name: 'TestServer',
         role_name: 'TestRole'
@@ -412,7 +412,7 @@ describe('DbService - Unit Tests', () => {
         server_id: 'server1',
         role_id: 'role1',
         address: '0xabc123',
-        assigned_at: expect.any(String),
+        verified_at: expect.any(String),
         user_name: null,
         server_name: null,
         role_name: null
@@ -508,86 +508,9 @@ describe('DbService - Unit Tests', () => {
     });
   });
 
-  describe('findRuleWithMessage', () => {
-    it('should return rule with message_id', async () => {
-      const mockRule = { id: 1, message_id: 'msg123' };
-      mockSupabaseQuery.setResult({ data: [mockRule], error: null });
-      
-      const result = await service.findRuleWithMessage('server1', 'channel1');
-      
-      expect(mockSupabaseQuery.not).toHaveBeenCalledWith('message_id', 'is', null);
-      expect(mockSupabaseQuery.limit).toHaveBeenCalledWith(1);
-      expect(result).toEqual(mockRule);
-    });
 
-    it('should return null when no rule with message found', async () => {
-      mockSupabaseQuery.setResult({ data: [], error: null });
-      
-      const result = await service.findRuleWithMessage('server1', 'channel1');
-      
-      expect(result).toBeNull();
-    });
-  });
 
-  describe('updateRuleMessageId', () => {
-    it('should update message_id for rule', async () => {
-      mockSupabaseQuery.setResult({ data: null, error: null });
-      
-      await service.updateRuleMessageId(1, 'msg123');
-      
-      expect(mockSupabaseQuery.update).toHaveBeenCalledWith({ message_id: 'msg123' });
-      expect(mockSupabaseQuery.eq).toHaveBeenCalledWith('id', 1);
-    });
 
-    it('should handle update errors', async () => {
-      mockSupabaseQuery.setResult({ data: null, error: { message: 'Update error' } });
-      
-      await expect(service.updateRuleMessageId(1, 'msg123'))
-        .rejects.toEqual({ message: 'Update error' });
-    });
-  });
-
-  describe('findRuleByMessageId', () => {
-    it('should find rule by message_id', async () => {
-      const mockRule = { id: 1, message_id: 'msg123' };
-      mockSupabaseQuery.setResult({ data: [mockRule], error: null });
-      
-      const result = await service.findRuleByMessageId('server1', 'channel1', 'msg123');
-      
-      expect(mockSupabaseQuery.eq).toHaveBeenCalledWith('message_id', 'msg123');
-      expect(result).toEqual(mockRule);
-    });
-
-    it('should return null when no rule found', async () => {
-      mockSupabaseQuery.setResult({ data: [], error: null });
-      
-      const result = await service.findRuleByMessageId('server1', 'channel1', 'msg123');
-      
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('findRulesByMessageId', () => {
-    it('should find all rules by message_id', async () => {
-      const mockRules = [
-        { id: 1, message_id: 'msg123' },
-        { id: 2, message_id: 'msg123' }
-      ];
-      mockSupabaseQuery.setResult({ data: mockRules, error: null });
-      
-      const result = await service.findRulesByMessageId('server1', 'channel1', 'msg123');
-      
-      expect(result).toEqual(mockRules);
-    });
-
-    it('should return empty array when no rules found', async () => {
-      mockSupabaseQuery.setResult({ data: null, error: null });
-      
-      const result = await service.findRulesByMessageId('server1', 'channel1', 'msg123');
-      
-      expect(result).toEqual([]);
-    });
-  });
 
   describe('getRulesByChannel', () => {
     it('should get all rules for channel', async () => {
