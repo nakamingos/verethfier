@@ -40,3 +40,28 @@ export interface LegacyRoleRecord {
   role_id: string;   // Discord role ID
   name: string;      // Discord role name
 }
+
+/**
+ * Enhanced user role record interface
+ * 
+ * Represents a role assignment in the enhanced verifier_user_roles table.
+ * Includes all tracking information for dynamic role management.
+ */
+export interface UserRoleRecord {
+  id: string;                        // Unique assignment ID
+  user_id: string;                   // Discord user ID
+  server_id: string;                 // Discord server/guild ID
+  role_id: string;                   // Discord role ID
+  rule_id?: string;                  // Associated verification rule ID (null for legacy)
+  address: string;                   // Wallet address (denormalized for performance)
+  user_name?: string;                // Discord username (cached)
+  server_name?: string;              // Discord server name (cached)
+  role_name?: string;                // Discord role name (cached)
+  message_id?: string;               // Original verification message ID (null for legacy)
+  status: 'active' | 'expired' | 'revoked';  // Assignment status
+  assigned_at: string;               // ISO timestamp of role assignment
+  last_checked?: string;             // ISO timestamp of last verification check
+  verification_expires_at?: string;  // ISO timestamp when verification expires
+  created_at: string;                // ISO timestamp of record creation
+  updated_at: string;                // ISO timestamp of last record update
+}
