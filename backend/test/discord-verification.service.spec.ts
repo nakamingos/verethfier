@@ -94,7 +94,7 @@ describe('DiscordVerificationService', () => {
 
       await service.requestVerification(mockInteraction as any);
 
-      expect(mockInteraction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+      // Note: deferReply is now handled by the caller, not by requestVerification
       expect(mockNonceService.createNonce).toHaveBeenCalledWith(
         'user-id',
         'message-id',
