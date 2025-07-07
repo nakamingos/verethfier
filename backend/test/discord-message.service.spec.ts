@@ -135,33 +135,33 @@ describe('DiscordMessageService', () => {
       expect(result).toBeNull();
     });
 
-    it('should find bot message with any button (legacy or new)', async () => {
-      const legacyMessage = {
-        id: 'legacy-message-id',
+    it('should find bot message with verification button (any style)', async () => {
+      const verificationMessage = {
+        id: 'verification-message-id',
         author: { id: 'bot-user-id' },
-        embeds: [{ title: 'Different Title' }], // Different embed title
+        embeds: [{ title: 'Different Title' }], // Different embed title but has button
         components: [
           {
             type: 1,
             components: [
               {
                 type: 2,
-                customId: 'legacyVerify',
-                label: 'Legacy Verify',
+                customId: 'requestVerification',
+                label: 'Verify Now',
                 style: ButtonStyle.Secondary
               }
             ]
           }
         ]
       };
-      const messagesWithLegacy = new Map([
-        ['legacy-message-id', legacyMessage]
+      const messagesWithVerification = new Map([
+        ['verification-message-id', verificationMessage]
       ]);
-      mockChannel.messages.fetch.mockResolvedValue(messagesWithLegacy);
+      mockChannel.messages.fetch.mockResolvedValue(messagesWithVerification);
 
       const result = await service.findExistingVerificationMessage(mockChannel as any);
 
-      expect(result).toBe('legacy-message-id');
+      expect(result).toBe('verification-message-id');
     });
 
     it('should handle fetch errors gracefully', async () => {

@@ -7,13 +7,10 @@ import { MessageFlags, ChannelType } from 'discord.js';
 import { Logger } from '@nestjs/common';
 
 const mockDbService = {
-  getLegacyRoles: jest.fn(),
   addRoleMapping: jest.fn(),
   deleteRoleMapping: jest.fn(),
   getRoleMappings: jest.fn(),
   ruleExists: jest.fn(),
-  removeAllLegacyRoles: jest.fn(),
-  getAllRulesWithLegacy: jest.fn(),
   updateRuleMessageId: jest.fn(),
   getRulesByChannel: jest.fn(),
   findConflictingRule: jest.fn(),
@@ -81,7 +78,6 @@ describe('DiscordCommandsService', () => {
         followUp: jest.fn(),
       } as any;
 
-      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
       mockDbService.checkForExactDuplicateRule.mockResolvedValue(null); // No exact duplicate
       mockDbService.checkForDuplicateRule.mockResolvedValue(null); // No duplicate rule
       mockDbService.getRulesByChannel.mockResolvedValue([]); // No existing rules
@@ -149,7 +145,6 @@ describe('DiscordCommandsService', () => {
         followUp: jest.fn(),
       } as any;
 
-      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
       mockDbService.findConflictingRule.mockResolvedValue(null); // No conflicting rule
       mockDbService.addRoleMapping.mockResolvedValue({ id: 1 });
       mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
@@ -208,7 +203,6 @@ describe('DiscordCommandsService', () => {
         followUp: jest.fn(),
       } as any;
 
-      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
       mockDbService.findConflictingRule.mockResolvedValue(null); // No conflict found in pre-check
       // Simulate a duplicate constraint error from the database
       const dbError = new Error('duplicate key value violates unique constraint');
@@ -260,7 +254,6 @@ describe('DiscordCommandsService', () => {
         followUp: jest.fn(),
       } as any;
 
-      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
       mockDbService.findConflictingRule.mockResolvedValue(null);
       mockDbService.addRoleMapping.mockResolvedValue({ id: 1 });
       mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
@@ -312,7 +305,6 @@ describe('DiscordCommandsService', () => {
         followUp: jest.fn(),
       } as any;
 
-      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
       mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
       mockDbService.checkForDuplicateRule.mockResolvedValue(null);
       mockDbService.findConflictingRule.mockResolvedValue(null);
@@ -388,7 +380,6 @@ describe('DiscordCommandsService', () => {
         followUp: jest.fn(),
       } as any;
 
-      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
       mockDbService.findConflictingRule.mockResolvedValue(null);
       mockDbService.addRoleMapping.mockResolvedValue({ id: 1 });
       mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
@@ -459,7 +450,6 @@ describe('DiscordCommandsService', () => {
         followUp: jest.fn(),
       } as any;
 
-      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
 
       await service.handleAddRule(mockInteraction);
 
@@ -513,7 +503,6 @@ describe('DiscordCommandsService', () => {
         followUp: jest.fn(),
       } as any;
 
-      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
 
       await service.handleAddRule(mockInteraction);
 
@@ -569,7 +558,6 @@ describe('DiscordCommandsService', () => {
         followUp: jest.fn(),
       } as any;
 
-      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
 
       await service.handleAddRule(mockInteraction);
 
@@ -630,7 +618,6 @@ describe('DiscordCommandsService', () => {
         followUp: jest.fn(),
       } as any;
 
-      mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
       mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
       mockDbService.checkForDuplicateRule.mockResolvedValue(null);
       mockDbService.getRulesByChannel.mockResolvedValue([]);
@@ -692,7 +679,6 @@ describe('DiscordCommandsService', () => {
         } as any;
 
         // Mock existing rule
-        mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
         mockDbService.checkForDuplicateRule.mockResolvedValue({
           id: 1,
           role_id: 'existing-role-id',
@@ -774,7 +760,6 @@ describe('DiscordCommandsService', () => {
           followUp: jest.fn(),
         } as any;
 
-        mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
         mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
         mockDbService.checkForDuplicateRule.mockResolvedValue(null);
         mockDbService.getRulesByChannel.mockResolvedValue([]);
@@ -819,7 +804,6 @@ describe('DiscordCommandsService', () => {
           followUp: jest.fn(),
         } as any;
 
-        mockDbService.getLegacyRoles.mockResolvedValue({ data: [] });
         mockDbService.checkForExactDuplicateRule.mockResolvedValue({
           id: 1,
           role_id: 'role-id',
