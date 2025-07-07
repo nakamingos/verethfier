@@ -124,19 +124,8 @@ export class VerifyService {
             payload.nonce
           );
 
-          // Use the unified verification service to log the role assignment
-          await this.verificationSvc.assignRoleToUser(
-            payload.userId,
-            payload.discordId,
-            rule.role_id,
-            address,
-            rule.id.toString(),
-            {
-              userName: user?.username || `User-${payload.userId}`,
-              serverName: guild?.name || `Guild-${payload.discordId}`,
-              roleName: role?.name || `Role-${rule.role_id}`
-            }
-          );
+          // Role assignment and tracking is handled by assignRole() method
+          // No need for additional tracking here
 
           assignedRoles.push(rule.role_id);
           Logger.debug(`✅ Role assigned for rule ${rule.id} (${rule.slug})`);
@@ -213,14 +202,8 @@ export class VerifyService {
           payload.nonce
         );
 
-        await this.verificationSvc.assignRoleToUser(
-          payload.userId,
-          payload.discordId,
-          rule.role_id,
-          address,
-          rule.id.toString(),
-          { userName: `User-${payload.userId}`, serverName: `Guild-${payload.discordId}`, roleName: rule.role_name || `Role-${rule.role_id}` }
-        );
+        // Role assignment and tracking is handled by addUserRole() method
+        // No need for additional tracking here
 
         assignedRoleIds.push(rule.role_id);
         Logger.debug(`✅ Unified verification: Successfully assigned role: ${rule.role_id} for rule ${rule.id}`);

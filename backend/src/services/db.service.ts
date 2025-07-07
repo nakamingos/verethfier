@@ -556,17 +556,6 @@ export class DbService {
       ? new Date(Date.now() + assignment.expiresInHours * 60 * 60 * 1000)
       : null;
 
-    // Debug logging to see what values we're trying to store
-    Logger.debug('📝 trackRoleAssignment data:', {
-      userId: assignment.userId,
-      serverId: assignment.serverId,
-      roleId: assignment.roleId,
-      userName: assignment.userName,
-      serverName: assignment.serverName,
-      roleName: assignment.roleName,
-      address: assignment.address
-    });
-
     const { data, error } = await supabase
       .from('verifier_user_roles')
       .insert({
