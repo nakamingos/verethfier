@@ -194,7 +194,7 @@ describe('DbService - Integration Tests', () => {
   });
 
   describe('logUserRole', () => {
-    it.skip('should log user role assignment (requires updated DB schema)', async () => {
+    it('should log user role assignment (now with updated DB schema)', async () => {
       await expect(
         service.logUserRole(
           'test_user_123',
