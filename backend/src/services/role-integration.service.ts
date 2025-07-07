@@ -181,9 +181,9 @@ export class RoleIntegrationService {
           serverName: a.server_name,
           roleName: a.role_name,
           status: a.status,
-          assignedAt: a.assigned_at,
-          lastVerified: a.last_verified_at,
-          expiresAt: a.verification_expires_at
+          assignedAt: a.verified_at,
+          lastVerified: a.last_checked,
+          expiresAt: a.expires_at
         }))
       };
     } catch (error) {

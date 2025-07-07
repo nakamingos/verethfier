@@ -270,7 +270,7 @@ export class DbService {
         server_id: serverId,
         role_id: roleId,
         address: address?.toLowerCase(),
-        assigned_at: new Date().toISOString(),
+        verified_at: new Date().toISOString(),
         user_name: userName || null,
         server_name: serverName || null,
         role_name: roleName || null
@@ -567,7 +567,7 @@ export class DbService {
         user_name: assignment.userName,
         server_name: assignment.serverName,
         role_name: assignment.roleName,
-        verification_expires_at: expirationDate,
+        expires_at: expirationDate,
         status: 'active'
       })
       .select()

@@ -178,18 +178,20 @@ export class VerificationService {
     ruleId?: string,
     metadata?: any
   ): Promise<void> {
-    // Log the role assignment with enhanced metadata
-    await this.dbSvc.logUserRole(
+    // Use the unified tracking method for consistency
+    await this.dbSvc.trackRoleAssignment({
       userId,
       serverId,
       roleId,
+      ruleId: ruleId || 'unknown',
       address,
-      metadata?.userName,
-      metadata?.serverName,
-      metadata?.roleName
-    );
+      userName: metadata?.userName,
+      serverName: metadata?.serverName,
+      roleName: metadata?.roleName,
+      expiresInHours: undefined // No expiration by default
+    });
 
-    Logger.debug(`Role ${roleId} assigned to user ${userId} in server ${serverId}`);
+    Logger.debug(`Role ${roleId} assigned to user ${userId} in server ${serverId} via unified tracking`);
   }
 
   /**

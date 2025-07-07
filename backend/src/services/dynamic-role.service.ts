@@ -138,8 +138,8 @@ export class DynamicRoleService {
   private async getActiveRoleAssignments(): Promise<any[]> {
     // This would query your enhanced tracking table
     // Return assignments that are active and either:
-    // - Never been re-verified (last_verified_at is old)
-    // - Or are past their verification_expires_at
+    // - Never been re-verified (last_checked is old)
+    // - Or are past their expires_at
     
     return this.dbSvc.getActiveRoleAssignments();
   }

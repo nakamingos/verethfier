@@ -59,9 +59,9 @@ export interface UserRoleRecord {
   role_name?: string;                // Discord role name (cached)
   message_id?: string;               // Original verification message ID (null for legacy)
   status: 'active' | 'expired' | 'revoked';  // Assignment status
-  assigned_at: string;               // ISO timestamp of role assignment
+  verified_at: string;               // ISO timestamp of role verification
   last_checked?: string;             // ISO timestamp of last verification check
-  verification_expires_at?: string;  // ISO timestamp when verification expires
+  expires_at?: string;               // ISO timestamp when verification expires
   created_at: string;                // ISO timestamp of record creation
   updated_at: string;                // ISO timestamp of last record update
 }

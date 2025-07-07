@@ -18,6 +18,7 @@ describe('VerificationService', () => {
       findRulesByMessageId: jest.fn(),
       getRulesByChannel: jest.fn(),
       logUserRole: jest.fn(),
+      trackRoleAssignment: jest.fn(),
       getRuleById: jest.fn(),
       updateRoleVerification: jest.fn(),
       getActiveRoleAssignments: jest.fn(),
@@ -177,8 +178,8 @@ describe('VerificationService', () => {
   });
 
   describe('assignRoleToUser', () => {
-    it('should log role assignment with metadata', async () => {
-      mockDbService.logUserRole.mockResolvedValue(undefined);
+    it('should track role assignment with unified method', async () => {
+      mockDbService.trackRoleAssignment.mockResolvedValue(undefined);
 
       await service.assignRoleToUser(
         'user-123',
@@ -193,15 +194,17 @@ describe('VerificationService', () => {
         }
       );
 
-      expect(mockDbService.logUserRole).toHaveBeenCalledWith(
-        'user-123',
-        'server-123',
-        'role-123',
-        '0xabc',
-        'TestUser',
-        'TestServer',
-        'TestRole'
-      );
+      expect(mockDbService.trackRoleAssignment).toHaveBeenCalledWith({
+        userId: 'user-123',
+        serverId: 'server-123',
+        roleId: 'role-123',
+        ruleId: 'rule-123',
+        address: '0xabc',
+        userName: 'TestUser',
+        serverName: 'TestServer',
+        roleName: 'TestRole',
+        expiresInHours: undefined
+      });
     });
   });
 

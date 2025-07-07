@@ -193,34 +193,36 @@ export class DiscordVerificationService {
     // Add the role - don't send success message here as there might be more roles coming
     await member.roles.add(role);
 
-    // Legacy tracking (keep for backwards compatibility)
-    await this.dbSvc.addServerToUser(
-      userId, 
-      guildId, 
-      role.name,
-      address
-    );
-
-    // Enhanced tracking (if enhanced table exists and we have a rule)
+    // Use unified tracking in verifier_user_roles table
     try {
-      const hasEnhancedTracking = await this.dbSvc.checkEnhancedTrackingExists();
-      if (hasEnhancedTracking && ruleId) {
-        await this.dbSvc.trackRoleAssignment({
-          userId,
-          serverId: guildId,
-          roleId,
-          ruleId,
-          address,
-          userName: member.displayName || member.user.username,
-          serverName: guild.name,
-          roleName: role.name,
-          expiresInHours: undefined // No expiration by default
-        });
-        Logger.debug(`📝 Tracked role assignment for user ${userId} in enhanced table`);
-      }
+      await this.dbSvc.trackRoleAssignment({
+        userId,
+        serverId: guildId,
+        roleId,
+        ruleId: ruleId || 'legacy', // Use 'legacy' as fallback for legacy verification flows
+        address,
+        userName: member.displayName || member.user.username,
+        serverName: guild.name,
+        roleName: role.name,
+        expiresInHours: undefined // No expiration by default
+      });
+      Logger.debug(`📝 Tracked role assignment for user ${userId} in unified table`);
     } catch (error) {
-      // Don't fail the role assignment if enhanced tracking fails
-      Logger.error('Failed to track role assignment in enhanced table:', error.message);
+      Logger.error('Failed to track role assignment in unified table:', error.message);
+      
+      // Fallback to legacy tracking only if unified tracking fails
+      try {
+        await this.dbSvc.addServerToUser(
+          userId, 
+          guildId, 
+          role.name,
+          address
+        );
+        Logger.debug(`📝 Fallback: Tracked role assignment for user ${userId} in legacy table`);
+      } catch (legacyError) {
+        Logger.error('Failed to track role assignment in legacy table:', legacyError.message);
+        // Don't fail the role assignment if tracking fails
+      }
     }
   }
 
