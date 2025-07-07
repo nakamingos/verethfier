@@ -62,8 +62,7 @@ export class DiscordVerificationService {
    */
   async requestVerification(interaction: ButtonInteraction<CacheType>): Promise<void> {
     try {
-      // Defer the reply early to prevent timeout
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      // Note: interaction should already be deferred by the caller
       
       const guild = interaction.guild;
       if (!guild) throw new Error('Guild not found');
@@ -148,19 +147,13 @@ export class DiscordVerificationService {
       
     } catch (error) {
       Logger.error('Error in requestVerification:', error);
-      if (interaction.deferred) {
+      // Since interaction is already deferred by caller, we can directly edit reply
+      try {
         await interaction.editReply({
           content: `Error: ${error.message}`
         });
-      } else {
-        try {
-          await interaction.reply({
-            content: `Error: ${error.message}`,
-            flags: MessageFlags.Ephemeral
-          });
-        } catch (replyError) {
-          Logger.error('Failed to reply with error:', replyError);
-        }
+      } catch (replyError) {
+        Logger.error('Failed to edit reply with error:', replyError);
       }
     }
   }
