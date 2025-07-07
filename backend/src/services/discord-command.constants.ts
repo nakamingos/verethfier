@@ -1,7 +1,7 @@
 /**
  * Discord Command Constants
  * 
- * Centralized constants for Discord command processing and rule management.
+ * Centralized constants for Discord command processing and unified rule management.
  */
 
 export const DISCORD_COMMAND_CONSTANTS = {
@@ -24,9 +24,6 @@ export const DISCORD_COMMAND_CONSTANTS = {
   // Rule validation
   MIN_ITEMS_DEFAULT: 1,
   MIN_ITEMS_MAX: 1000,
-  
-  // Legacy migration
-  LEGACY_MIGRATION_BATCH_SIZE: 10,
   
   // Error messages
   ERRORS: {

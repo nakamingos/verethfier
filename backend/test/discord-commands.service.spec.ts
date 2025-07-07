@@ -903,7 +903,7 @@ describe('DiscordCommandsService', () => {
   });
 
   describe('handleListRules', () => {
-    it('should list rules with legacy warning', async () => {
+    it('should list all verification rules', async () => {
       const mockInteraction = {
         guild: {
           id: 'guild-id',

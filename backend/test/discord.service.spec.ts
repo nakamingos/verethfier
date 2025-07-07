@@ -788,7 +788,29 @@ describe('DiscordService - Enhanced Tests', () => {
       expect(buttonInteraction.deferReply).toHaveBeenCalledWith({ flags: 64 });
     });
 
-    it('should route to legacy verification when legacy rules are found', async () => {
+    it('should route to unified verification for all rule types', async () => {
+      const buttonInteraction = {
+        deferReply: jest.fn().mockResolvedValue({}),
+        editReply: jest.fn().mockResolvedValue({}),
+        guild: { id: 'guild123' },
+        channel: { id: 'channel123' },
+        message: { id: 'message123' }
+      };
+
+      // Mock VerificationService to return rules (any type)
+      mockVerificationService.getRulesByMessageId.mockResolvedValue([
+        { id: 1, slug: 'test_collection', role_id: 'role123' }
+      ]);
+
+      const handleUnifiedSpy = jest.spyOn(service, 'handleUnifiedVerification').mockResolvedValue();
+
+      await service.handleVerificationRequest(buttonInteraction as any);
+
+      expect(handleUnifiedSpy).toHaveBeenCalledWith(buttonInteraction);
+      handleUnifiedSpy.mockRestore();
+    });
+
+    it('should route to unified verification for legacy rules transparently', async () => {
       const buttonInteraction = {
         deferReply: jest.fn().mockResolvedValue({}),
         editReply: jest.fn().mockResolvedValue({}),
@@ -802,34 +824,12 @@ describe('DiscordService - Enhanced Tests', () => {
         { id: 1, slug: 'legacy_collection', role_id: 'role123' }
       ]);
 
-      const handleLegacySpy = jest.spyOn(service, 'handleLegacyVerification').mockResolvedValue();
+      const handleUnifiedSpy = jest.spyOn(service, 'handleUnifiedVerification').mockResolvedValue();
 
       await service.handleVerificationRequest(buttonInteraction as any);
 
-      expect(handleLegacySpy).toHaveBeenCalledWith(buttonInteraction);
-      handleLegacySpy.mockRestore();
-    });
-
-    it('should route to modern verification when modern rules are found', async () => {
-      const buttonInteraction = {
-        deferReply: jest.fn().mockResolvedValue({}),
-        editReply: jest.fn().mockResolvedValue({}),
-        guild: { id: 'guild123' },
-        channel: { id: 'channel123' },
-        message: { id: 'message123' }
-      };
-
-      // Mock VerificationService to return modern rules
-      mockVerificationService.getRulesByMessageId.mockResolvedValue([
-        { id: 1, slug: 'modern_collection', role_id: 'role123' }
-      ]);
-
-      const handleModernSpy = jest.spyOn(service, 'handleModernVerification').mockResolvedValue();
-
-      await service.handleVerificationRequest(buttonInteraction as any);
-
-      expect(handleModernSpy).toHaveBeenCalledWith(buttonInteraction);
-      handleModernSpy.mockRestore();
+      expect(handleUnifiedSpy).toHaveBeenCalledWith(buttonInteraction);
+      handleUnifiedSpy.mockRestore();
     });
   });
 });

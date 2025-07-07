@@ -15,8 +15,7 @@ import { AdminFeedback } from './utils/admin-feedback.util';
  * Key responsibilities:
  * - Process add-rule commands with validation and confirmation flows
  * - Handle remove-rule commands with safety checks
- * - List and display current verification rules
- * - Manage legacy rule migration and cleanup
+ * - List and display current verification rules (all types)
  * - Create and update verification messages in channels
  * - Provide rich admin feedback with embedded messages
  * 
@@ -24,7 +23,7 @@ import { AdminFeedback } from './utils/admin-feedback.util';
  * - Rule creation with duplicate detection and confirmation
  * - Role management (find existing or create new roles)
  * - Channel validation and message posting
- * - Legacy system migration assistance
+ * - Unified rule management for all rule types
  */
 @Injectable()
 export class DiscordCommandsService {
@@ -370,15 +369,14 @@ export class DiscordCommandsService {
     // Defer the reply early to prevent timeout
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     
-    // Get only modern verification rules (filter out legacy migration rule)
+    // Get all verification rules for the server (unified system handles all rule types)
     const allRules = await this.dbSvc.getRoleMappings(interaction.guild.id);
-    const modernRules = allRules.filter(rule => 
-      rule.server_id !== '000000000000000000' && 
-      rule.role_id !== 'legacy_role'
+    const rules = allRules.filter(rule => 
+      rule.server_id !== '000000000000000000'
     );
     
-    let desc = modernRules.length
-      ? modernRules.map(r =>
+    let desc = rules.length
+      ? rules.map(r =>
           `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attribute_key && r.attribute_key !== 'ALL' ? (r.attribute_value && r.attribute_value !== 'ALL' ? `${r.attribute_key}=${r.attribute_value}` : `${r.attribute_key} (any value)`) : (r.attribute_value && r.attribute_value !== 'ALL' ? `ALL=${r.attribute_value}` : 'ALL')} | Min: ${r.min_items || 1}`
         ).join('\n')
       : 'No verification rules found.';
