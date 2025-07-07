@@ -2,24 +2,27 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from './db.service';
 import { DataService } from './data.service';
 import { DiscordVerificationService } from './discord-verification.service';
+import { VerificationEngine, VerificationResult, BulkVerificationResult } from './verification-engine.service';
 import { VerifierRole } from '@/models/verifier-role.interface';
 import { DecodedData } from '@/models/app.interface';
 
 /**
  * VerificationService
  * 
- * Unified verification service that handles all verification logic for both legacy and modern rules.
- * This service consolidates verification logic and eliminates the need for separate legacy table queries.
+ * Unified verification service that handles all verification logic using the new VerificationEngine.
+ * This service now acts as a facade that delegates all verification logic to the VerificationEngine
+ * while maintaining backward compatibility with existing APIs.
  * 
  * Key responsibilities:
- * - Handle verification based on rule.slug to determine verification type
- * - Process both legacy (migrated) and modern rules uniformly
+ * - Delegate verification logic to VerificationEngine
+ * - Maintain backward compatibility with existing method signatures
+ * - Handle wallet verification and Discord integration
  * - Manage role assignments through the unified verifier_user_roles table
- * - Provide asset ownership verification against verification rules
  * 
- * Rule Types:
- * - Modern rules: Have specific slug, attribute_key, attribute_value, min_items
- * - Legacy rules: Use special slug 'legacy_collection' for migrated legacy users
+ * Migration Notes:
+ * - All verification logic has been moved to VerificationEngine
+ * - This service now focuses on orchestration and compatibility
+ * - New code should use VerificationEngine.verifyUser() directly for better performance
  */
 @Injectable()
 export class VerificationService {
@@ -27,54 +30,120 @@ export class VerificationService {
     private readonly dbSvc: DbService,
     private readonly dataSvc: DataService,
     private readonly discordVerificationSvc: DiscordVerificationService,
+    private readonly verificationEngine: VerificationEngine,
   ) {}
 
   /**
-   * Verify a user's assets against a specific verification rule
+   * Verify a user's wallet address using the unified VerificationEngine
+   * 
+   * @param userId - Discord user ID
+   * @param ruleId - Rule ID to verify against
+   * @param address - Ethereum address to verify
+   * @returns Promise<VerificationResult> with detailed verification result
+   */
+  async verifyUser(
+    userId: string,
+    ruleId: string | number,
+    address: string
+  ): Promise<VerificationResult> {
+    return await this.verificationEngine.verifyUser(userId, ruleId, address);
+  }
+
+  /**
+   * Verify a user against multiple rules using the VerificationEngine
+   * 
+   * @param userId - Discord user ID
+   * @param ruleIds - Array of rule IDs to verify against
+   * @param address - Ethereum address to verify
+   * @returns Promise<BulkVerificationResult> with results for all rules
+   */
+  async verifyUserBulk(
+    userId: string,
+    ruleIds: (string | number)[],
+    address: string
+  ): Promise<BulkVerificationResult> {
+    return await this.verificationEngine.verifyUserBulk(userId, ruleIds, address);
+  }
+
+  /**
+   * Verify a user against all rules for a specific server
+   * 
+   * @param userId - Discord user ID
+   * @param serverId - Discord server ID
+   * @param address - Ethereum address to verify
+   * @returns Promise<BulkVerificationResult> with results for all server rules
+   */
+  async verifyUserForServer(
+    userId: string,
+    serverId: string,
+    address: string
+  ): Promise<BulkVerificationResult> {
+    return await this.verificationEngine.verifyUserForServer(userId, serverId, address);
+  }
+
+  /**
+   * Legacy method: Verify a user's assets against a specific verification rule
+   * @deprecated Use verifyUser() instead for better performance and unified result format
    */
   async verifyUserAgainstRule(
     address: string,
     rule: VerifierRole
   ): Promise<{ isValid: boolean; matchingAssetCount?: number }> {
-    try {
-      // Handle legacy rules specially
-      if (this.isLegacyRule(rule)) {
-        return await this.verifyLegacyRule(address, rule);
-      }
-
-      // Handle modern rules with specific criteria
-      return await this.verifyModernRule(address, rule);
-    } catch (error) {
-      Logger.error(`Error verifying user against rule ${rule.id}:`, error);
-      return { isValid: false };
-    }
+    Logger.warn('verifyUserAgainstRule is deprecated. Use verifyUser() instead.');
+    
+    const result = await this.verificationEngine.verifyUser('unknown', rule.id, address);
+    return {
+      isValid: result.isValid,
+      matchingAssetCount: result.matchingAssetCount
+    };
   }
 
   /**
-   * Verify a user against multiple rules (e.g., for a specific message or channel)
+   * Legacy method: Verify a user against multiple rules
+   * @deprecated Use verifyUserBulk() instead for better performance and unified result format
    */
   async verifyUserAgainstRules(
     address: string,
     rules: VerifierRole[]
   ): Promise<{ validRules: VerifierRole[]; invalidRules: VerifierRole[]; matchingAssetCounts: Map<string, number> }> {
-    const validRules: VerifierRole[] = [];
-    const invalidRules: VerifierRole[] = [];
-    const matchingAssetCounts = new Map<string, number>();
+    Logger.warn('verifyUserAgainstRules is deprecated. Use verifyUserBulk() instead.');
+    
+    const ruleIds = rules.map(rule => rule.id);
+    const result = await this.verificationEngine.verifyUserBulk('unknown', ruleIds, address);
+    
+    return {
+      validRules: result.validRules,
+      invalidRules: result.invalidRules,
+      matchingAssetCounts: result.matchingAssetCounts
+    };
+  }
 
-    for (const rule of rules) {
-      const result = await this.verifyUserAgainstRule(address, rule);
+  /**
+   * Verify wallet using the VerificationEngine with address extraction from payload
+   * 
+   * @param data - Decoded verification data containing wallet address and other info
+   * @returns Promise<BulkVerificationResult> with verification results for all server rules
+   */
+  async verifyWallet(data: DecodedData): Promise<BulkVerificationResult> {
+    try {
+      Logger.debug(`VerificationService: Starting wallet verification for user ${data.userId}`);
       
-      if (result.isValid) {
-        validRules.push(rule);
-        if (result.matchingAssetCount) {
-          matchingAssetCounts.set(rule.id.toString(), result.matchingAssetCount);
-        }
-      } else {
-        invalidRules.push(rule);
+      const address = data.address;
+      if (!address) {
+        throw new Error('No wallet address provided in verification data');
       }
-    }
 
-    return { validRules, invalidRules, matchingAssetCounts };
+      // Verify against all server rules using the server ID from discordId
+      const serverId = data.discordId;
+      if (!serverId) {
+        throw new Error('No server ID provided in verification data');
+      }
+
+      return await this.verificationEngine.verifyUserForServer(data.userId, serverId, address);
+    } catch (error) {
+      Logger.error('VerificationService: Error in wallet verification:', error);
+      throw error;
+    }
   }
 
   /**
@@ -124,81 +193,6 @@ export class VerificationService {
   }
 
   /**
-   * Check if a rule is a legacy rule (migrated from old system)
-   */
-  private isLegacyRule(rule: VerifierRole): boolean {
-    return rule.slug === 'legacy_collection' || 
-           rule.attribute_key === 'legacy_attribute' ||
-           (typeof rule.id === 'string' && rule.id === 'LEGACY'); // For backwards compatibility
-  }
-
-  /**
-   * Verify against legacy rule (uses broader asset ownership check)
-   */
-  private async verifyLegacyRule(
-    address: string,
-    rule: VerifierRole
-  ): Promise<{ isValid: boolean; matchingAssetCount?: number }> {
-    Logger.debug(`Verifying legacy rule for address: ${address}`);
-    
-    // For legacy rules, check ownership of any assets (ALL collections)
-    try {
-      const assetCount = await this.dataSvc.checkAssetOwnershipWithCriteria(
-        address,
-        'ALL', // Check all collections for legacy users
-        'ALL', // All attributes
-        'ALL', // All values
-        1      // At least 1 asset
-      );
-
-      const isValid = assetCount > 0;
-      
-      Logger.debug(`Legacy verification result for ${address}: ${isValid ? 'valid' : 'invalid'} (${assetCount} assets)`);
-      
-      return {
-        isValid,
-        matchingAssetCount: assetCount
-      };
-    } catch (error) {
-      Logger.error(`Error in legacy verification for ${address}:`, error);
-      return { isValid: false };
-    }
-  }
-
-  /**
-   * Verify against modern rule with specific criteria
-   */
-  private async verifyModernRule(
-    address: string,
-    rule: VerifierRole
-  ): Promise<{ isValid: boolean; matchingAssetCount?: number }> {
-    Logger.debug(`Verifying modern rule ${rule.id} for address: ${address}`);
-    Logger.debug(`Rule criteria: slug=${rule.slug}, attr=${rule.attribute_key}=${rule.attribute_value}, min_items=${rule.min_items}`);
-    
-    try {
-      const assetCount = await this.dataSvc.checkAssetOwnershipWithCriteria(
-        address,
-        rule.slug || 'ALL',
-        rule.attribute_key || 'ALL',
-        rule.attribute_value || 'ALL',
-        rule.min_items || 1
-      );
-
-      const isValid = assetCount >= (rule.min_items || 1);
-      
-      Logger.debug(`Modern verification result for rule ${rule.id}: ${isValid ? 'valid' : 'invalid'} (${assetCount} assets, need ${rule.min_items || 1})`);
-      
-      return {
-        isValid,
-        matchingAssetCount: assetCount
-      };
-    } catch (error) {
-      Logger.error(`Error in modern verification for rule ${rule.id}:`, error);
-      return { isValid: false };
-    }
-  }
-
-  /**
    * Get user's current role assignments for a server
    */
   async getUserRoleAssignments(userId: string, serverId: string): Promise<any[]> {
@@ -232,8 +226,8 @@ export class VerificationService {
         return { stillValid: false, updatedAssignment };
       }
 
-      // Verify the user still meets the criteria
-      const result = await this.verifyUserAgainstRule(assignment.address, rule);
+      // Verify the user still meets the criteria using VerificationEngine
+      const result = await this.verificationEngine.verifyUser(assignment.user_id, assignment.rule_id, assignment.address);
       
       // Update the assignment status
       const updatedAssignment = await this.dbSvc.updateRoleVerification(assignment.id, result.isValid);

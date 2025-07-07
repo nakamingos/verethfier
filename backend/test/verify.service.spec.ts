@@ -54,7 +54,7 @@ const mockVerificationService = {
     attribute_value: '',
     min_items: 1
   }]),
-  verifyUserAgainstRules: jest.fn().mockResolvedValue({
+  verifyUserBulk: jest.fn().mockResolvedValue({
     validRules: [{
       id: 1,
       role_id: 'role-id',
@@ -125,7 +125,7 @@ describe('VerifyService', () => {
       { id: 1, slug: 'ALL', channel_id: null, attribute_key: '', attribute_value: '', min_items: 0, role_id: 'r1' },
       { id: 2, slug: 'ALL', channel_id: null, attribute_key: '', attribute_value: '', min_items: 0, role_id: 'r2' },
     ]);
-    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+    mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: [
         { id: 1, slug: 'ALL', channel_id: null, attribute_key: '', attribute_value: '', min_items: 0, role_id: 'r1' },
         { id: 2, slug: 'ALL', channel_id: null, attribute_key: '', attribute_value: '', min_items: 0, role_id: 'r2' },
@@ -173,7 +173,7 @@ describe('VerifyService', () => {
     
     // Mock verification service instead of DbService
     mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
-    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+    mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: mockRules,
       invalidRules: [],
       matchingAssetCounts: new Map([['1', 2]])
@@ -188,7 +188,7 @@ describe('VerifyService', () => {
     const result = await service.verifySignatureFlow(payload as any, 'sig');
     
     expect(mockVerificationService.getRulesByMessageId).toHaveBeenCalledWith('guild123', 'ch-456', 'msg-123');
-    expect(mockVerificationService.verifyUserAgainstRules).toHaveBeenCalledWith('0xabc', mockRules);
+    expect(mockVerificationService.verifyUserBulk).toHaveBeenCalledWith('user123', [1], '0xabc');
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('user123', 'role-123', 'guild123', '0xabc', 'nonce123');
     expect(mockDiscordVerificationService.sendVerificationComplete).toHaveBeenCalledWith('guild123', 'nonce123', ['role-123']);
     expect(mockVerificationService.assignRoleToUser).toHaveBeenCalled();
@@ -224,7 +224,7 @@ describe('VerifyService', () => {
     
     // Mock verification service to return both rules as valid
     mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
-    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+    mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: mockRules,
       invalidRules: [],
       matchingAssetCounts: new Map([['1', 5], ['2', 3]])
@@ -285,7 +285,7 @@ describe('VerifyService', () => {
     
     // Mock verification service to return rules but no valid matches
     mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
-    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+    mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: [],
       invalidRules: mockRules,
       matchingAssetCounts: new Map([['1', 0]])
@@ -332,7 +332,7 @@ describe('VerifyService', () => {
     
     // Mock verification service to return only the first rule as valid
     mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
-    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+    mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: [mockRules[0]], // Only first rule passes
       invalidRules: [mockRules[1]], // Second rule fails
       matchingAssetCounts: new Map([['1', 3], ['2', 2]])
@@ -370,7 +370,7 @@ describe('VerifyService', () => {
     
     // Mock verification service
     mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
-    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+    mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: mockRules,
       invalidRules: [],
       matchingAssetCounts: new Map([['1', 1]])
@@ -417,7 +417,7 @@ describe('VerifyService', () => {
     
     // Mock verification service - only return rule with role_id as valid
     mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
-    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+    mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: [mockRules[1]], // Only second rule (has role_id)
       invalidRules: [],
       matchingAssetCounts: new Map([['2', 1]])
@@ -484,7 +484,7 @@ describe('VerifyService', () => {
 
     // Mock verification service
     mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
-    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+    mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: mockRules, // Rule passes because min_items=0
       invalidRules: [],
       matchingAssetCounts: new Map([['1', 0]]) // 0 assets but still valid

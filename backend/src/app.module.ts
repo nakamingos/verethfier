@@ -17,6 +17,7 @@ import { DbService } from '@/services/db.service';
 import { DataService } from './services/data.service';
 import { VerifyService } from './services/verify.service';
 import { VerificationService } from './services/verification.service';
+import { VerificationEngine } from './services/verification-engine.service';
 import { DynamicRoleService } from './services/dynamic-role.service';
 import { SimpleRoleMonitorService } from './services/simple-role-monitor.service';
 import { CONSTANTS } from '@/constants';
@@ -58,6 +59,7 @@ import { CONSTANTS } from '@/constants';
     DataService,
     VerifyService,
     VerificationService,
+    VerificationEngine,
     DynamicRoleService,
     SimpleRoleMonitorService
   ],
