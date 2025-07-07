@@ -1,5 +1,6 @@
-import { Body, Controller, Post, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Body, Controller, Post, Get, HttpException, HttpStatus, Logger } from '@nestjs/common';
 
+import { AppService } from './app.service';
 import { VerifyService } from './services/verify.service';
 import { VerifySignatureDto } from './dtos/verify-signature.dto';
 import { DecodedData } from './models/app.interface';
@@ -20,7 +21,36 @@ import { DecodedData } from './models/app.interface';
  */
 @Controller()
 export class AppController {
-  constructor(private readonly verifySvc: VerifyService) {}
+  constructor(
+    private readonly appService: AppService,
+    private readonly verifySvc: VerifyService
+  ) {}
+
+  /**
+   * Application health check endpoint
+   * 
+   * Provides basic health and status information for monitoring and debugging.
+   * Useful for load balancers, monitoring systems, and development diagnostics.
+   * 
+   * @returns Object containing health status, timestamp, environment, and version
+   */
+  @Get('health')
+  getHealth() {
+    return this.appService.getHealth();
+  }
+
+  /**
+   * Application information endpoint
+   * 
+   * Returns metadata about the application including features, architecture,
+   * and capabilities. Useful for API consumers to understand system capabilities.
+   * 
+   * @returns Object containing application name, description, architecture, and features
+   */
+  @Get('info')
+  getInfo() {
+    return this.appService.getInfo();
+  }
 
   /**
    * Verifies a wallet signature and processes role assignment using the unified verification system.

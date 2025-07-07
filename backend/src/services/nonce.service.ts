@@ -9,12 +9,40 @@ dotenv.config();
 
 const NONCE_EXPIRY = Number(process.env.NONCE_EXPIRY) || CONSTANTS.DEFAULT_NONCE_EXPIRY;
 
+/**
+ * Interface for nonce data stored in cache
+ * 
+ * @interface NonceData
+ * @property nonce - The cryptographic nonce string
+ * @property messageId - Optional Discord message ID for verification context
+ * @property channelId - Optional Discord channel ID for verification context
+ */
 export interface NonceData {
   nonce: string;
   messageId?: string;
   channelId?: string;
 }
 
+/**
+ * NonceService
+ * 
+ * Manages cryptographic nonces for secure wallet verification.
+ * Provides nonce generation, validation, and lifecycle management
+ * to prevent replay attacks in the verification system.
+ * 
+ * Key Features:
+ * - Secure random nonce generation
+ * - Time-based expiry with configurable TTL
+ * - Cache-based storage for high performance
+ * - Replay attack prevention
+ * - Optional context tracking (message/channel IDs)
+ * 
+ * Security Considerations:
+ * - Nonces are single-use and automatically expire
+ * - Uses cryptographically secure random number generation
+ * - Cache isolation prevents cross-user nonce access
+ * - Configurable expiry times based on security requirements
+ */
 @Injectable()
 export class NonceService {
 
@@ -23,11 +51,22 @@ export class NonceService {
   ) {}
 
   /**
-   * Creates a nonce for the specified user ID and stores it in the cache.
-   * @param userId The ID of the user for whom the nonce is being created.
-   * @param messageId Optional message ID associated with the verification
-   * @param channelId Optional channel ID associated with the verification
-   * @returns The generated nonce.
+   * Creates a cryptographically secure nonce for wallet verification.
+   * 
+   * Generates a unique, time-limited nonce that prevents replay attacks
+   * during the wallet signature verification process. The nonce is stored
+   * in cache with automatic expiry.
+   * 
+   * @param userId - Discord user ID for nonce association
+   * @param messageId - Optional Discord message ID for verification context
+   * @param channelId - Optional Discord channel ID for verification context
+   * @returns Promise<string> - The generated nonce string
+   * 
+   * @example
+   * ```typescript
+   * const nonce = await nonceService.createNonce('123456789');
+   * // Returns: "abc123def456ghi789"
+   * ```
    */
   public async createNonce(
     userId: string, 
@@ -41,10 +80,23 @@ export class NonceService {
   }
 
   /**
-   * Validates the nonce for a given user.
-   * @param userId - The ID of the user.
-   * @param nonce - The nonce to validate.
-   * @returns A Promise that resolves to a boolean indicating whether the nonce is valid.
+   * Validates a nonce for secure verification flow.
+   * 
+   * Checks if the provided nonce matches the stored nonce for the user
+   * and hasn't expired. This prevents replay attacks and ensures the
+   * verification request is legitimate and timely.
+   * 
+   * @param userId - Discord user ID to validate nonce for
+   * @param nonce - The nonce string to validate
+   * @returns Promise<boolean> - True if nonce is valid and not expired
+   * 
+   * @example
+   * ```typescript
+   * const isValid = await nonceService.validateNonce('123456789', 'abc123def456');
+   * if (isValid) {
+   *   // Proceed with verification
+   * }
+   * ```
    */
   async validateNonce(
     userId: string,

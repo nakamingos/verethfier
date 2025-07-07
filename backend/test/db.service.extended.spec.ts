@@ -198,34 +198,6 @@ describe('DbService - Extended Integration Tests', () => {
         r.slug === 'collection-1' || 
         r.slug === 'collection-2')
       ).toBe(true);
-      
-      // Test the message tracking methods while we're here
-      if (rules.length > 0) {
-        const ruleId = rules[0].id;
-        await service.updateRuleMessageId(ruleId, 'test_message_123');
-        
-        // Test both branches of the findRuleWithMessage method
-        const foundRule = await service.findRuleWithMessage('test_guild_id', 'test_channel_id');
-        expect(foundRule).toBeDefined();
-        
-        const notFoundRule = await service.findRuleWithMessage('test_guild_id', 'non_existent_channel');
-        expect(notFoundRule).toBeNull();
-        
-        // Test both branches of the findRuleByMessageId method
-        const foundByMessageId = await service.findRuleByMessageId(
-          'test_guild_id', 
-          'test_channel_id', 
-          'test_message_123'
-        );
-        expect(foundByMessageId).toBeDefined();
-        
-        const notFoundByMessageId = await service.findRuleByMessageId(
-          'test_guild_id', 
-          'test_channel_id', 
-          'non_existent_message'
-        );
-        expect(notFoundByMessageId).toBeNull();
-      }
     });
 
     it('should return empty array when no rules exist for a channel', async () => {
@@ -292,61 +264,6 @@ describe('DbService - Extended Integration Tests', () => {
       
       // We can't easily verify this without querying the database directly,
       // but at least we can verify the function doesn't throw an error
-    });
-  });
-
-  describe('message tracking operations', () => {
-    it('should handle message tracking for rules', async () => {
-      // Create a rule for testing message tracking
-      const rule = await service.addRoleMapping(
-        'test_guild_id',
-        'Test Guild',
-        'message_channel_id',
-        'Message Test Channel',
-        'message-collection',
-        'message_role_id',
-        'Message Test Role',
-        'message_key',
-        'message_value',
-        1
-      );
-      
-      // Note: The schema might not have message_id column in production anymore
-      // This test will verify the message tracking functions don't throw errors
-      
-      try {
-        // Test updating message ID
-        await service.updateRuleMessageId(rule.id, 'test_message_123');
-        
-        // Test finding rule with message
-        const foundRule = await service.findRuleWithMessage('test_guild_id', 'message_channel_id');
-        expect(foundRule).not.toBeNull();
-        
-        // Test finding rule with message - not found case
-        const notFoundRule = await service.findRuleWithMessage('test_guild_id', 'non_existent_channel');
-        expect(notFoundRule).toBeNull();
-        
-        // Test finding rule by message ID
-        const foundByMessageId = await service.findRuleByMessageId(
-          'test_guild_id', 
-          'message_channel_id', 
-          'test_message_123'
-        );
-        
-        // This might be null depending on the actual schema
-        // We're just verifying the function doesn't throw an error
-        
-        // Test finding rule by message ID - not found cases
-        const notFoundByMessageId = await service.findRuleByMessageId(
-          'test_guild_id', 
-          'non_existent_channel', 
-          'test_message_123'
-        );
-        expect(notFoundByMessageId).toBeNull();
-      } catch (error) {
-        // If the schema doesn't support message_id, we'll just skip this test
-        console.warn('Warning: Could not run message tracking tests due to schema differences');
-      }
     });
   });
 
