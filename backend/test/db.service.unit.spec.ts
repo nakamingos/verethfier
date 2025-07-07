@@ -428,39 +428,24 @@ describe('DbService - Unit Tests', () => {
   });
 
   describe('getAllRulesWithLegacy', () => {
-    it('should return rules and legacy role when both exist', async () => {
-      const mockRules = [{ id: 1, server_id: 'server1' }];
-      const mockLegacy = [{ role_id: 'legacy-role', name: 'Legacy Server' }];
+    it('should return all rules from unified table', async () => {
+      const mockRules = [
+        { id: 1, server_id: 'server1', slug: 'test-collection' },
+        { id: 2, server_id: 'server1', slug: 'legacy_collection' }
+      ];
       
-      mockSupabaseQuery.setResults([
-        { data: mockRules, error: null },
-        { data: mockLegacy, error: null }
-      ]);
+      mockSupabaseQuery.setResult({ data: mockRules, error: null });
       
       const result = await service.getAllRulesWithLegacy('server1');
       
       expect(result).toHaveLength(2);
-      expect(result[0]).toEqual(mockRules[0]);
-      expect(result[1]).toEqual({
-        id: 'LEGACY',
-        channel_id: '-',
-        role_id: 'legacy-role',
-        slug: null,
-        attribute_key: null,
-        attribute_value: null,
-        min_items: null,
-        legacy: true,
-        server_name: 'Legacy Server'
-      });
+      expect(result).toEqual(mockRules);
     });
 
     it('should return only rules when no legacy role exists', async () => {
       const mockRules = [{ id: 1, server_id: 'server1' }];
       
-      mockSupabaseQuery.setResults([
-        { data: mockRules, error: null },
-        { data: [], error: null }
-      ]);
+      mockSupabaseQuery.setResult({ data: mockRules, error: null });
       
       const result = await service.getAllRulesWithLegacy('server1');
       
@@ -470,7 +455,7 @@ describe('DbService - Unit Tests', () => {
 
   describe('removeAllLegacyRoles', () => {
     it('should remove legacy roles and return removed list', async () => {
-      const mockLegacyRoles = [{ role_id: 'legacy1', name: 'Legacy Role 1' }];
+      const mockLegacyRoles = [{ role_id: 'legacy1', role_name: 'Legacy Role 1' }];
       
       mockSupabaseQuery.setResults([
         { data: mockLegacyRoles, error: null },
@@ -480,7 +465,9 @@ describe('DbService - Unit Tests', () => {
       const result = await service.removeAllLegacyRoles('server1');
       
       expect(mockSupabaseQuery.delete).toHaveBeenCalled();
-      expect(result).toEqual({ removed: mockLegacyRoles });
+      expect(result).toEqual({ 
+        removed: [{ role_id: 'legacy1', name: 'Legacy Role 1' }] 
+      });
     });
 
     it('should return empty array when no legacy roles exist', async () => {

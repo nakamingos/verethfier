@@ -114,20 +114,20 @@ export class RulePersistenceService {
   }
 
   /**
-   * Gets all rules for a guild, including legacy rules.
+   * Gets all verification rules for a guild (unified approach).
    * 
    * @param guildId - Discord guild ID
    * @returns Promise<any[]> - Array of rules
    */
   async getAllRules(guildId: string): Promise<any[]> {
-    return await this.dbSvc.getAllRulesWithLegacy(guildId);
+    return await this.dbSvc.getAllRulesForServer(guildId);
   }
 
   /**
-   * Gets legacy roles for migration purposes.
+   * Gets legacy rules for migration purposes (now uses unified table).
    * 
    * @param guildId - Discord guild ID
-   * @returns Promise<any[]> - Array of legacy roles
+   * @returns Promise<any[]> - Array of legacy rules
    */
   async getLegacyRoles(guildId: string): Promise<any[]> {
     const result = await this.dbSvc.getLegacyRoles(guildId);

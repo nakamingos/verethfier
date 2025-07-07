@@ -284,64 +284,66 @@ export class DbService {
     // Role assignment logged successfully
   }
 
-  // Returns both new rules and legacy role (if present) for a server
-  async getAllRulesWithLegacy(serverId: string): Promise<any[]> {
-    // Get new rules (all channels)
-    const { data: rules, error: rulesError } = await supabase
+  // Get all verification rules for a server (unified approach - no legacy table queries)
+  async getAllRulesForServer(serverId: string): Promise<any[]> {
+    const { data: rules, error } = await supabase
       .from('verifier_rules')
       .select('*')
       .eq('server_id', serverId);
-    if (rulesError) throw rulesError;
-
-    // Get legacy role (if any)
-    const { data: legacy, error: legacyError } = await supabase
-      .from('verifier_servers')
-      .select('role_id, name')
-      .eq('id', serverId);
-    if (legacyError) throw legacyError;
-
-    // If legacy role exists, add as a pseudo-rule with LEGACY marker
-    let all = [...rules];
-    if (legacy && legacy[0]?.role_id) {
-      all.push({
-        id: 'LEGACY',
-        channel_id: '-',
-        role_id: legacy[0].role_id,
-        slug: null,
-        attribute_key: null,
-        attribute_value: null,
-        min_items: null,
-        legacy: true,
-        server_name: legacy[0].name,
-      });
-    }
-    return all;
+    if (error) throw error;
+    return rules || [];
   }
 
-  // Remove all legacy roles for a guild (by guild/server id)
+  // Legacy method maintained for backwards compatibility - now uses unified approach
+  async getAllRulesWithLegacy(serverId: string): Promise<any[]> {
+    return await this.getAllRulesForServer(serverId);
+  }
+
+  // Legacy methods maintained for backwards compatibility but simplified
+  // Note: These methods now work with the unified verifier_rules table only
   async removeAllLegacyRoles(serverId: string): Promise<{ removed: Array<{ role_id: string, name: string }> }> {
-    const { data: legacyRoles, error } = await supabase
-      .from('verifier_servers')
-      .select('role_id, name')
-      .eq('id', serverId);
+    // In the unified system, "legacy" rules are identified by special slug/attributes
+    const { data: legacyRules, error } = await supabase
+      .from('verifier_rules')
+      .select('role_id, role_name')
+      .eq('server_id', serverId)
+      .eq('slug', 'legacy_collection');
+    
     if (error) throw error;
-    if (!legacyRoles || legacyRoles.length === 0) {
+    if (!legacyRules || legacyRules.length === 0) {
       return { removed: [] };
     }
+
+    // Remove legacy rules
     await supabase
-      .from('verifier_servers')
+      .from('verifier_rules')
       .delete()
-      .eq('id', serverId);
-    return { removed: legacyRoles };
+      .eq('server_id', serverId)
+      .eq('slug', 'legacy_collection');
+
+    return { 
+      removed: legacyRules.map(rule => ({ 
+        role_id: rule.role_id, 
+        name: rule.role_name || 'Legacy Role' 
+      }))
+    };
   }
 
-  // Get all legacy roles for a guild (by guild/server id)
+  // Get all legacy rules for a server (now using unified table)
   async getLegacyRoles(serverId: string): Promise<DbResult<LegacyRoleRecord[]>> {
     const { data, error } = await supabase
-      .from('verifier_servers')
-      .select('role_id, name')
-      .eq('id', serverId);
-    return { data, error };
+      .from('verifier_rules')
+      .select('role_id, role_name')
+      .eq('server_id', serverId)
+      .eq('slug', 'legacy_collection');
+    
+    // Transform to match expected legacy format
+    const transformedData = data?.map(rule => ({
+      role_id: rule.role_id,
+      name: rule.role_name || 'Legacy Role'
+    })) || [];
+
+    return { data: transformedData, error };
   }
 
   // Check if a rule already exists for server, channel, role, and slug
@@ -727,19 +729,28 @@ export class DbService {
   }
 
   /**
-   * Check if enhanced role tracking table exists
+   * Check if the unified verification system is properly set up
+   * (Replaces legacy table existence checking)
    */
-  async checkEnhancedTrackingExists(): Promise<boolean> {
+  async checkVerificationSystemReady(): Promise<boolean> {
     try {
-      const { error } = await supabase
-        .from('verifier_user_roles')
-        .select('id')
-        .limit(1);
+      // Check if both core tables exist and are accessible
+      const [rulesCheck, rolesCheck] = await Promise.all([
+        supabase.from('verifier_rules').select('id').limit(1),
+        supabase.from('verifier_user_roles').select('id').limit(1)
+      ]);
 
-      return !error;
+      return !rulesCheck.error && !rolesCheck.error;
     } catch (e) {
       return false;
     }
+  }
+
+  /**
+   * @deprecated Use checkVerificationSystemReady() instead
+   */
+  async checkEnhancedTrackingExists(): Promise<boolean> {
+    return await this.checkVerificationSystemReady();
   }
 
   /**
