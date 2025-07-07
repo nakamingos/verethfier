@@ -50,26 +50,27 @@ CREATE TABLE IF NOT EXISTS public.verifier_user_roles (
   user_id text NOT NULL,
   server_id text NOT NULL,
   role_id text NOT NULL,
-  
+  address text NOT NULL,
+
   -- Enhanced tracking fields for dynamic role management
   status text DEFAULT 'active' NOT NULL,
   verified_at timestamp with time zone DEFAULT now(),
   last_checked timestamp with time zone DEFAULT now(),
   expires_at timestamp with time zone,
-  
+
   -- Link to verification rules (nullable, no FK constraint for flexibility)
   rule_id bigint,
-  
+
   -- Metadata and additional information
   verification_data jsonb DEFAULT '{}',
   user_name text DEFAULT '',
   server_name text DEFAULT '',
   role_name text DEFAULT '',
-  
+
   -- Timestamps
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
-  
+
   -- Constraints
   CONSTRAINT verifier_user_roles_pkey PRIMARY KEY (id),
   UNIQUE(user_id, server_id, role_id)
@@ -81,6 +82,7 @@ CREATE INDEX idx_verifier_user_roles_last_checked ON verifier_user_roles(last_ch
 CREATE INDEX idx_verifier_user_roles_rule_id ON verifier_user_roles(rule_id);
 CREATE INDEX idx_verifier_user_roles_expires_at ON verifier_user_roles(expires_at);
 CREATE INDEX idx_verifier_user_roles_user_server ON verifier_user_roles(user_id, server_id);
+CREATE INDEX idx_verifier_user_roles_address ON verifier_user_roles(address);
 
 -- Create composite index for dynamic verification queries
 CREATE INDEX idx_verifier_user_roles_active_check 
@@ -140,51 +142,51 @@ BEGIN
     IF legacy_rule_id IS NULL THEN
         RAISE NOTICE 'Legacy rule not found, skipping legacy data migration';
         RETURN;
-    END IF;
-
-    -- Migrate data from verifier_users to verifier_user_roles
-    INSERT INTO verifier_user_roles (
-        user_id,
-        server_id,
-        role_id,
-        status,
-        verified_at,
-        last_checked,
-        expires_at,
-        rule_id,
-        verification_data,
-        user_name,
-        server_name,
-        role_name,
-        created_at,
-        updated_at
-    )
-    SELECT DISTINCT
-        vu.user_id,
-        server_key AS server_id,
-        vs.role_id,
-        'active' AS status,
-        now() AS verified_at,
-        now() AS last_checked,
-        now() + (grace_period_hours || ' hours')::interval AS expires_at,
-        legacy_rule_id AS rule_id,
-        jsonb_build_object(
-            'legacy_migration', true,
-            'migration_date', now(),
-            'grace_period_hours', grace_period_hours,
-            'original_server_value', server_value,
-            'migrated_from', 'verifier_users'
-        ) AS verification_data,
-        COALESCE(server_value::text, 'Unknown User') AS user_name,
-        COALESCE(vs.name, 'Unknown Server') AS server_name,
-        'Legacy Role' AS role_name,
-        now() AS created_at,
-        now() AS updated_at
-    FROM verifier_users vu
-    CROSS JOIN LATERAL jsonb_each(vu.servers) AS servers(server_key, server_value)
-    LEFT JOIN verifier_servers vs ON vs.id = server_key
-    WHERE vs.role_id IS NOT NULL
-    ON CONFLICT (user_id, server_id, role_id) DO NOTHING;
+    END IF;        -- Migrate data from verifier_users to verifier_user_roles
+        INSERT INTO verifier_user_roles (
+            user_id,
+            server_id,
+            role_id,
+            address,
+            status,
+            verified_at,
+            last_checked,
+            expires_at,
+            rule_id,
+            verification_data,
+            user_name,
+            server_name,
+            role_name,
+            created_at,
+            updated_at
+        )
+        SELECT DISTINCT
+            vu.user_id,
+            server_key AS server_id,
+            vs.role_id,
+            vu.address,
+            'active' AS status,
+            now() AS verified_at,
+            now() AS last_checked,
+            now() + (grace_period_hours || ' hours')::interval AS expires_at,
+            legacy_rule_id AS rule_id,
+            jsonb_build_object(
+                'legacy_migration', true,
+                'migration_date', now(),
+                'grace_period_hours', grace_period_hours,
+                'original_server_value', server_value,
+                'migrated_from', 'verifier_users'
+            ) AS verification_data,
+            COALESCE(server_value::text, 'Unknown User') AS user_name,
+            COALESCE(vs.name, 'Unknown Server') AS server_name,
+            'Legacy Role' AS role_name,
+            now() AS created_at,
+            now() AS updated_at
+        FROM verifier_users vu
+        CROSS JOIN LATERAL jsonb_each(vu.servers) AS servers(server_key, server_value)
+        LEFT JOIN verifier_servers vs ON vs.id = server_key
+        WHERE vs.role_id IS NOT NULL
+        ON CONFLICT (user_id, server_id, role_id) DO NOTHING;
 
     GET DIAGNOSTICS migration_count = ROW_COUNT;
     

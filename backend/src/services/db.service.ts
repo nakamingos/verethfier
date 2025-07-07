@@ -771,8 +771,22 @@ export class DbService {
 
   /**
    * Get user's latest verified address
+   * Uses the address from the most recent role assignment to avoid joins
    */
   async getUserLatestAddress(userId: string): Promise<string | null> {
+    // First try to get the most recent address from role assignments
+    const { data: roleData, error: roleError } = await supabase
+      .from('verifier_user_roles')
+      .select('address')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (!roleError && roleData && roleData.length > 0) {
+      return roleData[0].address;
+    }
+
+    // Fallback to verifier_users table for backward compatibility
     const { data, error } = await supabase
       .from('verifier_users')
       .select('address')

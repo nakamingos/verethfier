@@ -73,26 +73,27 @@ CREATE TABLE IF NOT EXISTS public.verifier_user_roles (
   user_id text NOT NULL,
   server_id text NOT NULL,
   role_id text NOT NULL,
-  
+  address text NOT NULL,
+
   -- Enhanced tracking fields for dynamic role management
   status text DEFAULT 'active' NOT NULL,
   verified_at timestamp with time zone DEFAULT now(),
   last_checked timestamp with time zone DEFAULT now(),
   expires_at timestamp with time zone,
-  
+
   -- Link to verification rules (nullable, no FK constraint for flexibility)
   rule_id bigint,
-  
+
   -- Metadata and additional information
   verification_data jsonb DEFAULT '{}',
   user_name text DEFAULT '',
   server_name text DEFAULT '',
   role_name text DEFAULT '',
-  
+
   -- Timestamps
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
-  
+
   -- Constraints
   CONSTRAINT verifier_user_roles_pkey PRIMARY KEY (id),
   UNIQUE(user_id, server_id, role_id)
@@ -104,6 +105,7 @@ CREATE INDEX idx_verifier_user_roles_last_checked ON verifier_user_roles(last_ch
 CREATE INDEX idx_verifier_user_roles_rule_id ON verifier_user_roles(rule_id);
 CREATE INDEX idx_verifier_user_roles_expires_at ON verifier_user_roles(expires_at);
 CREATE INDEX idx_verifier_user_roles_user_server ON verifier_user_roles(user_id, server_id);
+CREATE INDEX idx_verifier_user_roles_address ON verifier_user_roles(address);
 
 -- Create composite index for dynamic verification queries
 CREATE INDEX idx_verifier_user_roles_active_check 
