@@ -6,6 +6,7 @@ import { DiscordService } from '../src/services/discord.service';
 import { DiscordVerificationService } from '../src/services/discord-verification.service';
 import { DataService } from '../src/services/data.service';
 import { DbService } from '../src/services/db.service';
+import { VerificationService } from '../src/services/verification.service';
 
 const mockWalletService = { verifySignature: jest.fn() };
 const mockNonceService = { 
@@ -44,6 +45,37 @@ const mockDbService = {
   }),
   findRulesByMessageId: jest.fn().mockResolvedValue([])
 };
+const mockVerificationService = {
+  getRulesByMessageId: jest.fn().mockResolvedValue([{
+    id: 1,
+    role_id: 'role-id',
+    slug: 'test-collection',
+    attribute_key: '',
+    attribute_value: '',
+    min_items: 1
+  }]),
+  verifyUserAgainstRules: jest.fn().mockResolvedValue({
+    validRules: [{
+      id: 1,
+      role_id: 'role-id',
+      slug: 'test-collection',
+      attribute_key: '',
+      attribute_value: '',
+      min_items: 1
+    }],
+    invalidRules: [],
+    matchingAssetCounts: new Map([['1', 1]])
+  }),
+  getAllRulesForServer: jest.fn().mockResolvedValue([{
+    id: 1,
+    role_id: 'role-id',
+    slug: 'test-collection',
+    attribute_key: '',
+    attribute_value: '',
+    min_items: 1
+  }]),
+  assignRoleToUser: jest.fn().mockResolvedValue(undefined)
+};
 
 describe('VerifyService', () => {
   let service: VerifyService;
@@ -58,6 +90,7 @@ describe('VerifyService', () => {
         { provide: DiscordVerificationService, useValue: mockDiscordVerificationService },
         { provide: DataService, useValue: mockDataService },
         { provide: DbService, useValue: mockDbService },
+        { provide: VerificationService, useValue: mockVerificationService },
       ],
     }).compile();
     service = module.get<VerifyService>(VerifyService);
@@ -69,38 +102,55 @@ describe('VerifyService', () => {
     mockNonceService.getNonceData.mockResolvedValue({ messageId: null, channelId: null });
     mockWalletService.verifySignature.mockResolvedValue('0xabc');
     mockDbService.getServerRole.mockResolvedValue('123');
+    
+    // Mock verification service for legacy rules
+    mockVerificationService.getAllRulesForServer.mockResolvedValue([]);
+    mockDataService.checkAssetOwnership.mockResolvedValue(1);
+    
     const payload = { userId: 'u', discordId: 'g', role: 'legacy', nonce: 'n' };
     await service.verifySignatureFlow(payload as any, 'sig');
     expect(mockWalletService.verifySignature).toHaveBeenCalled();
     expect(mockDbService.getServerRole).toHaveBeenCalledWith('g');
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalled();
-    expect(mockDbService.logUserRole).toHaveBeenCalled();
+    expect(mockVerificationService.assignRoleToUser).toHaveBeenCalled();
   });
 
   it('handles multi-rule path', async () => {
     // Mock empty nonce data to trigger multi-rule path
     mockNonceService.getNonceData.mockResolvedValue({ messageId: null, channelId: null });
     mockWalletService.verifySignature.mockResolvedValue('0xabc');
-    mockDbService.getRoleMappings.mockResolvedValue([
+    
+    // Mock verification service to return rules and successful verification
+    mockVerificationService.getAllRulesForServer.mockResolvedValue([
       { id: 1, slug: 'ALL', channel_id: null, attribute_key: '', attribute_value: '', min_items: 0, role_id: 'r1' },
       { id: 2, slug: 'ALL', channel_id: null, attribute_key: '', attribute_value: '', min_items: 0, role_id: 'r2' },
     ]);
-    mockDataService.getDetailedAssets.mockResolvedValue([{ slug: 'foo', attributes: {} }]);
+    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+      validRules: [
+        { id: 1, slug: 'ALL', channel_id: null, attribute_key: '', attribute_value: '', min_items: 0, role_id: 'r1' },
+        { id: 2, slug: 'ALL', channel_id: null, attribute_key: '', attribute_value: '', min_items: 0, role_id: 'r2' },
+      ],
+      invalidRules: [],
+      matchingAssetCounts: new Map([['1', 1], ['2', 1]])
+    });
+    
     const payload = { userId: 'u', discordId: 'g', nonce: 'n' };
     await service.verifySignatureFlow(payload as any, 'sig');
-    expect(mockDbService.getRoleMappings).toHaveBeenCalled();
+    expect(mockVerificationService.getAllRulesForServer).toHaveBeenCalled();
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledTimes(2);
-    expect(mockDbService.logUserRole).toHaveBeenCalledTimes(2);
+    expect(mockVerificationService.assignRoleToUser).toHaveBeenCalledTimes(2);
   });
 
   it('throws error if no match', async () => {
     // Mock empty nonce data to trigger multi-rule path, but no matching assets
     mockNonceService.getNonceData.mockResolvedValue({ messageId: null, channelId: null });
     mockWalletService.verifySignature.mockResolvedValue('0xabc');
-    mockDbService.getRoleMappings.mockResolvedValue([]);
-    mockDataService.getDetailedAssets.mockResolvedValue([]);
+    
+    // Mock verification service to return empty rules  
+    mockVerificationService.getAllRulesForServer.mockResolvedValue([]);
+    
     const payload = { userId: 'u', discordId: 'g', nonce: 'n' };
-    await expect(service.verifySignatureFlow(payload as any, 'sig')).rejects.toThrow('Address does not own any assets in the collection');
+    await expect(service.verifySignatureFlow(payload as any, 'sig')).rejects.toThrow('No verification rules found for this server');
     expect(mockDiscordVerificationService.throwError).toHaveBeenCalled();
   });
 
@@ -121,8 +171,13 @@ describe('VerifyService', () => {
       min_items: 1
     }];
     
-    mockDbService.findRulesByMessageId.mockResolvedValue(mockRules);
-    mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(2); // User owns 2 matching assets
+    // Mock verification service instead of DbService
+    mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
+    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+      validRules: mockRules,
+      invalidRules: [],
+      matchingAssetCounts: new Map([['1', 2]])
+    });
     
     const payload = { 
       userId: 'user123', 
@@ -132,11 +187,11 @@ describe('VerifyService', () => {
     
     const result = await service.verifySignatureFlow(payload as any, 'sig');
     
-    expect(mockDbService.findRulesByMessageId).toHaveBeenCalledWith('guild123', 'ch-456', 'msg-123');
-    expect(mockDataService.checkAssetOwnershipWithCriteria).toHaveBeenCalledWith('0xabc', 'test-collection', 'trait', 'rare', 1);
+    expect(mockVerificationService.getRulesByMessageId).toHaveBeenCalledWith('guild123', 'ch-456', 'msg-123');
+    expect(mockVerificationService.verifyUserAgainstRules).toHaveBeenCalledWith('0xabc', mockRules);
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('user123', 'role-123', 'guild123', '0xabc', 'nonce123');
     expect(mockDiscordVerificationService.sendVerificationComplete).toHaveBeenCalledWith('guild123', 'nonce123', ['role-123']);
-    expect(mockDbService.logUserRole).toHaveBeenCalledWith('user123', 'guild123', 'role-123', '0xabc', 'testuser', 'Test Guild', 'Test Role');
+    expect(mockVerificationService.assignRoleToUser).toHaveBeenCalled();
     expect(result.message).toContain('message-based');
     expect(result.assignedRoles).toEqual(['role-123']);
   });
@@ -167,10 +222,13 @@ describe('VerifyService', () => {
       }
     ];
     
-    mockDbService.findRulesByMessageId.mockResolvedValue(mockRules);
-    mockDataService.checkAssetOwnershipWithCriteria
-      .mockResolvedValueOnce(5) // User owns 5 of collection1
-      .mockResolvedValueOnce(3); // User owns 3 matching collection2 with trait=rare
+    // Mock verification service to return both rules as valid
+    mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
+    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+      validRules: mockRules,
+      invalidRules: [],
+      matchingAssetCounts: new Map([['1', 5], ['2', 3]])
+    });
     
     const payload = { 
       userId: 'user123', 
@@ -193,7 +251,9 @@ describe('VerifyService', () => {
       channelId: 'ch-456' 
     });
     mockWalletService.verifySignature.mockResolvedValue('0xabc');
-    mockDbService.findRulesByMessageId.mockResolvedValue([]);
+    
+    // Mock verification service to return empty rules
+    mockVerificationService.getRulesByMessageId.mockResolvedValue([]);
     
     const payload = { 
       userId: 'user123', 
@@ -223,8 +283,13 @@ describe('VerifyService', () => {
       min_items: 1
     }];
     
-    mockDbService.findRulesByMessageId.mockResolvedValue(mockRules);
-    mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(0); // User owns 0 assets
+    // Mock verification service to return rules but no valid matches
+    mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
+    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+      validRules: [],
+      invalidRules: mockRules,
+      matchingAssetCounts: new Map([['1', 0]])
+    });
     
     const payload = { 
       userId: 'user123', 
@@ -265,10 +330,13 @@ describe('VerifyService', () => {
       }
     ];
     
-    mockDbService.findRulesByMessageId.mockResolvedValue(mockRules);
-    mockDataService.checkAssetOwnershipWithCriteria
-      .mockResolvedValueOnce(3) // User owns 3 of collection1 (meets requirement)
-      .mockResolvedValueOnce(2); // User owns 2 matching collection2 (doesn't meet min_items=5)
+    // Mock verification service to return only the first rule as valid
+    mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
+    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+      validRules: [mockRules[0]], // Only first rule passes
+      invalidRules: [mockRules[1]], // Second rule fails
+      matchingAssetCounts: new Map([['1', 3], ['2', 2]])
+    });
     
     const payload = { 
       userId: 'user123', 
@@ -300,8 +368,13 @@ describe('VerifyService', () => {
       min_items: 1
     }];
     
-    mockDbService.findRulesByMessageId.mockResolvedValue(mockRules);
-    mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(1);
+    // Mock verification service
+    mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
+    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+      validRules: mockRules,
+      invalidRules: [],
+      matchingAssetCounts: new Map([['1', 1]])
+    });
     mockDiscordVerificationService.addUserRole.mockRejectedValue(new Error('Discord error'));
     
     const payload = { 
@@ -342,9 +415,14 @@ describe('VerifyService', () => {
       }
     ];
     
-    mockDbService.findRulesByMessageId.mockResolvedValue(mockRules);
-    mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(1);
-    mockDiscordVerificationService.addUserRole.mockResolvedValue(undefined); // Ensure it succeeds
+    // Mock verification service - only return rule with role_id as valid
+    mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
+    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+      validRules: [mockRules[1]], // Only second rule (has role_id)
+      invalidRules: [],
+      matchingAssetCounts: new Map([['2', 1]])
+    });
+    mockDiscordVerificationService.addUserRole.mockResolvedValue(undefined);
     
     const payload = { 
       userId: 'user123', 
@@ -380,14 +458,13 @@ describe('VerifyService', () => {
     const mockChannelId = 'channel123';
 
     // Mock the wallet verification
-    jest.spyOn(service['walletSvc'], 'verifySignature').mockResolvedValue(mockAddress);
+    mockWalletService.verifySignature.mockResolvedValue(mockAddress);
     
     // Mock nonce service
-    jest.spyOn(service['nonceSvc'], 'getNonceData').mockResolvedValue({
+    mockNonceService.getNonceData.mockResolvedValue({
       messageId: mockMessageId,
       channelId: mockChannelId
     });
-    jest.spyOn(service['nonceSvc'], 'invalidateNonce').mockResolvedValue();
 
     // Mock a rule with min_items=0
     const mockRules = [{
@@ -404,21 +481,21 @@ describe('VerifyService', () => {
       channel_name: 'test-channel',
       message_id: mockMessageId
     }];
-    jest.spyOn(service['dbSvc'], 'findRulesByMessageId').mockResolvedValue(mockRules);
 
-    // Mock data service returning 0 matching assets
-    jest.spyOn(service['dataSvc'], 'checkAssetOwnershipWithCriteria').mockResolvedValue(0);
-
-    // Mock Discord verification service
-    jest.spyOn(service['discordVerificationSvc'], 'addUserRole').mockResolvedValue();
-    jest.spyOn(service['dbSvc'], 'logUserRole').mockResolvedValue();
+    // Mock verification service
+    mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
+    mockVerificationService.verifyUserAgainstRules.mockResolvedValue({
+      validRules: mockRules, // Rule passes because min_items=0
+      invalidRules: [],
+      matchingAssetCounts: new Map([['1', 0]]) // 0 assets but still valid
+    });
 
     const result = await service.verifySignatureFlow(mockPayload, mockSignature);
 
     // Should succeed even with 0 assets because min_items=0
     expect(result.message).toContain('Verification successful');
     expect(result.assignedRoles).toEqual(['role123']);
-    expect(service['discordVerificationSvc'].addUserRole).toHaveBeenCalledWith(
+    expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith(
       'user123',
       'role123',
       'guild123',
