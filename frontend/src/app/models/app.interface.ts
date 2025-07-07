@@ -1,12 +1,11 @@
 export interface DecodedData {
-  userId: string;
-  userTag: string;
-  avatar: string;
-  discordId: string;
-  discordName: string;
-  discordIconURL: string;
-  role: string; // TODO(v3): deprecated, remove when legacy buttons are phased out
-  roleName: string; // TODO(v3): deprecated, remove when legacy buttons are phased out
-  nonce: string;
-  expiry: number;
+  address: string;      // Ethereum wallet address being verified
+  userId: string;       // Discord user ID
+  userTag: string;      // Discord user tag (username#discriminator)
+  avatar: string;       // Discord user avatar URL
+  discordId: string;    // Discord server/guild ID
+  discordName: string;  // Discord server/guild name
+  discordIcon: string;  // Discord server/guild icon URL
+  nonce: string;        // Cryptographic nonce for replay protection
+  expiry: number;       // Unix timestamp when verification expires
 };

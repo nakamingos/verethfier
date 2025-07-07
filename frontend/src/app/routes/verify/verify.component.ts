@@ -89,14 +89,13 @@ export class VerifyComponent {
     if (!arr) throw new Error('Failed to parse decoded data');
 
     return {
+      address: '',  // Will be filled in when wallet is connected
       userId: arr[0],
       userTag: arr[1],
       avatar: arr[2],
       discordId: arr[3],
       discordName: arr[4],
-      discordIconURL: arr[5],
-      role: arr[6],
-      roleName: arr[7],
+      discordIcon: arr[5],
       nonce: arr[8],
       expiry: arr[9],
     } as DecodedData;
@@ -132,8 +131,6 @@ export class VerifyComponent {
         { name: 'UserTag', type: 'string' },
         { name: 'ServerID', type: 'string' },
         { name: 'ServerName', type: 'string' },
-        { name: 'RoleID', type: 'string' }, // TODO(v3): deprecated, remove when legacy buttons are phased out
-        { name: 'RoleName', type: 'string' }, // TODO(v3): deprecated, remove when legacy buttons are phased out
         { name: 'Nonce', type: 'string' },
         { name: 'Expiry', type: 'uint256' },
       ]
@@ -144,8 +141,6 @@ export class VerifyComponent {
       UserTag: data.userTag,
       ServerID: data.discordId,
       ServerName: data.discordName,
-      RoleID: data.role, // TODO(v3): deprecated, remove when legacy buttons are phased out
-      RoleName: data.roleName, // TODO(v3): deprecated, remove when legacy buttons are phased out
       Nonce: data.nonce,
       Expiry: data.expiry,
     };
