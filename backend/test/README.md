@@ -1,15 +1,32 @@
 # Database Testing Setup
 
-This directory contains the Jest testing setup for Supabase database operations.
+This directory contains the Jest testing setup for Supabase database operations and integration tests.
 
 ## Overview
 
 The testing setup includes:
 
+- **Database Service Tests**: Direct testing of `DbService` methods against local Supabase
+- **Integration Tests**: End-to-end testing of core verification services
 - **Automatic Supabase Management**: Starts and stops Supabase automatically
 - **Global Setup**: Runs migrations and inserts test data before all tests
 - **Global Teardown**: Cleans up test data and stops Supabase after all tests complete
 - **Individual Test Setup**: Each test can create and cleanup its own test data
+
+## Test Types
+
+### 🗄️ Database Tests (`yarn test:db`)
+Direct testing of database operations:
+- `db.service.spec.ts` - Core database service methods
+- `db-setup.spec.ts` - Database setup verification
+
+### 🔄 Integration Tests (`yarn test:integration`)
+End-to-end service testing:
+- `verification-engine.integration.spec.ts` - Core verification logic
+- `verification.service.integration.spec.ts` - Service orchestration
+- `dynamic-role.service.integration.spec.ts` - Role management
+
+📚 **[See INTEGRATION_TESTS.md for detailed integration test documentation](./INTEGRATION_TESTS.md)**
 
 ## Files
 
@@ -18,6 +35,24 @@ The testing setup includes:
 - `global-teardown.ts` - Jest global teardown script
 - `test-database.ts` - Test database utilities and helpers
 - `db-setup.spec.ts` - Tests to verify the setup is working correctly
+- `INTEGRATION_TESTS.md` - Detailed integration test documentation
+
+## Quick Start
+
+### Run All Database Tests
+```bash
+# Database service tests + Integration tests
+yarn test:db
+```
+
+### Run Only Integration Tests
+```bash
+# Core verification service integration tests
+yarn test:integration
+
+# With verbose output
+yarn test:integration:verbose
+```
 
 ## Automatic Supabase Management
 

@@ -18,6 +18,8 @@
     "test:debug": "jest --verbose --no-cache",
     "test:db": "jest --silent --testPathPatterns=db",
     "test:db:verbose": "jest --verbose --testPathPatterns=db",
+    "test:integration": "jest --silent --testPathPatterns=integration.spec.ts",
+    "test:integration:verbose": "jest --verbose --testPathPatterns=integration.spec.ts",
     "test:setup": "jest --silent db-setup.spec.ts",
     "test:db:manual": "MANUAL_SUPABASE=true jest --silent --testPathPattern=db",
     "supabase:start": "supabase start",
