@@ -40,10 +40,10 @@ yarn supabase:stop
 
 ## 📁 Test Files
 
-### Core Service Integration Tests
+### Core Service Integration Tests (in `live_tests/`)
 
 #### 1. **VerificationEngine Integration Tests**
-**File:** `verification-engine.integration.spec.ts`
+**File:** `live_tests/verification-engine.integration.spec.ts`
 
 **Purpose:** Tests the core verification engine that processes asset verification logic.
 
@@ -63,7 +63,7 @@ yarn supabase:stop
 ---
 
 #### 2. **VerificationService Integration Tests**
-**File:** `verification.service.integration.spec.ts`
+**File:** `live_tests/verification.service.integration.spec.ts`
 
 **Purpose:** Tests the orchestration layer that coordinates between VerificationEngine, DbService, and DataService.
 
@@ -83,7 +83,7 @@ yarn supabase:stop
 ---
 
 #### 3. **DynamicRoleService Integration Tests**
-**File:** `dynamic-role.service.integration.spec.ts`
+**File:** `live_tests/dynamic-role.service.integration.spec.ts`
 
 **Purpose:** Tests role monitoring, tracking, and management functionality.
 
@@ -250,7 +250,7 @@ yarn test:debug --testPathPatterns=integration.spec.ts
 
 - [`README.md`](./README.md) - Overall testing setup
 - [`SUPABASE_CLI_INSTALL.md`](./SUPABASE_CLI_INSTALL.md) - CLI installation guide
-- [`db.service.spec.ts`](./db.service.spec.ts) - Core database service tests
+- [`live_tests/db.service.spec.ts`](./live_tests/db.service.spec.ts) - Core database service tests
 - [Service documentation](../src/services/) - Individual service documentation
 
 ---
