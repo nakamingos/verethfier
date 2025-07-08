@@ -25,6 +25,9 @@ DECLARE
     has_legacy_users boolean := false;
     has_modern_rules boolean := false;
     has_modern_user_roles boolean := false;
+    has_legacy_data_servers boolean := false;
+    has_legacy_data_users boolean := false;
+    has_modern_data boolean := false;
     migration_count integer := 0;
     legacy_rule_id bigint;
     grace_period_hours integer := 72;
@@ -59,12 +62,37 @@ BEGIN
         WHERE table_schema = 'public' AND table_name = 'verifier_user_roles'
     ) INTO has_modern_user_roles;
     
+    -- Check for actual data in legacy tables (not just table existence)
+    IF has_legacy_servers THEN
+        SELECT EXISTS (
+            SELECT 1 FROM verifier_servers LIMIT 1
+        ) INTO has_legacy_data_servers;
+    END IF;
+    
+    IF has_legacy_users THEN
+        SELECT EXISTS (
+            SELECT 1 FROM verifier_users LIMIT 1
+        ) INTO has_legacy_data_users;
+    END IF;
+    
+    -- Check if modern tables already have real (non-legacy) data
+    IF has_modern_rules THEN
+        SELECT EXISTS (
+            SELECT 1 FROM verifier_rules 
+            WHERE server_id != '000000000000000000' 
+            LIMIT 1
+        ) INTO has_modern_data;
+    END IF;
+    
     -- Log current state
     RAISE NOTICE 'Current database state:';
     RAISE NOTICE '- Legacy servers table: %', CASE WHEN has_legacy_servers THEN 'EXISTS' ELSE 'NOT FOUND' END;
     RAISE NOTICE '- Legacy users table: %', CASE WHEN has_legacy_users THEN 'EXISTS' ELSE 'NOT FOUND' END;
     RAISE NOTICE '- Modern rules table: %', CASE WHEN has_modern_rules THEN 'EXISTS' ELSE 'NOT FOUND' END;
     RAISE NOTICE '- Modern user_roles table: %', CASE WHEN has_modern_user_roles THEN 'EXISTS' ELSE 'NOT FOUND' END;
+    RAISE NOTICE '- Legacy servers data: %', CASE WHEN has_legacy_data_servers THEN 'HAS DATA' ELSE 'EMPTY' END;
+    RAISE NOTICE '- Legacy users data: %', CASE WHEN has_legacy_data_users THEN 'HAS DATA' ELSE 'EMPTY' END;
+    RAISE NOTICE '- Modern rules data: %', CASE WHEN has_modern_data THEN 'HAS REAL DATA' ELSE 'EMPTY OR LEGACY ONLY' END;
     
     -- =====================================================================================
     -- STEP 2: Create Modern Tables (If Not Exist)
@@ -152,11 +180,14 @@ BEGIN
     WHERE status = 'active';
     
     -- =====================================================================================
-    -- STEP 4: Handle Legacy Data Migration (If Legacy Tables Exist)
+    -- STEP 4: Handle Legacy Data Migration (If Legacy Tables Exist AND Have Data)
     -- =====================================================================================
     
-    IF has_legacy_servers AND has_legacy_users THEN
-        RAISE NOTICE 'Legacy tables detected - starting data migration...';
+    -- Only migrate if:
+    -- 1. Legacy tables exist AND have actual data
+    -- 2. Modern tables don't already have real (non-legacy) verification rules
+    IF has_legacy_data_servers AND has_legacy_data_users AND NOT has_modern_data THEN
+        RAISE NOTICE 'Legacy data detected with no modern data conflicts - starting migration...';
         
         -- Create special "legacy" rule for migrated data (if not exists)
         INSERT INTO verifier_rules (
@@ -249,8 +280,14 @@ BEGIN
             RAISE NOTICE 'Could not create legacy rule - skipping data migration';
         END IF;
         
+    ELSIF has_legacy_data_servers OR has_legacy_data_users THEN
+        IF has_modern_data THEN
+            RAISE NOTICE 'Legacy data found but modern system already has real data - skipping migration to avoid conflicts';
+        ELSE
+            RAISE NOTICE 'Legacy tables exist but contain no data - skipping migration';
+        END IF;
     ELSE
-        RAISE NOTICE 'No legacy tables found - skipping legacy data migration';
+        RAISE NOTICE 'No legacy data found - skipping legacy data migration';
     END IF;
     
     -- =====================================================================================
@@ -295,11 +332,22 @@ BEGIN
     RAISE NOTICE 'Universal Verethfier Migration Completed Successfully!';
     RAISE NOTICE '=================================================================';
     
-    IF has_legacy_servers AND has_legacy_users THEN
+    IF has_legacy_data_servers AND has_legacy_data_users AND NOT has_modern_data THEN
         RAISE NOTICE 'Migration type: LEGACY UPGRADE';
         RAISE NOTICE '- Migrated % users from legacy system', migration_count;
         RAISE NOTICE '- Legacy users have % hour grace period', grace_period_hours;
         RAISE NOTICE '- Legacy tables preserved for safety';
+    ELSIF has_legacy_data_servers OR has_legacy_data_users THEN
+        IF has_modern_data THEN
+            RAISE NOTICE 'Migration type: LEGACY COEXISTENCE';
+            RAISE NOTICE '- Legacy data detected but modern system already configured';
+            RAISE NOTICE '- No migration performed to avoid conflicts';
+            RAISE NOTICE '- Legacy tables preserved for manual review';
+        ELSE
+            RAISE NOTICE 'Migration type: LEGACY EMPTY';
+            RAISE NOTICE '- Legacy tables exist but contain no data';
+            RAISE NOTICE '- Modern system created without legacy migration';
+        END IF;
     ELSIF NOT has_modern_rules OR NOT has_modern_user_roles THEN
         RAISE NOTICE 'Migration type: FRESH INSTALL';
         RAISE NOTICE '- Created modern verification system from scratch';
