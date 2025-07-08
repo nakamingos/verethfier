@@ -94,7 +94,7 @@ describe('DiscordVerificationService', () => {
 
       await service.requestVerification(mockInteraction as any);
 
-      // Note: deferReply should be called by the caller (discord.service), not by this service
+      // Note: deferReply is now handled by the caller, not by requestVerification
       expect(mockNonceService.createNonce).toHaveBeenCalledWith(
         'user-id',
         'message-id',
