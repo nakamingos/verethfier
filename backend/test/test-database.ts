@@ -221,9 +221,9 @@ export class TestDatabase {
   // Check if database is accessible
   public async isHealthy(): Promise<boolean> {
     try {
-      const { data, error } = await this.supabase
-        .from('verifier_servers')
-        .select('count(*)')
+      const { error } = await this.supabase
+        .from('pg_tables')
+        .select('tablename')
         .limit(1);
       
       return !error;
