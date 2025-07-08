@@ -13,6 +13,7 @@ const mockDbService = {
   getServerRole: jest.fn(),
   findRuleByMessageId: jest.fn(),
   addServerToUser: jest.fn(),
+  trackRoleAssignment: jest.fn(),
 };
 
 const mockNonceService = {
@@ -27,6 +28,12 @@ const mockClient = {
         name: 'Test Guild',
         members: {
           fetch: jest.fn().mockResolvedValue({
+            id: 'user-id',
+            displayName: 'Test User',
+            user: {
+              username: 'testuser',
+              id: 'user-id'
+            },
             roles: {
               add: jest.fn(),
             },
@@ -131,12 +138,17 @@ describe('DiscordVerificationService', () => {
 
       await service.addUserRole('user-id', 'role-id', 'guild-id', 'wallet-address', nonce);
 
-      expect(mockDbService.addServerToUser).toHaveBeenCalledWith(
-        'user-id',
-        'guild-id',
-        'Test Role',
-        'wallet-address'
-      );
+      expect(mockDbService.trackRoleAssignment).toHaveBeenCalledWith({
+        userId: 'user-id',
+        serverId: 'guild-id',
+        roleId: 'role-id',
+        ruleId: null,
+        address: 'wallet-address',
+        userName: 'Test User',
+        serverName: 'Test Guild',
+        roleName: 'Test Role',
+        expiresInHours: undefined
+      });
       // addUserRole no longer sends success message or cleans up nonce
       expect(mockInteraction.editReply).not.toHaveBeenCalled();
       expect(service.tempMessages[nonce]).toBeDefined(); // Should still exist

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { recoverTypedDataAddress } from 'viem';
 
 import { NonceService } from '@/services/nonce.service';
@@ -44,6 +44,11 @@ export class WalletService {
     signature: string
   ): Promise<string> {
 
+    // Debug logging to investigate signature verification issues
+    Logger.debug('=== WALLET SERVICE DEBUG ===');
+    Logger.debug('Input data:', JSON.stringify(data, null, 2));
+    Logger.debug('Input signature:', signature);
+
     // Fetch the nonce for the user
     const userNonce = await this.nonceSvc.validateNonce(data.userId, data.nonce);
     if (!userNonce) throw new Error('Invalid or expired nonce.');
@@ -86,6 +91,8 @@ export class WalletService {
       message,
     };
 
+    Logger.debug('EIP-712 typedData for verification:', JSON.stringify(typedData, null, 2));
+
     const address = await recoverTypedDataAddress({ 
       domain: typedData.domain,
       types: typedData.types,
@@ -93,6 +100,9 @@ export class WalletService {
       message: typedData.message,
       signature: signature as `0x${string}`
     });
+
+    Logger.debug('Recovered address:', address);
+    Logger.debug('Expected address:', data.address);
 
     if (address !== data.address) throw new Error('Invalid signature.');
     return address;

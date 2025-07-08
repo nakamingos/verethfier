@@ -161,10 +161,12 @@ export class VerificationService {
   }
 
   /**
-   * Get rules by message ID
+   * Get rules by message ID (deprecated - now uses channel-based lookup)
+   * @deprecated Use getRulesForChannel instead
    */
   async getRulesByMessageId(serverId: string, channelId: string, messageId: string): Promise<VerifierRole[]> {
-    return await this.dbSvc.findRulesByMessageId(serverId, channelId, messageId);
+    // Simplified: just return all rules for the channel instead of message-specific rules
+    return await this.dbSvc.getRulesByChannel(serverId, channelId);
   }
 
   /**
@@ -178,18 +180,20 @@ export class VerificationService {
     ruleId?: string,
     metadata?: any
   ): Promise<void> {
-    // Log the role assignment with enhanced metadata
-    await this.dbSvc.logUserRole(
+    // Use the unified tracking method for consistency
+    await this.dbSvc.trackRoleAssignment({
       userId,
       serverId,
       roleId,
+      ruleId: ruleId || null, // Use null instead of 'unknown' for bigint field
       address,
-      metadata?.userName,
-      metadata?.serverName,
-      metadata?.roleName
-    );
+      userName: metadata?.userName,
+      serverName: metadata?.serverName,
+      roleName: metadata?.roleName,
+      expiresInHours: undefined // No expiration by default
+    });
 
-    Logger.debug(`Role ${roleId} assigned to user ${userId} in server ${serverId}`);
+    Logger.debug(`Role ${roleId} assigned to user ${userId} in server ${serverId} via unified tracking`);
   }
 
   /**

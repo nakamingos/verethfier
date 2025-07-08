@@ -54,6 +54,14 @@ const mockVerificationService = {
     attribute_value: '',
     min_items: 1
   }]),
+  getRulesForChannel: jest.fn().mockResolvedValue([{
+    id: 1,
+    role_id: 'role-id',
+    slug: 'test-collection',
+    attribute_key: '',
+    attribute_value: '',
+    min_items: 1
+  }]),
   verifyUserBulk: jest.fn().mockResolvedValue({
     validRules: [{
       id: 1,
@@ -122,7 +130,6 @@ describe('VerifyService', () => {
     await service.verifySignatureFlow(payload as any, 'sig');
     expect(mockVerificationService.getAllRulesForServer).toHaveBeenCalled();
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledTimes(2);
-    expect(mockVerificationService.assignRoleToUser).toHaveBeenCalledTimes(2);
   });
 
   it('throws error if no match', async () => {
@@ -156,7 +163,7 @@ describe('VerifyService', () => {
     }];
     
     // Mock verification service instead of DbService
-    mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
+    mockVerificationService.getRulesForChannel.mockResolvedValue(mockRules);
     mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: mockRules,
       invalidRules: [],
@@ -171,11 +178,10 @@ describe('VerifyService', () => {
     
     const result = await service.verifySignatureFlow(payload as any, 'sig');
     
-    expect(mockVerificationService.getRulesByMessageId).toHaveBeenCalledWith('guild123', 'ch-456', 'msg-123');
+    expect(mockVerificationService.getRulesForChannel).toHaveBeenCalledWith('guild123', 'ch-456');
     expect(mockVerificationService.verifyUserBulk).toHaveBeenCalledWith('user123', [1], '0xabc');
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('user123', 'role-123', 'guild123', '0xabc', 'nonce123');
     expect(mockDiscordVerificationService.sendVerificationComplete).toHaveBeenCalledWith('guild123', 'nonce123', ['role-123']);
-    expect(mockVerificationService.assignRoleToUser).toHaveBeenCalled();
     expect(result.message).toContain('message-based');
     expect(result.assignedRoles).toEqual(['role-123']);
   });
@@ -207,7 +213,7 @@ describe('VerifyService', () => {
     ];
     
     // Mock verification service to return both rules as valid
-    mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
+    mockVerificationService.getRulesForChannel.mockResolvedValue(mockRules);
     mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: mockRules,
       invalidRules: [],
@@ -237,7 +243,7 @@ describe('VerifyService', () => {
     mockWalletService.verifySignature.mockResolvedValue('0xabc');
     
     // Mock verification service to return empty rules
-    mockVerificationService.getRulesByMessageId.mockResolvedValue([]);
+    mockVerificationService.getRulesForChannel.mockResolvedValue([]);
     
     const payload = { 
       userId: 'user123', 
@@ -246,9 +252,9 @@ describe('VerifyService', () => {
     };
     
     await expect(service.verifySignatureFlow(payload as any, 'sig'))
-      .rejects.toThrow('No verification rules found for this request');
+      .rejects.toThrow('No verification rules found for this channel');
     
-    expect(mockDiscordVerificationService.throwError).toHaveBeenCalledWith('nonce123', 'No verification rules found for this request');
+    expect(mockDiscordVerificationService.throwError).toHaveBeenCalledWith('nonce123', 'No verification rules found for this channel');
   });
 
   it('handles message-based verification when user does not meet criteria', async () => {
@@ -268,7 +274,7 @@ describe('VerifyService', () => {
     }];
     
     // Mock verification service to return rules but no valid matches
-    mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
+    mockVerificationService.getRulesForChannel.mockResolvedValue(mockRules);
     mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: [],
       invalidRules: mockRules,
@@ -315,7 +321,7 @@ describe('VerifyService', () => {
     ];
     
     // Mock verification service to return only the first rule as valid
-    mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
+    mockVerificationService.getRulesForChannel.mockResolvedValue(mockRules);
     mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: [mockRules[0]], // Only first rule passes
       invalidRules: [mockRules[1]], // Second rule fails
@@ -353,7 +359,7 @@ describe('VerifyService', () => {
     }];
     
     // Mock verification service
-    mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
+    mockVerificationService.getRulesForChannel.mockResolvedValue(mockRules);
     mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: mockRules,
       invalidRules: [],
@@ -400,7 +406,7 @@ describe('VerifyService', () => {
     ];
     
     // Mock verification service - only return rule with role_id as valid
-    mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
+    mockVerificationService.getRulesForChannel.mockResolvedValue(mockRules);
     mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: [mockRules[1]], // Only second rule (has role_id)
       invalidRules: [],
@@ -460,12 +466,11 @@ describe('VerifyService', () => {
       server_id: 'guild123',
       server_name: 'TestGuild',
       channel_id: 'channel123',
-      channel_name: 'test-channel',
-      message_id: mockMessageId
+      channel_name: 'test-channel'
     }];
 
     // Mock verification service
-    mockVerificationService.getRulesByMessageId.mockResolvedValue(mockRules);
+    mockVerificationService.getRulesForChannel.mockResolvedValue(mockRules);
     mockVerificationService.verifyUserBulk.mockResolvedValue({
       validRules: mockRules, // Rule passes because min_items=0
       invalidRules: [],

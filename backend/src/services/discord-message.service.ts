@@ -31,22 +31,18 @@ export class DiscordMessageService {
   constructor() {}
 
   /**
-   * Searches for existing verification messages in a Discord channel.
-   * 
-   * Uses a simple but effective approach: any message from our bot that contains
-   * interactive components (buttons) is likely a verification message. This prevents
-   * creating duplicate verification buttons regardless of message format (legacy or new).
+   * Checks if there's already a verification message from our bot in the specified channel
    * 
    * @param channel - The Discord channel to search for verification messages
-   * @returns Promise<string | null> - Message ID of existing verification message, or null
+   * @returns Promise<boolean> - True if a verification message exists, false otherwise
    */
-  async findExistingVerificationMessage(channel: GuildTextBasedChannel): Promise<string | null> {
+  async findExistingVerificationMessage(channel: GuildTextBasedChannel): Promise<boolean> {
     try {
       // Check if client is properly initialized
       const botUserId = this.client?.user?.id;
       if (!botUserId) {
         Logger.error('Discord client not properly initialized or bot user ID not available');
-        return null;
+        return false;
       }
 
       // Fetch recent messages from the channel (last 100 messages should be enough)
@@ -60,17 +56,17 @@ export class DiscordMessageService {
         if (message.author.id !== botUserId) continue;
         botMessagesCount++;
         
-        // Simple check: if it's from our bot and has buttons, it's likely a verification message
+        // Check for verification message with specific custom ID
         if (message.components.length > 0) {
           botMessagesWithButtonsCount++;
           
-          // Check if there's at least one button component
+          // Check if this message has the verification button
           for (const actionRow of message.components) {
-            if (actionRow.type === 1 && 'components' in actionRow) { // ActionRowBuilder type
-              const components = actionRow.components;
-              for (const component of components) {
-                if (component.type === 2) { // ButtonComponent type
-                  return messageId;
+            if (actionRow.type === 1) { // ActionRow type
+              for (const component of (actionRow as any).components) {
+                if (component.type === 2 && // ButtonComponent type
+                    component.customId === 'requestVerification') {
+                  return true;
                 }
               }
             }
@@ -78,10 +74,10 @@ export class DiscordMessageService {
         }
       }
       
-      return null;
+      return false;
     } catch (error) {
       Logger.error('Error searching for existing verification message:', error);
-      return null;
+      return false;
     }
   }
 

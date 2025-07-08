@@ -931,11 +931,16 @@ describe('DiscordCommandsService', () => {
   });
 
   describe('handleRecoverVerification', () => {
-    it('should recover verification setup for orphaned rules', async () => {
+    it('should create verification message for channel with rules', async () => {
       const mockChannel = {
         id: 'channel-id',
         type: 0, // ChannelType.GuildText
-        toString: () => '<#channel-id>'
+        toString: () => '<#channel-id>',
+        messages: {
+          fetch: jest.fn().mockResolvedValue({
+            find: jest.fn().mockReturnValue(null) // No existing messages with verify buttons
+          })
+        }
       };
       
       const mockInteraction = {
@@ -947,42 +952,36 @@ describe('DiscordCommandsService', () => {
         editReply: jest.fn()
       };
 
-      // Mock orphaned rules (rules with deleted messages)
-      const orphanedRules = [
-        { id: 1, message_id: 'deleted-message-1', role_id: 'role-1' },
-        { id: 2, message_id: 'deleted-message-2', role_id: 'role-2' }
+      // Mock channel rules (no more message_id field)
+      const channelRules = [
+        { id: 1, role_id: 'role-1', channel_id: 'channel-id' },
+        { id: 2, role_id: 'role-2', channel_id: 'channel-id' }
       ];
 
-      mockDbService.getRulesByChannel.mockResolvedValue(orphanedRules);
-      mockDiscordMessageService.verifyMessageExists.mockResolvedValue(false); // Both messages are deleted
-      mockDiscordMessageService.createVerificationMessage.mockResolvedValue('new-message-id');
-      mockDbService.updateRuleMessageId.mockResolvedValue(undefined);
+      mockDbService.getRulesByChannel.mockResolvedValue(channelRules);
+      mockDiscordMessageService.createVerificationMessage.mockResolvedValue(undefined);
 
       await service.handleRecoverVerification(mockInteraction as any);
 
       expect(mockInteraction.deferReply).toHaveBeenCalledWith({ flags: expect.any(Number) });
       expect(mockDbService.getRulesByChannel).toHaveBeenCalledWith('guild-id', 'channel-id');
-      expect(mockDiscordMessageService.verifyMessageExists).toHaveBeenCalledTimes(2);
       expect(mockDiscordMessageService.createVerificationMessage).toHaveBeenCalledWith(mockChannel);
-      expect(mockDbService.updateRuleMessageId).toHaveBeenCalledTimes(2);
-      expect(mockDbService.updateRuleMessageId).toHaveBeenCalledWith(1, 'new-message-id');
-      expect(mockDbService.updateRuleMessageId).toHaveBeenCalledWith(2, 'new-message-id');
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
         embeds: [
           expect.objectContaining({
             data: expect.objectContaining({
               color: 0x00FF00, // Green color for success
-              title: '✅ Verification Recovery Complete',
-              description: 'Successfully recovered verification setup for <#channel-id>',
+              title: '✅ Verification Message Created',
+              description: 'Successfully created verification message for <#channel-id>',
               fields: [
                 {
-                  name: 'New Message Created',
-                  value: 'Message ID: new-message-id',
-                  inline: false
+                  name: 'Channel',
+                  value: '<#channel-id>',
+                  inline: true
                 },
                 {
-                  name: 'Rules Updated',
-                  value: '2/2 rules updated',
+                  name: 'Active Rules',
+                  value: '2 rules will use this message',
                   inline: true
                 },
                 {
@@ -991,14 +990,14 @@ describe('DiscordCommandsService', () => {
                   inline: false
                 }
               ],
-              timestamp: expect.any(String) // Allow any timestamp
+              timestamp: expect.any(String)
             })
           })
         ]
       });
     });
 
-    it('should handle case when no orphaned rules exist', async () => {
+    it('should handle case when verification message already exists in channel', async () => {
       const mockChannel = {
         id: 'channel-id',
         type: 0, // ChannelType.GuildText
@@ -1013,18 +1012,18 @@ describe('DiscordCommandsService', () => {
         editReply: jest.fn()
       };
 
-      // Mock rules with existing messages
-      const existingRules = [
-        { id: 1, message_id: 'existing-message-1', role_id: 'role-1' }
+      const channelRules = [
+        { id: 1, role_id: 'role-1', channel_id: 'channel-id' }
       ];
 
-      mockDbService.getRulesByChannel.mockResolvedValue(existingRules);
-      mockDiscordMessageService.verifyMessageExists.mockResolvedValue(true); // Message exists
+      // Mock that verification message already exists
+      mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(true);
+      mockDbService.getRulesByChannel.mockResolvedValue(channelRules);
 
       await service.handleRecoverVerification(mockInteraction as any);
 
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        content: '✅ No orphaned verification rules found for this channel. All existing verification messages appear to be intact.'
+        content: '✅ Channel already has a verification message. No recovery needed.'
       });
       expect(mockDiscordMessageService.createVerificationMessage).not.toHaveBeenCalled();
     });

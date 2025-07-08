@@ -63,26 +63,25 @@ export class VerifyService {
     await this.nonceSvc.invalidateNonce(payload.userId);
     Logger.debug(`Nonce deleted for userId: ${payload.userId}`);
 
-    // --- Message-based verification (takes precedence if messageId is present) ---
-    // This is the new verification system that uses specific rules for Discord messages
-    if (messageId && channelId) {
-      Logger.debug(`Message-based verification for messageId: ${messageId}, channelId: ${channelId}`);
+    // --- Channel-based verification (simplified approach) ---
+    // Get all rules for the channel where the verification button was clicked
+    if (channelId) {
+      Logger.debug(`Channel-based verification for channelId: ${channelId}`);
       
-      // Get ALL rules that match this message using the unified verification service
-      const rules = await this.verificationSvc.getRulesByMessageId(
+      // Get ALL rules that apply to this channel
+      const rules = await this.verificationSvc.getRulesForChannel(
         payload.discordId,
-        channelId,
-        messageId
+        channelId
       );
       
       if (!rules || rules.length === 0) {
-        Logger.warn(`No rules found for messageId: ${messageId}, channelId: ${channelId}`);
-        const errorMsg = 'No verification rules found for this request';
+        Logger.warn(`No rules found for channelId: ${channelId}`);
+        const errorMsg = 'No verification rules found for this channel';
         await this.discordVerificationSvc.throwError(payload.nonce, errorMsg);
         throw new Error(errorMsg);
       }
 
-      Logger.debug(`Found ${rules.length} rules for messageId: ${messageId}`);
+      Logger.debug(`Found ${rules.length} rules for channelId: ${channelId}`);
       
       // Use the unified verification engine to verify the user against all rules
       const ruleIds = rules.map(rule => rule.id);
@@ -124,19 +123,8 @@ export class VerifyService {
             payload.nonce
           );
 
-          // Use the unified verification service to log the role assignment
-          await this.verificationSvc.assignRoleToUser(
-            payload.userId,
-            payload.discordId,
-            rule.role_id,
-            address,
-            rule.id.toString(),
-            {
-              userName: user?.username || `User-${payload.userId}`,
-              serverName: guild?.name || `Guild-${payload.discordId}`,
-              roleName: role?.name || `Role-${rule.role_id}`
-            }
-          );
+          // Role assignment and tracking is handled by assignRole() method
+          // No need for additional tracking here
 
           assignedRoles.push(rule.role_id);
           Logger.debug(`✅ Role assigned for rule ${rule.id} (${rule.slug})`);
@@ -213,14 +201,8 @@ export class VerifyService {
           payload.nonce
         );
 
-        await this.verificationSvc.assignRoleToUser(
-          payload.userId,
-          payload.discordId,
-          rule.role_id,
-          address,
-          rule.id.toString(),
-          { userName: `User-${payload.userId}`, serverName: `Guild-${payload.discordId}`, roleName: rule.role_name || `Role-${rule.role_id}` }
-        );
+        // Role assignment and tracking is handled by addUserRole() method
+        // No need for additional tracking here
 
         assignedRoleIds.push(rule.role_id);
         Logger.debug(`✅ Unified verification: Successfully assigned role: ${rule.role_id} for rule ${rule.id}`);

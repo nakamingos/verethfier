@@ -10,7 +10,7 @@ export interface VerifierRole {
   attribute_key: string | null;
   attribute_value: string | null;
   min_items: number | null;
-  message_id: string | null;
+  // message_id removed - using channel-based verification
   // ...other fields as needed
 }
 
@@ -25,9 +25,9 @@ export interface VerifierUserRole {
   server_name: string | null;
   role_name: string | null;
   status: 'active' | 'expired' | 'revoked';
-  assigned_at: string;
+  verified_at: string;
   last_checked: string | null;
-  verification_expires_at: string | null;
+  expires_at: string | null;
   created_at: string;
   updated_at: string;
 }

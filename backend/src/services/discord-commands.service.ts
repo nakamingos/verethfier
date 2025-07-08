@@ -250,18 +250,13 @@ export class DiscordCommandsService {
     };
 
     if (existingRules.length > 0) {
-      // Find existing verification message ID from existing rules
-      const existingMessageId = existingRules.find(rule => rule.message_id)?.message_id;
-      
-      if (existingMessageId) {
-        // Update the new rule with the existing message_id
-        await this.dbSvc.updateRuleMessageId(newRule.id, existingMessageId);
-      }
+      // Check if there's already a verification message from our bot in this channel
+      const hasExistingMessage = await this.messageSvc.findExistingVerificationMessage(channel);
 
       // Use existing verification message
       const embed = AdminFeedback.success(
         isDuplicateConfirmed ? 'Duplicate Rule Created' : 'Rule Added',
-        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added using existing verification message.`,
+        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> ${hasExistingMessage ? 'added using existing verification message' : 'created'}.`,
         [
           { name: 'Collection', value: slug, inline: true },
           { name: 'Attribute', value: AdminFeedback.formatRule(newRule).split('\n')[2].replace('**Attribute:** ', ''), inline: true },
@@ -304,13 +299,17 @@ export class DiscordCommandsService {
         return;
       }
       
-      const messageId = await this.messageSvc.createVerificationMessage(channel as GuildTextBasedChannel);
+      // Check if there's already a verification message in this channel
+      const hasExistingMessage = await this.messageSvc.findExistingVerificationMessage(channel);
       
-      // Wait for DB update to complete before replying
-      await this.dbSvc.updateRuleMessageId(newRule.id, messageId);
+      let messageCreated = false;
+      if (!hasExistingMessage) {
+        // Only create a new verification message if one doesn't exist
+        await this.messageSvc.createVerificationMessage(channel as GuildTextBasedChannel);
+        messageCreated = true;
+      }
       
-      // Optionally, add a short delay to ensure DB consistency
-      await new Promise(res => setTimeout(res, 100));
+      // No need to track message_id in database anymore
 
       const formatAttribute = (key: string, value: string) => {
         if (key !== 'ALL' && value !== 'ALL') return `${key}=${value}`;
@@ -321,7 +320,7 @@ export class DiscordCommandsService {
 
       const embed = AdminFeedback.success(
         isDuplicateConfirmed ? 'Duplicate Rule Created' : 'Rule Added',
-        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> added with new verification message.`,
+        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> ${messageCreated ? 'added with new verification message' : 'added using existing verification message'}.`,
         [
           { name: 'Collection', value: slug, inline: true },
           { name: 'Attribute', value: formatAttribute(attributeKey, attributeValue), inline: true },
@@ -403,48 +402,37 @@ export class DiscordCommandsService {
 
       const textChannel = channel as GuildTextBasedChannel;
 
-      // Find orphaned rules for this channel (rules pointing to non-existent messages)
-      const channelRules = await this.dbSvc.getRulesByChannel(interaction.guild.id, channel.id);
-      const orphanedRules = [];
-
-      for (const rule of channelRules) {
-        if (rule.message_id) {
-          const messageExists = await this.messageSvc.verifyMessageExists(textChannel, rule.message_id);
-          if (!messageExists) {
-            orphanedRules.push(rule);
-          }
-        }
-      }
-
-      if (orphanedRules.length === 0) {
+      // Check if there's already a verification message in the channel
+      const hasExistingMessage = await this.messageSvc.findExistingVerificationMessage(textChannel);
+      
+      if (hasExistingMessage) {
         await interaction.editReply({
-          content: AdminFeedback.simple('No orphaned verification rules found for this channel. All existing verification messages appear to be intact.')
+          content: AdminFeedback.simple('Channel already has a verification message. No recovery needed.')
         });
         return;
       }
 
-      // Create a new verification message
-      const newMessageId = await this.messageSvc.createVerificationMessage(textChannel);
+      // Get all rules for this channel
+      const channelRules = await this.dbSvc.getRulesByChannel(interaction.guild.id, channel.id);
 
-      // Update all orphaned rules to point to the new message
-      let updatedCount = 0;
-      for (const rule of orphanedRules) {
-        try {
-          await this.dbSvc.updateRuleMessageId(rule.id, newMessageId);
-          updatedCount++;
-        } catch (error) {
-          Logger.error(`Failed to update rule ${rule.id}:`, error);
-        }
+      if (channelRules.length === 0) {
+        await interaction.editReply({
+          content: AdminFeedback.simple('No verification rules found for this channel. Use `/setup add-rule` to create rules first.')
+        });
+        return;
       }
+
+      // Create a new verification message for the channel (no need to update database)
+      await this.messageSvc.createVerificationMessage(textChannel);
 
       // Provide feedback to the admin
       const embed = AdminFeedback.success(
-        'Verification Recovery Complete',
-        `Successfully recovered verification setup for ${textChannel}`,
+        'Verification Message Created',
+        `Successfully created verification message for ${textChannel}`,
         [
-          { name: 'New Message Created', value: `Message ID: ${newMessageId}`, inline: false },
-          { name: 'Rules Updated', value: `${updatedCount}/${orphanedRules.length} rules updated`, inline: true },
-          { name: 'Roles Affected', value: orphanedRules.map(r => `<@&${r.role_id}>`).join(', ') || 'None', inline: false }
+          { name: 'Channel', value: `<#${channel.id}>`, inline: true },
+          { name: 'Active Rules', value: `${channelRules.length} rules will use this message`, inline: true },
+          { name: 'Roles Affected', value: channelRules.map(r => `<@&${r.role_id}>`).join(', ') || 'None', inline: false }
         ]
       );
       
@@ -454,7 +442,7 @@ export class DiscordCommandsService {
         embeds: [embed]
       });
 
-      Logger.debug(`Recovery completed for channel ${channel.id}: ${updatedCount} rules updated, new message ${newMessageId}`);
+      Logger.debug(`Verification message created for channel ${channel.id} with ${channelRules.length} active rules`);
 
     } catch (error) {
       Logger.error('Error in handleRecoverVerification:', error);

@@ -90,6 +90,134 @@ export class TestDatabase {
     return data;
   }
 
+  // Seed comprehensive test data for extended DB service tests
+  public async seedExtendedTestData(): Promise<any> {
+    try {
+      // Create a server for standard tests
+      const server = await this.supabase
+        .from('verifier_servers')
+        .upsert({
+          id: 'test_guild_id',
+          name: 'Test Guild',
+          role_id: 'default_role_id'
+        })
+        .select()
+        .single();
+
+      // Create a server for legacy tests
+      const legacyServer = await this.supabase
+        .from('verifier_servers')
+        .upsert({
+          id: 'test_server_id',
+          name: 'Test Server',
+          role_id: 'default_role_id'
+        })
+        .select()
+        .single();
+
+      // Create standard rules for channel-based tests
+      const rule1 = await this.supabase
+        .from('verifier_rules')
+        .insert({
+          server_id: 'test_guild_id',
+          server_name: 'Test Guild',
+          channel_id: 'test_channel_id',
+          channel_name: 'Test Channel',
+          slug: 'collection-1',
+          role_id: 'role_id_1',
+          role_name: 'Role 1',
+          attribute_key: 'key1',
+          attribute_value: 'value1',
+          min_items: 1
+        })
+        .select()
+        .single();
+
+      const rule2 = await this.supabase
+        .from('verifier_rules')
+        .insert({
+          server_id: 'test_guild_id',
+          server_name: 'Test Guild',
+          channel_id: 'test_channel_id',
+          channel_name: 'Test Channel',
+          slug: 'collection-2',
+          role_id: 'role_id_2',
+          role_name: 'Role 2',
+          attribute_key: 'key2',
+          attribute_value: 'value2',
+          min_items: 2
+        })
+        .select()
+        .single();
+
+      // Create modern rule for legacy comparison tests
+      const modernRule = await this.supabase
+        .from('verifier_rules')
+        .insert({
+          server_id: 'test_server_id',
+          server_name: 'Test Server',
+          channel_id: 'modern_channel',
+          channel_name: 'Modern Channel',
+          slug: 'modern-collection',
+          role_id: 'modern_role_id',
+          role_name: 'Modern Role',
+          attribute_key: 'modern_key',
+          attribute_value: 'modern_value',
+          min_items: 1
+        })
+        .select()
+        .single();
+
+      // Create legacy rules
+      const legacyRule1 = await this.supabase
+        .from('verifier_rules')
+        .insert({
+          server_id: 'test_server_id',
+          server_name: 'Test Server',
+          channel_id: 'legacy_channel',
+          channel_name: 'Legacy Channel',
+          slug: 'legacy_collection',
+          role_id: 'legacy_role_1',
+          role_name: 'Legacy Role 1',
+          attribute_key: 'legacy_key',
+          attribute_value: 'legacy_value',
+          min_items: 1
+        })
+        .select()
+        .single();
+
+      const legacyRule2 = await this.supabase
+        .from('verifier_rules')
+        .insert({
+          server_id: 'test_server_id',
+          server_name: 'Test Server',
+          channel_id: 'legacy_channel',
+          channel_name: 'Legacy Channel',
+          slug: 'legacy_collection',
+          role_id: 'legacy_role_2',
+          role_name: 'Legacy Role 2',
+          attribute_key: 'legacy_key',
+          attribute_value: 'legacy_value',
+          min_items: 1
+        })
+        .select()
+        .single();
+
+      return {
+        server: server.data,
+        legacyServer: legacyServer.data,
+        rule1: rule1.data,
+        rule2: rule2.data,
+        modernRule: modernRule.data,
+        legacyRule1: legacyRule1.data,
+        legacyRule2: legacyRule2.data
+      };
+    } catch (error) {
+      console.error('Error seeding extended test data:', error);
+      throw error;
+    }
+  }
+
   // Check if database is accessible
   public async isHealthy(): Promise<boolean> {
     try {

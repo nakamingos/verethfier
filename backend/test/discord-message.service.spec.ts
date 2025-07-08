@@ -74,35 +74,35 @@ describe('DiscordMessageService', () => {
 
       const result = await service.findExistingVerificationMessage(mockChannel as any);
 
-      expect(result).toBe('message-id');
+      expect(result).toBe(true);
       expect(mockChannel.messages.fetch).toHaveBeenCalledWith({ limit: 100 });
     });
 
-    it('should return null when no verification message found', async () => {
+    it('should return false when no verification message found', async () => {
       const emptyMessages = new Map();
       mockChannel.messages.fetch.mockResolvedValue(emptyMessages);
 
       const result = await service.findExistingVerificationMessage(mockChannel as any);
 
-      expect(result).toBeNull();
+      expect(result).toBe(false);
     });
 
-    it('should return null when client not initialized', async () => {
+    it('should return false when client not initialized', async () => {
       const uninitializedService = new DiscordMessageService();
 
       const result = await uninitializedService.findExistingVerificationMessage(mockChannel as any);
 
-      expect(result).toBeNull();
+      expect(result).toBe(false);
     });
 
-    it('should return null when bot user ID not available', async () => {
+    it('should return false when bot user ID not available', async () => {
       const clientWithoutUserId = { user: null };
       const serviceWithoutUserId = new DiscordMessageService();
       serviceWithoutUserId.initialize(clientWithoutUserId as any);
 
       const result = await serviceWithoutUserId.findExistingVerificationMessage(mockChannel as any);
 
-      expect(result).toBeNull();
+      expect(result).toBe(false);
     });
 
     it('should handle messages from other bots', async () => {
@@ -117,7 +117,7 @@ describe('DiscordMessageService', () => {
 
       const result = await service.findExistingVerificationMessage(mockChannel as any);
 
-      expect(result).toBeNull();
+      expect(result).toBe(false);
     });
 
     it('should return null for bot messages without buttons', async () => {
@@ -132,7 +132,7 @@ describe('DiscordMessageService', () => {
 
       const result = await service.findExistingVerificationMessage(mockChannel as any);
 
-      expect(result).toBeNull();
+      expect(result).toBe(false);
     });
 
     it('should find bot message with verification button (any style)', async () => {
@@ -161,7 +161,7 @@ describe('DiscordMessageService', () => {
 
       const result = await service.findExistingVerificationMessage(mockChannel as any);
 
-      expect(result).toBe('verification-message-id');
+      expect(result).toBe(true);
     });
 
     it('should handle fetch errors gracefully', async () => {
@@ -169,7 +169,7 @@ describe('DiscordMessageService', () => {
 
       const result = await service.findExistingVerificationMessage(mockChannel as any);
 
-      expect(result).toBeNull();
+      expect(result).toBe(false);
     });
   });
 

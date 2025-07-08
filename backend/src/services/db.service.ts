@@ -1,21 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
+import { EnvironmentConfig } from '@/config/environment.config';
 import { CONSTANTS } from '@/constants';
 import { DbResult, ServerRecord, LegacyRoleRecord } from '@/models/db.interface';
 
-// Load environment variables
-dotenv.config();
+// Validate environment and create optimized Supabase client
+EnvironmentConfig.validate();
 
-// Use specific environment variables for DB Service
-const supabaseUrl = process.env.DB_SUPABASE_URL;
-const supabaseKey = process.env.DB_SUPABASE_KEY || process.env.SUPABASE_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('DB_SUPABASE_URL and DB_SUPABASE_KEY must be set in environment variables');
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(
+  EnvironmentConfig.DB_SUPABASE_URL!,
+  EnvironmentConfig.DB_SUPABASE_KEY!,
+  {
+    db: {
+      schema: 'public',
+    },
+    auth: {
+      persistSession: false, // Disable auth for better performance
+    },
+    global: {
+      headers: {
+        'x-application-name': 'verethfier-backend',
+      },
+    },
+  }
+);
 
 import { VerifierRole } from '@/models/verifier-role.interface';
 
@@ -270,7 +278,7 @@ export class DbService {
         server_id: serverId,
         role_id: roleId,
         address: address?.toLowerCase(),
-        assigned_at: new Date().toISOString(),
+        verified_at: new Date().toISOString(),
         user_name: userName || null,
         server_name: serverName || null,
         role_name: roleName || null
@@ -545,7 +553,7 @@ export class DbService {
     userId: string;
     serverId: string;
     roleId: string;
-    ruleId: string;
+    ruleId: string | null;
     address: string;
     userName?: string;
     serverName?: string;
@@ -564,10 +572,10 @@ export class DbService {
         role_id: assignment.roleId,
         rule_id: assignment.ruleId,
         address: assignment.address.toLowerCase(),
-        user_name: assignment.userName,
-        server_name: assignment.serverName,
-        role_name: assignment.roleName,
-        verification_expires_at: expirationDate,
+        user_name: assignment.userName || '',
+        server_name: assignment.serverName || '',
+        role_name: assignment.roleName || '',
+        expires_at: expirationDate,
         status: 'active'
       })
       .select()

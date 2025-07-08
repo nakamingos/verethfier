@@ -1,17 +1,6 @@
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, CacheType, ChannelType, ChatInputCommandInteraction, Client, EmbedBuilder, Events, GatewayIntentBits, GuildTextBasedChannel, InteractionResponse, MessageFlags, PermissionFlagsBits, REST, Routes, SlashCommandBuilder, AutocompleteInteraction } from 'discord.js';
-import dotenv from 'dotenv';
-
-// Load environment variables
-dotenv.config();
-
-// Cache environment variables for performance
-const EXPIRY = Number(process.env.NONCE_EXPIRY);
-const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
-const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
-const DISCORD_ENABLED = Number(process.env.DISCORD);
-const BASE_URL = process.env.BASE_URL;
-
+import { EnvironmentConfig } from '@/config/environment.config';
 import { NonceService } from '@/services/nonce.service';
 import { DbService } from '@/services/db.service';
 import { DiscordMessageService } from '@/services/discord-message.service';
@@ -49,7 +38,7 @@ export class DiscordService {
   private client: Client | null = null;
   
   /** REST API instance for Discord API calls */
-  private rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
+  private rest = new REST({ version: '10' }).setToken(EnvironmentConfig.DISCORD_BOT_TOKEN!);
   
   /**
    * Creates an instance of DiscordService.
@@ -75,10 +64,10 @@ export class DiscordService {
     private readonly verificationSvc: VerificationService,
   ) {
     // Don't initialize during tests or when Discord is disabled
-    const isTestEnvironment = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+    const isTestEnvironment = EnvironmentConfig.IS_TEST;
     
     // Initialize Discord bot asynchronously without blocking constructor
-    if (DISCORD_ENABLED && DISCORD_BOT_TOKEN && !isTestEnvironment) {
+    if (EnvironmentConfig.DISCORD_ENABLED && EnvironmentConfig.DISCORD_BOT_TOKEN && !isTestEnvironment) {
       setImmediate(() => {
         this.initializeBot()
           .then(() => this.createSlashCommands())
@@ -134,7 +123,7 @@ export class DiscordService {
         reject(error);
       });
 
-      this.client.login(DISCORD_BOT_TOKEN).catch((error) => {
+      this.client.login(EnvironmentConfig.DISCORD_BOT_TOKEN).catch((error) => {
         clearTimeout(timeout);
         reject(error);
       });
@@ -261,14 +250,13 @@ export class DiscordService {
       const channel = interaction.channel;
       if (!channel || !('id' in channel)) throw new Error('Channel not found');
       
-      // Use unified verification service - handles both legacy and modern rules transparently
-      const rules = await this.verificationSvc.getRulesByMessageId(
+      // Get all rules for this channel (simplified approach - no more message_id tracking)
+      const rules = await this.verificationSvc.getRulesForChannel(
         guild.id,
-        channel.id,
-        interaction.message.id
+        channel.id
       );
       
-      // If no message-based rules found, try to get all server rules
+      // If no channel rules found, fall back to all server rules for backwards compatibility
       let serverRules = [];
       if (!rules || rules.length === 0) {
         serverRules = await this.verificationSvc.getAllRulesForServer(guild.id);
@@ -277,7 +265,7 @@ export class DiscordService {
       const allRules = rules && rules.length > 0 ? rules : serverRules;
       
       if (!allRules || allRules.length === 0) {
-        throw new Error('No verification rules found for this server or message.');
+        throw new Error('No verification rules found for this server or channel.');
       }
       
       // Route to unified verification handling - no need for legacy-specific routing
@@ -385,7 +373,7 @@ export class DiscordService {
     Logger.debug('Reloading application /slash commands.', `${commands.length} commands`);
     try {
       await this.rest.put(
-        Routes.applicationCommands(DISCORD_CLIENT_ID),
+        Routes.applicationCommands(EnvironmentConfig.DISCORD_CLIENT_ID!),
         { body: commands },
       );
       Logger.debug('Successfully reloaded application /slash commands.', `${commands.length} commands`);
@@ -411,12 +399,11 @@ export class DiscordService {
   }
 
   /**
-   * Searches for existing Wallet Verification messages in a Discord channel.
-   * Looks for messages with "Wallet Verification" embed title and "Verify Now" button.
+   * Check if there's already a verification message in the specified channel
    * @param channel - The Discord channel to search in
-   * @returns The message ID of the existing verification message, or null if not found
+   * @returns True if a verification message exists, false otherwise
    */
-  async findExistingVerificationMessage(channel: GuildTextBasedChannel): Promise<string | null> {
+  async findExistingVerificationMessage(channel: GuildTextBasedChannel): Promise<boolean> {
     return this.discordMessageSvc.findExistingVerificationMessage(channel);
   }
 

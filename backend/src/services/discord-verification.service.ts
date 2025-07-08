@@ -193,35 +193,18 @@ export class DiscordVerificationService {
     // Add the role - don't send success message here as there might be more roles coming
     await member.roles.add(role);
 
-    // Legacy tracking (keep for backwards compatibility)
-    await this.dbSvc.addServerToUser(
-      userId, 
-      guildId, 
-      role.name,
-      address
-    );
-
-    // Enhanced tracking (if enhanced table exists and we have a rule)
-    try {
-      const hasEnhancedTracking = await this.dbSvc.checkEnhancedTrackingExists();
-      if (hasEnhancedTracking && ruleId) {
-        await this.dbSvc.trackRoleAssignment({
-          userId,
-          serverId: guildId,
-          roleId,
-          ruleId,
-          address,
-          userName: member.displayName || member.user.username,
-          serverName: guild.name,
-          roleName: role.name,
-          expiresInHours: undefined // No expiration by default
-        });
-        Logger.debug(`📝 Tracked role assignment for user ${userId} in enhanced table`);
-      }
-    } catch (error) {
-      // Don't fail the role assignment if enhanced tracking fails
-      Logger.error('Failed to track role assignment in enhanced table:', error.message);
-    }
+    // Track role assignment in unified table
+    await this.dbSvc.trackRoleAssignment({
+      userId,
+      serverId: guildId,
+      roleId,
+      ruleId: ruleId || null,
+      address,
+      userName: member.displayName || member.user.username,
+      serverName: guild.name,
+      roleName: role.name,
+      expiresInHours: undefined // No expiration by default
+    });
   }
 
   /**

@@ -2,13 +2,19 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
+import { EnvironmentConfig } from './config/environment.config';
 
-// Load environment variables
-dotenv.config();
+// Validate environment variables at startup
+EnvironmentConfig.validate();
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: EnvironmentConfig.IS_TEST 
+      ? false 
+      : EnvironmentConfig.NODE_ENV === 'development' 
+        ? ['error', 'warn', 'log', 'debug', 'verbose']
+        : ['error', 'warn', 'log'],
+  });
 
   // Security: Add security headers
   app.use(helmet({
