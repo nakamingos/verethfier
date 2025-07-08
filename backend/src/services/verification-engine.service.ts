@@ -11,11 +11,31 @@ import { VerifierRole } from '@/models/verifier-role.interface';
  * on rule characteristics and eliminates duplicate verification flows.
  * 
  * Key Features:
- * - Single method `verifyUser()` handles all verification types
- * - Automatic detection of legacy vs modern rules
- * - Unified result format for all verification types
- * - Centralized logging and error handling
- * - Performance optimized with caching capabilities
+ * - **Single Entry Point**: `verifyUser()` handles all verification types transparently
+ * - **Automatic Detection**: Intelligently identifies legacy vs modern rules
+ * - **Unified Results**: Consistent result format regardless of rule type
+ * - **Performance Optimized**: Efficient database queries with minimal redundancy
+ * - **Comprehensive Logging**: Detailed verification flow tracking for debugging
+ * - **Error Resilience**: Graceful handling of various failure scenarios
+ * 
+ * Architecture Benefits:
+ * - Eliminates code duplication between legacy and modern verification flows
+ * - Provides single point of maintenance for verification logic
+ * - Enables easy addition of new verification types in the future
+ * - Centralizes performance optimizations and caching strategies
+ * 
+ * @example
+ * ```typescript
+ * const result = await verificationEngine.verifyUser(
+ *   'discord_user_123',
+ *   'rule_456', 
+ *   '0x742d35cc6634c0532925a3b8d3aa3e3cf9fbc4f4'
+ * );
+ * 
+ * if (result.isValid) {
+ *   console.log(`User verified with ${result.matchingAssetCount} matching assets`);
+ * }
+ * ```
  */
 @Injectable()
 export class VerificationEngine {
@@ -25,12 +45,40 @@ export class VerificationEngine {
   ) {}
 
   /**
-   * Main verification method - automatically detects rule type and applies appropriate logic
+   * Main verification method - unified entry point for all verification types
+   * 
+   * Automatically detects the rule type (legacy vs modern) and applies the appropriate
+   * verification logic. This method provides a single, consistent interface for
+   * verification regardless of the underlying rule structure.
+   * 
+   * Process Flow:
+   * 1. Fetch and validate the rule exists
+   * 2. Automatically detect rule type (legacy vs modern)
+   * 3. Apply appropriate verification logic based on rule type
+   * 4. Query user's asset holdings from marketplace
+   * 5. Match holdings against rule criteria
+   * 6. Return detailed verification result
    * 
    * @param userId - Discord user ID requesting verification
-   * @param ruleId - Rule ID to verify against (string or number)
-   * @param address - Ethereum address to verify ownership for
-   * @returns Promise<VerificationResult> with verification outcome and metadata
+   * @param ruleId - Rule ID to verify against (supports both string and number)
+   * @param address - Ethereum wallet address to verify asset ownership for
+   * @returns Promise<VerificationResult> - Comprehensive verification outcome
+   * 
+   * @example
+   * ```typescript
+   * // Modern rule verification
+   * const result = await engine.verifyUser('123456789', 'rule_001', '0x742d35cc...');
+   * 
+   * // Legacy rule verification (handled transparently)
+   * const legacyResult = await engine.verifyUser('987654321', 42, '0x123abc...');
+   * 
+   * // Handle results uniformly
+   * if (result.isValid) {
+   *   console.log(`Verification passed: ${result.matchingAssetCount} assets found`);
+   * } else {
+   *   console.log(`Verification failed: ${result.error}`);
+   * }
+   * ```
    */
   async verifyUser(
     userId: string, 
@@ -330,7 +378,21 @@ export class VerificationEngine {
 }
 
 /**
- * Unified verification result interface
+ * VerificationResult - Comprehensive verification outcome
+ * 
+ * Unified result interface that provides consistent data structure
+ * regardless of the verification rule type (legacy or modern).
+ * 
+ * @interface VerificationResult
+ * @property isValid - Whether the verification passed or failed
+ * @property ruleType - Type of rule processed ('legacy', 'modern', 'unknown', 'error')
+ * @property userId - Discord user ID that was verified
+ * @property ruleId - Rule ID that was applied (string or number)
+ * @property address - Ethereum address that was verified
+ * @property rule - Full rule object that was applied (optional)
+ * @property matchingAssetCount - Number of assets that matched the rule criteria (optional)
+ * @property error - Error message if verification failed (optional)
+ * @property verificationDetails - Detailed breakdown of verification criteria and results (optional)
  */
 export interface VerificationResult {
   isValid: boolean;
@@ -351,7 +413,20 @@ export interface VerificationResult {
 }
 
 /**
- * Bulk verification result interface
+ * BulkVerificationResult - Results for verifying multiple rules at once
+ * 
+ * Provides comprehensive results when verifying a user against multiple
+ * verification rules simultaneously. Useful for bulk operations and
+ * determining all roles a user should have.
+ * 
+ * @interface BulkVerificationResult
+ * @property userId - Discord user ID that was verified
+ * @property address - Ethereum address that was verified
+ * @property totalRules - Total number of rules that were checked
+ * @property validRules - Array of rules that the user passed verification for
+ * @property invalidRules - Array of rules that the user failed verification for
+ * @property matchingAssetCounts - Map of rule IDs to number of matching assets
+ * @property results - Array of individual VerificationResult objects for each rule
  */
 export interface BulkVerificationResult {
   userId: string;

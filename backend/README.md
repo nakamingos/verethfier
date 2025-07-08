@@ -1,14 +1,25 @@
 # Verethfier Backend
 
-NestJS-based Discord bot for Ethscriptions-based role verification.
+NestJS-based Discord bot for Ethscriptions-based role verification with unified verification engine.
 
 ## 🏗️ Architecture
 
 - **Framework**: NestJS with TypeScript
-- **Database**: Supabase (PostgreSQL)
+- **Database**: Supabase (PostgreSQL) with optimized schema
 - **External APIs**: Discord API, Ethscriptions Marketplace
-- **Authentication**: Wallet signature verification
-- **Role Management**: Dynamic assignment/removal based on holdings
+- **Authentication**: EIP-712 wallet signature verification
+- **Role Management**: Dynamic assignment/removal with continuous monitoring
+- **Caching**: Redis-compatible caching with TTL management
+- **Security**: Rate limiting, input validation, secure error handling
+
+## 🎯 Key Features
+
+- **Unified Verification Engine**: Transparent handling of both legacy and modern verification rules
+- **Channel-Based Verification**: Simplified verification flow based on Discord channels (no message tracking)
+- **Dynamic Role Management**: Automatic role assignment/removal with scheduled re-verification
+- **High Performance**: Optimized database queries with caching layer
+- **Comprehensive Testing**: 83%+ test coverage with integration and unit tests
+- **Security First**: Multiple layers of protection including rate limiting and input validation
 
 ## 📁 Project Structure
 
@@ -16,17 +27,20 @@ NestJS-based Discord bot for Ethscriptions-based role verification.
 backend/
 ├── src/
 │   ├── services/         # Core business logic
-│   │   ├── data.service.ts          # Ethscriptions data queries
-│   │   ├── db.service.ts            # Database operations
-│   │   ├── discord-*.service.ts     # Discord bot services
-│   │   ├── dynamic-role.service.ts  # Dynamic role management
-│   │   └── wallet.service.ts        # Wallet verification
-│   ├── models/           # TypeScript interfaces
-│   ├── dtos/            # Data transfer objects
+│   │   ├── data.service.ts              # Ethscriptions data queries
+│   │   ├── db.service.ts                # Database operations
+│   │   ├── discord-*.service.ts         # Discord bot services
+│   │   ├── verification-engine.service.ts # Unified verification engine
+│   │   ├── dynamic-role.service.ts      # Automatic role management
+│   │   ├── cache.service.ts             # Caching layer
+│   │   └── wallet.service.ts            # EIP-712 signature verification
+│   ├── models/           # TypeScript interfaces and types
+│   ├── dtos/            # Data transfer objects with validation
+│   ├── config/          # Environment configuration
 │   └── constants/       # Application constants
-├── test/                # Test suites (83%+ coverage)
+├── test/                # Comprehensive test suites (83%+ coverage)
 ├── supabase/
-│   └── migrations/      # Database migrations
+│   └── migrations/      # Database migrations with legacy support
 └── scripts/             # Utility scripts
 ```
 
@@ -112,46 +126,71 @@ yarn test:watch
 - `yarn lint` - ESLint checking
 - `yarn format` - Prettier formatting
 
-## 🔧 Key Services
+## 🔧 Core Services
+
+### VerificationEngine (New Unified Engine)
+Central verification engine that transparently handles both legacy and modern verification rules:
+- **Unified API**: Single entry point for all verification types
+- **Smart Detection**: Automatically identifies rule type (legacy vs modern)
+- **Performance Optimized**: Efficient database queries with caching
+- **Comprehensive Logging**: Detailed verification flow tracking
 
 ### DataService
-Handles Ethscriptions marketplace queries with filtering by:
-- Collection slug
-- Attribute key/value pairs  
-- Minimum holdings count
-- Owner address verification
+Handles Ethscriptions marketplace queries with advanced filtering:
+- Collection slug-based verification
+- Attribute key/value pair matching
+- Minimum holdings count requirements
+- Marketplace escrow support (considers assets in escrow as owned)
+- Owner address verification with case-insensitive matching
 
 ### DynamicRoleService
-Manages automatic role assignment/removal:
-- Scheduled re-verification
-- Grace period handling
-- Legacy data migration
-- Status tracking
+Automated role management with continuous monitoring:
+- **Scheduled Re-verification**: Configurable intervals for role validation
+- **Automatic Cleanup**: Removes roles when holdings no longer meet criteria
+- **Grace Period Handling**: Supports transition periods for rule changes
+- **Rate Limit Aware**: Respects Discord API limits during bulk operations
+- **Legacy Migration**: Seamless transition from old to new role tracking
 
 ### DiscordService
-Discord bot functionality:
-- Slash command handling
-- Role assignment/removal
-- Server member management
-- Error handling and logging
+Comprehensive Discord bot integration:
+- **Slash Command System**: Modern Discord interactions
+- **Role Management**: Assignment, removal, and permission handling
+- **Autocomplete Support**: Dynamic role selection with server context
+- **Error Recovery**: Graceful handling of Discord API failures
+- **Multi-Server Support**: Manages multiple Discord servers simultaneously
+
+### CacheService
+High-performance caching layer:
+- **Smart TTL Management**: Different cache durations for different data types
+- **Memory Efficient**: Automatic cache cleanup and size management
+- **Error Resilient**: Graceful fallback when cache is unavailable
+- **Typed Interface**: Full TypeScript support with generic methods
 
 ### WalletService
-Wallet verification:
-- Signature validation
-- Nonce management
-- Address verification
+Secure wallet verification using modern standards:
+- **EIP-712 Signatures**: Industry-standard typed data signing
+- **Nonce Management**: Prevents replay attacks
+- **Expiry Validation**: Time-based verification windows
+- **Address Recovery**: Cryptographic proof of wallet ownership
 
 ## 🗄️ Database Schema
 
-### Core Tables
-- `verifier_user_roles` - Unified role tracking with status, timestamps
-- `verifier_rules` - Role assignment rules with collection/attribute criteria
-- `nonces` - Wallet verification nonces
+### Modern Schema (Channel-Based Architecture)
+- **`verifier_user_roles`** - Unified role tracking with comprehensive status and timestamp fields
+- **`verifier_rules`** - Channel-based verification rules with attribute filtering
+- **`nonces`** - Secure verification nonce management with expiry
 
-### Migration Support
-- Legacy data migration from old schema
-- 72-hour grace period for existing users
-- Seamless transition to enhanced tracking
+### Legacy Migration Support
+- **Automatic Detection**: Seamlessly handles legacy data during transition
+- **Grace Period**: 72-hour transition window for existing users
+- **Backward Compatibility**: Maintains support for legacy verification flows
+- **Data Preservation**: Ensures no data loss during migration
+
+### Key Schema Improvements
+- **Channel-Based Verification**: Simplified verification flow (removed message_id dependency)
+- **Enhanced Tracking**: Comprehensive role assignment history and status
+- **Performance Optimized**: Indexed queries for high-performance operations
+- **Extensible Design**: Future-proof schema supporting new verification types
 
 ## 🚀 Deployment
 
@@ -207,6 +246,18 @@ docker run -p 3000:3000 verethfier-backend
 
 ## 📚 Documentation
 
-- [Dynamic Role Management](../docs/DYNAMIC_ROLE_MANAGEMENT.md)
-- [Security Audit Report](../docs/SECURITY_AUDIT.md)
-- [Migration Guide](supabase/migrations/README.md)
+### Core Documentation
+- **[API Documentation](API_DOCUMENTATION.md)** - Complete API reference with examples
+- **[Service Documentation](SERVICE_DOCUMENTATION.md)** - Detailed service architecture and integration guides
+- **[Dynamic Role Management](DYNAMIC_ROLE_MANAGEMENT.md)** - Automated role management system
+- **[Database Refactoring](DATABASE_REFACTORING_COMPLETE.md)** - Schema migration and optimization
+
+### Architecture Documentation
+- **[Security Audit Report](../docs/SECURITY_AUDIT.md)** - Comprehensive security analysis
+- **[Migration Guide](supabase/migrations/README.md)** - Database migration procedures
+- **[Performance Optimization](../OPTIMIZATION_SUMMARY.md)** - System performance improvements
+
+### Development Guides
+- **[Testing Strategy](#-testing)** - Test coverage and testing procedures
+- **[Deployment Guide](#-deployment)** - Production deployment instructions
+- **[Contributing Guidelines](#-contributing)** - Development best practices

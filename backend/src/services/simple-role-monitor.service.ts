@@ -6,8 +6,31 @@ import { DiscordVerificationService } from './discord-verification.service';
 /**
  * SimpleRoleMonitorService
  * 
- * A lightweight approach to dynamic role management that works with your existing system.
- * Provides manual re-verification and basic monitoring without complex scheduling.
+ * A lightweight approach to dynamic role management that integrates with existing systems.
+ * Provides manual re-verification capabilities and basic monitoring without complex scheduling.
+ * 
+ * Key Features:
+ * - **Manual Re-verification**: Triggered via Discord commands or admin interfaces
+ * - **Lightweight Design**: No automatic scheduling, runs on-demand
+ * - **Existing System Integration**: Works with current verification infrastructure
+ * - **Role Cleanup**: Removes roles when holdings no longer meet criteria
+ * - **Detailed Reporting**: Provides comprehensive results for verification actions
+ * 
+ * Use Cases:
+ * - Admin-triggered re-verification campaigns
+ * - User-requested role updates
+ * - Periodic manual audits of role assignments
+ * - Testing verification rules before automating
+ * 
+ * @example
+ * ```typescript
+ * // Manual re-verification
+ * const result = await service.reverifyUser('123456789', 'server_abc');
+ * console.log(`Verified: ${result.verified.length}, Revoked: ${result.revoked.length}`);
+ * 
+ * // Server-wide role audit
+ * const serverResult = await service.reverifyServer('server_abc');
+ * ```
  */
 @Injectable()
 export class SimpleRoleMonitorService {
@@ -18,8 +41,37 @@ export class SimpleRoleMonitorService {
   ) {}
 
   /**
-   * Manual re-verification for a specific user
-   * Can be triggered via Discord command or admin panel
+   * Manual re-verification for a specific user across all applicable rules
+   * 
+   * Performs comprehensive verification of a user's current holdings against
+   * all verification rules for a specific Discord server. This method:
+   * 
+   * 1. Retrieves user's current role assignments and verification history
+   * 2. Gets all active verification rules for the server
+   * 3. Looks up user's current wallet address from verification records
+   * 4. Verifies holdings against each rule's requirements
+   * 5. Updates role assignments based on current holdings
+   * 6. Provides detailed report of actions taken
+   * 
+   * @param userId - Discord user ID to re-verify
+   * @param serverId - Discord server ID containing the rules
+   * @returns Promise<ReverificationResult> - Detailed results of the re-verification process
+   * 
+   * @example
+   * ```typescript
+   * const result = await service.reverifyUser('123456789', 'server_abc123');
+   * 
+   * // Process results
+   * if (result.verified.length > 0) {
+   *   console.log(`Granted roles: ${result.verified.join(', ')}`);
+   * }
+   * if (result.revoked.length > 0) {
+   *   console.log(`Removed roles: ${result.revoked.join(', ')}`);
+   * }
+   * if (result.errors.length > 0) {
+   *   console.warn(`Errors occurred: ${result.errors.join(', ')}`);
+   * }
+   * ```
    */
   async reverifyUser(userId: string, serverId: string): Promise<{
     verified: string[],

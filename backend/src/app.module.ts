@@ -24,48 +24,84 @@ import { QueryOptimizer } from './services/query-optimizer.service';
 import { CacheService } from './services/cache.service';
 import { CONSTANTS } from '@/constants';
 
+/**
+ * AppModule - Main application module
+ * 
+ * Central module configuration for the Verethfier Discord bot backend.
+ * Configures all services, middleware, and global application settings.
+ * 
+ * Key Configurations:
+ * - **Caching**: Redis-compatible caching with automatic TTL management
+ * - **Scheduling**: Cron job scheduling for automated role management
+ * - **Security**: Multi-tier rate limiting with different time windows
+ * - **Service Integration**: All core services including Discord, verification, and data access
+ * 
+ * Security Features:
+ * - Global rate limiting guard across all endpoints
+ * - Multiple rate limit tiers (short/medium/long term)
+ * - Input validation through class-validator
+ * - Structured error handling
+ */
 @Module({
   imports: [
+    // High-performance caching layer
     CacheModule.register(),
+    
+    // Scheduled task management for automated operations
     ScheduleModule.forRoot(),
-    // Security: Rate limiting
+    
+    // Multi-tier rate limiting for API security
     ThrottlerModule.forRoot([{
       name: 'short',
-      ttl: CONSTANTS.RATE_LIMIT.SHORT.TTL,
-      limit: CONSTANTS.RATE_LIMIT.SHORT.LIMIT,
+      ttl: CONSTANTS.RATE_LIMIT.SHORT.TTL,   // 1 second window
+      limit: CONSTANTS.RATE_LIMIT.SHORT.LIMIT, // 3 requests max
     }, {
-      name: 'medium',
-      ttl: CONSTANTS.RATE_LIMIT.MEDIUM.TTL,
-      limit: CONSTANTS.RATE_LIMIT.MEDIUM.LIMIT,
+      name: 'medium', 
+      ttl: CONSTANTS.RATE_LIMIT.MEDIUM.TTL,   // 10 second window
+      limit: CONSTANTS.RATE_LIMIT.MEDIUM.LIMIT, // 20 requests max
     }, {
       name: 'long',
-      ttl: CONSTANTS.RATE_LIMIT.LONG.TTL,
-      limit: CONSTANTS.RATE_LIMIT.LONG.LIMIT,
+      ttl: CONSTANTS.RATE_LIMIT.LONG.TTL,     // 1 minute window
+      limit: CONSTANTS.RATE_LIMIT.LONG.LIMIT,   // 100 requests max
     }]),
   ],
   controllers: [AppController],
   providers: [
-    // Security: Global rate limiting guard
+    // Global security: Rate limiting protection
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
+
+    // Core application services
     AppService,
-    DiscordService,
-    DiscordMessageService,
-    DiscordVerificationService,
-    DiscordCommandsService,
-    NonceService,
-    WalletService,
-    DbService,
-    DataService,
-    VerifyService,
-    VerificationService,
-    VerificationEngine,
-    DynamicRoleService,
-    SimpleRoleMonitorService,
-    QueryOptimizer,
-    CacheService
+
+    // Discord integration services
+    DiscordService,              // Main Discord bot client
+    DiscordMessageService,       // Message formatting and sending
+    DiscordVerificationService,  // Discord-specific verification logic
+    DiscordCommandsService,      // Slash command handling
+
+    // Verification engine and related services
+    VerificationEngine,          // Unified verification processor
+    VerificationService,         // Legacy compatibility layer
+    VerifyService,              // Request orchestration
+
+    // Security and authentication
+    NonceService,               // Cryptographic nonce management
+    WalletService,              // EIP-712 signature verification
+
+    // Data access layer
+    DbService,                  // Database operations
+    DataService,                // Ethscriptions marketplace queries
+
+    // Role management services
+    DynamicRoleService,         // Automated role assignment/removal
+    SimpleRoleMonitorService,   // Manual role management
+
+    // Performance and optimization
+    QueryOptimizer,             // Database query optimization
+    CacheService               // High-performance caching layer
   ],
 })
 export class AppModule {}
