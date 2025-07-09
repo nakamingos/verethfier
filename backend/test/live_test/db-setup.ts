@@ -493,8 +493,9 @@ export class DatabaseSetup {
       console.log('📝 Supabase not accessible for cleanup');
     }
 
-    // Always attempt to stop Supabase, regardless of health check
-    await this.stopSupabase();
+    // Keep Supabase running for faster subsequent test runs
+    // In CI/CD, the entire environment gets torn down automatically
+    console.log('📝 Keeping Supabase running for faster subsequent test runs');
   }
 
   /**

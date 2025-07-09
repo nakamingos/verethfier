@@ -3,8 +3,8 @@
  * This test should run after the global setup completes
  */
 
-import { DatabaseSetup } from './live_test/db-setup';
-import { TestDatabase } from './live_test/test-database';
+import { DatabaseSetup } from './db-setup';
+import { TestDatabase } from './test-database';
 
 describe('Database Setup Verification', () => {
   let dbSetup: DatabaseSetup;
