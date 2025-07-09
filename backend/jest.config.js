@@ -10,8 +10,6 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   setupFilesAfterEnv: ['<rootDir>/test/setup.ts'],
-  globalSetup: '<rootDir>/test/live_test/global-setup.ts',
-  globalTeardown: '<rootDir>/test/live_test/global-teardown.ts',
   testTimeout: 30000, // 30 seconds for database operations
   
   // Clean test output configuration
