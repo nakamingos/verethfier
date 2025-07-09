@@ -102,7 +102,9 @@ export class AppController {
       return result;
     } catch (error) {
       // Log detailed error information for debugging and monitoring
-      Logger.error(`Verification error: ${error.message}`, error.stack);
+      const errorMessage = error?.message || 'Unknown error occurred';
+      const errorStack = error?.stack || '';
+      Logger.error(`Verification error: ${errorMessage}`, errorStack);
       
       // Preserve HTTP exceptions with their intended status codes
       if (error instanceof HttpException) {
