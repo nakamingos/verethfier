@@ -1,30 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { createClient } from '@supabase/supabase-js';
-import { EnvironmentConfig } from '@/config/environment.config';
+import { Injectable, Logger, Inject } from '@nestjs/common';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { CONSTANTS } from '@/constants';
 import { DbResult, ServerRecord, LegacyRoleRecord } from '@/models/db.interface';
-
-// Validate environment and create optimized Supabase client
-EnvironmentConfig.validate();
-
-const supabase = createClient(
-  EnvironmentConfig.DB_SUPABASE_URL!,
-  EnvironmentConfig.DB_SUPABASE_KEY!,
-  {
-    db: {
-      schema: 'public',
-    },
-    auth: {
-      persistSession: false, // Disable auth for better performance
-    },
-    global: {
-      headers: {
-        'x-application-name': 'verethfier-backend',
-      },
-    },
-  }
-);
-
 import { VerifierRole } from '@/models/verifier-role.interface';
 
 /**
@@ -54,6 +31,9 @@ import { VerifierRole } from '@/models/verifier-role.interface';
  */
 @Injectable()
 export class DbService {
+  constructor(
+    @Inject('SUPABASE_CLIENT') private readonly supabase: SupabaseClient
+  ) {}
 
   /**
    * Adds or updates a Discord server in the database.
@@ -74,7 +54,7 @@ export class DbService {
     roleId: string
   ): Promise<DbResult<ServerRecord> | null> {
 
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_servers')
       .upsert({
         id: serverId,
@@ -97,7 +77,7 @@ export class DbService {
    * @throws Error if database query fails
    */
   async getUserServers(userId: string): Promise<any> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_users')
       .select('*')
       .eq('user_id', userId);
@@ -114,7 +94,7 @@ export class DbService {
   ) {
   
     // Step 1: Retrieve the current user data with the servers JSONB object
-    let { data: userData, error: fetchError } = await supabase
+    let { data: userData, error: fetchError } = await this.supabase
       .from('verifier_users')
       .select('servers')
       .eq('user_id', userId);
@@ -124,7 +104,7 @@ export class DbService {
     const servers = userData[0]?.servers || {};
     servers[serverId] = role;
   
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_users')
       .upsert({
         user_id: userId,
@@ -139,7 +119,7 @@ export class DbService {
   }  
 
   async getServerRole(serverId: string): Promise<any> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_servers')
       .select('role_id')
       .eq('id', serverId);
@@ -168,7 +148,7 @@ export class DbService {
     const finalAttrVal = attributeValue || 'ALL';
     const finalMinItems = minItems != null ? minItems : 1;
 
-    let query = supabase
+    let query = this.supabase
       .from('verifier_rules')
       .select('*')
       .eq('server_id', serverId)
@@ -211,7 +191,7 @@ export class DbService {
     const finalAttrVal = attrVal || 'ALL';
     const finalMinItems = minItems != null ? minItems : 1;
 
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_rules')
       .insert({
         server_id: serverId,
@@ -232,7 +212,7 @@ export class DbService {
   }
 
   async getRoleMappings(serverId: string, channelId?: string): Promise<any[]> {
-    let query = supabase
+    let query = this.supabase
       .from('verifier_rules')
       .select('*')
       .eq('server_id', serverId);
@@ -246,7 +226,7 @@ export class DbService {
 
   async deleteRoleMapping(ruleId: string, serverId: string): Promise<void> {
     // Only delete if rule belongs to this server
-    const { data, error: fetchError } = await supabase
+    const { data, error: fetchError } = await this.supabase
       .from('verifier_rules')
       .select('server_id')
       .eq('id', ruleId);
@@ -254,7 +234,7 @@ export class DbService {
     if (!data || data.length === 0 || data[0].server_id !== serverId) {
       throw new Error('Rule does not belong to this server');
     }
-    const { error } = await supabase
+    const { error } = await this.supabase
       .from('verifier_rules')
       .delete()
       .eq('id', ruleId)
@@ -271,7 +251,7 @@ export class DbService {
     serverName?: string,
     roleName?: string
   ): Promise<void> {
-    const { error } = await supabase
+    const { error } = await this.supabase
       .from('verifier_user_roles')
       .insert({
         user_id: userId,
@@ -294,7 +274,7 @@ export class DbService {
 
   // Get all verification rules for a server (unified approach - no legacy table queries)
   async getAllRulesForServer(serverId: string): Promise<any[]> {
-    const { data: rules, error } = await supabase
+    const { data: rules, error } = await this.supabase
       .from('verifier_rules')
       .select('*')
       .eq('server_id', serverId);
@@ -311,7 +291,7 @@ export class DbService {
   // Note: These methods now work with the unified verifier_rules table only
   async removeAllLegacyRoles(serverId: string): Promise<{ removed: Array<{ role_id: string, name: string }> }> {
     // In the unified system, "legacy" rules are identified by special slug/attributes
-    const { data: legacyRules, error } = await supabase
+    const { data: legacyRules, error } = await this.supabase
       .from('verifier_rules')
       .select('role_id, role_name')
       .eq('server_id', serverId)
@@ -323,7 +303,7 @@ export class DbService {
     }
 
     // Remove legacy rules
-    await supabase
+    await this.supabase
       .from('verifier_rules')
       .delete()
       .eq('server_id', serverId)
@@ -339,7 +319,7 @@ export class DbService {
 
   // Get all legacy rules for a server (now using unified table)
   async getLegacyRoles(serverId: string): Promise<DbResult<LegacyRoleRecord[]>> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_rules')
       .select('role_id, role_name')
       .eq('server_id', serverId)
@@ -356,7 +336,7 @@ export class DbService {
 
   // Check if a rule already exists for server, channel, role, and slug
   async ruleExists(serverId: string, channelId: string, roleId: string, slug: string): Promise<boolean> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_rules')
       .select('id')
       .eq('server_id', serverId)
@@ -371,7 +351,7 @@ export class DbService {
    * Finds the first rule with a non-null message_id for a given guild and channel.
    */
   async findRuleWithMessage(guildId: string, channelId: string): Promise<VerifierRole | null> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_rules')
       .select('*')
       .eq('server_id', guildId)
@@ -386,7 +366,7 @@ export class DbService {
    * Updates the message_id for a specific rule.
    */
   async updateRuleMessageId(ruleId: number, messageId: string): Promise<void> {
-    const { error } = await supabase
+    const { error } = await this.supabase
       .from('verifier_rules')
       .update({ message_id: messageId })
       .eq('id', ruleId);
@@ -397,7 +377,7 @@ export class DbService {
    * Finds a rule by message_id for a given guild and channel.
    */
   async findRuleByMessageId(guildId: string, channelId: string, messageId: string): Promise<VerifierRole | null> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_rules')
       .select('*')
       .eq('server_id', guildId)
@@ -413,7 +393,7 @@ export class DbService {
    * This supports multiple roles being assigned for the same verification criteria.
    */
   async findRulesByMessageId(guildId: string, channelId: string, messageId: string): Promise<VerifierRole[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_rules')
       .select('*')
       .eq('server_id', guildId)
@@ -427,7 +407,7 @@ export class DbService {
    * Gets all rules for a specific channel in a guild.
    */
   async getRulesByChannel(guildId: string, channelId: string): Promise<VerifierRole[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_rules')
       .select('*')
       .eq('server_id', guildId)
@@ -451,7 +431,7 @@ export class DbService {
     const finalAttrVal = attrVal || 'ALL';
     const finalMinItems = minItems != null ? minItems : 1;
 
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_rules')
       .select('*')
       .eq('server_id', serverId)
@@ -484,7 +464,7 @@ export class DbService {
     const finalAttrVal = attributeValue || 'ALL';
     const finalMinItems = minItems != null ? minItems : 1;
 
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_rules')
       .select('*')
       .eq('server_id', serverId)
@@ -511,7 +491,7 @@ export class DbService {
    * Get all active role assignments that need periodic re-verification
    */
   async getActiveRoleAssignments(): Promise<any[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_user_roles')
       .select(`
         *,
@@ -532,7 +512,7 @@ export class DbService {
    * Get a specific verification rule by ID
    */
   async getRuleById(ruleId: string): Promise<any> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_rules')
       .select('*')
       .eq('id', ruleId)
@@ -564,7 +544,7 @@ export class DbService {
       ? new Date(Date.now() + assignment.expiresInHours * 60 * 60 * 1000)
       : null;
 
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_user_roles')
       .insert({
         user_id: assignment.userId,
@@ -601,7 +581,7 @@ export class DbService {
       updates.status = 'expired';
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_user_roles')
       .update(updates)
       .eq('id', assignmentId)
@@ -620,7 +600,7 @@ export class DbService {
    * Revoke a role assignment (mark as revoked)
    */
   async revokeRoleAssignment(assignmentId: string): Promise<any> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_user_roles')
       .update({
         status: 'revoked',
@@ -642,7 +622,7 @@ export class DbService {
    * Get role assignments for a specific user in a server
    */
   async getUserRoleAssignments(userId: string, serverId?: string): Promise<any[]> {
-    let query = supabase
+    let query = this.supabase
       .from('verifier_user_roles')
       .select(`
         *,
@@ -669,7 +649,7 @@ export class DbService {
    * Get active assignments for a specific user
    */
   async getUserActiveAssignments(userId: string): Promise<any[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_user_roles')
       .select(`
         *,
@@ -690,7 +670,7 @@ export class DbService {
    * Get active assignments for a specific rule
    */
   async getRuleActiveAssignments(ruleId: string): Promise<any[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_user_roles')
       .select('*')
       .eq('rule_id', ruleId)
@@ -708,7 +688,7 @@ export class DbService {
    * Get statistics about role assignments for monitoring
    */
   async getRoleAssignmentStats(): Promise<any> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_user_roles')
       .select('status, server_id, role_id')
       .order('status');
@@ -744,8 +724,8 @@ export class DbService {
     try {
       // Check if both core tables exist and are accessible
       const [rulesCheck, rolesCheck] = await Promise.all([
-        supabase.from('verifier_rules').select('id').limit(1),
-        supabase.from('verifier_user_roles').select('id').limit(1)
+        this.supabase.from('verifier_rules').select('id').limit(1),
+        this.supabase.from('verifier_user_roles').select('id').limit(1)
       ]);
 
       return !rulesCheck.error && !rolesCheck.error;
@@ -765,7 +745,7 @@ export class DbService {
    * Get user role assignment history for a specific server
    */
   async getUserRoleHistory(userId: string, serverId?: string): Promise<any[]> {
-    let query = supabase
+    let query = this.supabase
       .from('verifier_user_roles')
       .select(`
         *,
@@ -794,7 +774,7 @@ export class DbService {
    */
   async getUserLatestAddress(userId: string): Promise<string | null> {
     // First try to get the most recent address from role assignments
-    const { data: roleData, error: roleError } = await supabase
+    const { data: roleData, error: roleError } = await this.supabase
       .from('verifier_user_roles')
       .select('address')
       .eq('user_id', userId)
@@ -806,7 +786,7 @@ export class DbService {
     }
 
     // Fallback to verifier_users table for backward compatibility
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_users')
       .select('address')
       .eq('user_id', userId)
@@ -824,7 +804,7 @@ export class DbService {
    * Get all unique users who have role assignments in a server
    */
   async getServerUniqueUsers(serverId: string): Promise<string[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_user_roles')
       .select('user_id')
       .eq('server_id', serverId)
@@ -844,7 +824,7 @@ export class DbService {
    * Update role assignment status by assignment ID
    */
   async updateRoleAssignmentStatus(assignmentId: string, status: 'active' | 'expired' | 'revoked'): Promise<any> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_user_roles')
       .update({
         status,
@@ -866,7 +846,7 @@ export class DbService {
    * Update last verified timestamp for an assignment
    */
   async updateLastVerified(assignmentId: string): Promise<any> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_user_roles')
       .update({
         last_checked: new Date().toISOString(),
@@ -888,7 +868,7 @@ export class DbService {
    * Count assignments by status
    */
   async countActiveAssignments(): Promise<number> {
-    const { count, error } = await supabase
+    const { count, error } = await this.supabase
       .from('verifier_user_roles')
       .select('*', { count: 'exact' })
       .eq('status', 'active');
@@ -902,7 +882,7 @@ export class DbService {
   }
 
   async countRevokedAssignments(): Promise<number> {
-    const { count, error } = await supabase
+    const { count, error } = await this.supabase
       .from('verifier_user_roles')
       .select('*', { count: 'exact' })
       .eq('status', 'revoked');
@@ -919,7 +899,7 @@ export class DbService {
     const expiryThreshold = new Date();
     expiryThreshold.setHours(expiryThreshold.getHours() + hoursFromNow);
 
-    const { count, error } = await supabase
+    const { count, error } = await this.supabase
       .from('verifier_user_roles')
       .select('*', { count: 'exact' })
       .eq('status', 'active')
@@ -938,7 +918,7 @@ export class DbService {
    * Get the last time re-verification was run
    */
   async getLastReverificationTime(): Promise<Date | null> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('verifier_user_roles')
       .select('last_checked')
       .order('last_checked', { ascending: false })
