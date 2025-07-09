@@ -23,6 +23,8 @@ import { SimpleRoleMonitorService } from './services/simple-role-monitor.service
 import { QueryOptimizer } from './services/query-optimizer.service';
 import { CacheService } from './services/cache.service';
 import { CONSTANTS } from '@/constants';
+import { createClient } from '@supabase/supabase-js';
+import { EnvironmentConfig } from '@/config/environment.config';
 
 /**
  * AppModule - Main application module
@@ -67,6 +69,31 @@ import { CONSTANTS } from '@/constants';
   ],
   controllers: [AppController],
   providers: [
+    // Supabase client provider with optimized configuration
+    {
+      provide: 'SUPABASE_CLIENT',
+      useFactory: () => {
+        EnvironmentConfig.validate();
+        return createClient(
+          EnvironmentConfig.DB_SUPABASE_URL!,
+          EnvironmentConfig.DB_SUPABASE_KEY!,
+          {
+            db: {
+              schema: 'public',
+            },
+            auth: {
+              persistSession: false, // Disable auth for better performance
+            },
+            global: {
+              headers: {
+                'x-application-name': 'verethfier-backend',
+              },
+            },
+          }
+        );
+      },
+    },
+
     // Global security: Rate limiting protection
     {
       provide: APP_GUARD,

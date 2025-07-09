@@ -49,6 +49,12 @@ export class DynamicRoleService {
         const batch = activeAssignments.slice(i, i + batchSize);
         
         for (const assignment of batch) {
+          // Skip null or undefined assignments
+          if (!assignment) {
+            Logger.debug('Skipping null or undefined assignment');
+            continue;
+          }
+          
           try {
             const stillQualifies = await this.verifyUserStillQualifies(assignment);
             
