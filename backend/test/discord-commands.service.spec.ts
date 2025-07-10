@@ -16,6 +16,8 @@ const mockDbService = {
   findConflictingRule: jest.fn(),
   checkForDuplicateRule: jest.fn(),
   checkForExactDuplicateRule: jest.fn(),
+  checkForDuplicateRole: jest.fn(),
+  restoreRuleWithOriginalId: jest.fn(),
 };
 
 const mockDiscordMessageService = {
@@ -50,6 +52,7 @@ describe('DiscordCommandsService', () => {
       const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
       const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
       const mockInteraction = {
+        id: 'interaction-123',
         guild: {
           id: 'guild-id',
           name: 'test-guild',
@@ -61,6 +64,12 @@ describe('DiscordCommandsService', () => {
           }
         },
         user: { tag: 'test-user#1234' },
+        channel: {
+          createMessageComponentCollector: jest.fn(() => ({
+            on: jest.fn(),
+            stop: jest.fn(),
+          }))
+        },
         options: {
           getChannel: () => mockChannel,
           getString: (key: string) => {
@@ -80,6 +89,7 @@ describe('DiscordCommandsService', () => {
 
       mockDbService.checkForExactDuplicateRule.mockResolvedValue(null); // No exact duplicate
       mockDbService.checkForDuplicateRule.mockResolvedValue(null); // No duplicate rule
+      mockDbService.checkForDuplicateRole.mockResolvedValue(null); // No duplicate role
       mockDbService.getRulesByChannel.mockResolvedValue([]); // No existing rules
       mockDbService.addRoleMapping.mockResolvedValue({ id: 1, slug: 'test-collection' }); // Returns new rule object
       mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
@@ -113,7 +123,15 @@ describe('DiscordCommandsService', () => {
             })
           })
         ],
-        components: []
+        components: expect.arrayContaining([
+          expect.objectContaining({
+            components: expect.arrayContaining([
+              expect.objectContaining({
+                label: 'Undo'
+              })
+            ])
+          })
+        ])
       });
     });
 
@@ -280,6 +298,7 @@ describe('DiscordCommandsService', () => {
       const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
       const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
       const mockInteraction = {
+        id: 'interaction-123',
         guild: {
           id: 'guild-id',
           name: 'test-guild',
@@ -307,6 +326,7 @@ describe('DiscordCommandsService', () => {
 
       mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
       mockDbService.checkForDuplicateRule.mockResolvedValue(null);
+      mockDbService.checkForDuplicateRole.mockResolvedValue(null);
       mockDbService.findConflictingRule.mockResolvedValue(null);
       mockDbService.addRoleMapping.mockResolvedValue({ id: 1 });
       mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(null);
@@ -329,29 +349,26 @@ describe('DiscordCommandsService', () => {
       );
       
       // Check that the reply includes proper formatting for attribute_key only
-      expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: [
-          expect.objectContaining({
-            data: expect.objectContaining({
-              title: '✅ Rule Added',
-              description: expect.stringContaining('Rule 1 for <#channel-id> and <@&role-id> added'),
-              fields: expect.arrayContaining([
-                expect.objectContaining({
-                  name: 'Attribute',
-                  value: 'ALL' // Fixed to match actual behavior when all fields are null
-                })
-              ])
-            })
-          })
-        ],
-        components: []
-      });
+      expect(mockInteraction.editReply).toHaveBeenCalled();
+      const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
+      
+      // Check the embed
+      expect(editReplyCall.embeds).toBeDefined();
+      expect(editReplyCall.embeds[0].data.title).toBe('✅ Rule Added');
+      expect(editReplyCall.embeds[0].data.description).toContain('Rule 1 for <#channel-id> and <@&role-id> added');
+      
+      // Check the components
+      expect(editReplyCall.components).toBeDefined();
+      expect(editReplyCall.components[0].components).toHaveLength(1);
+      expect(editReplyCall.components[0].components[0].label).toBe('Undo');
+      expect(editReplyCall.components[0].components[0].custom_id).toBe('undo_rule_interaction-123');
     });
 
     it('should handle attribute_value only rule', async () => {
       const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
       const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
       const mockInteraction = {
+        id: 'interaction-456',
         guild: {
           id: 'guild-id',
           name: 'test-guild',
@@ -402,23 +419,24 @@ describe('DiscordCommandsService', () => {
       );
       
       // Check that the reply includes proper formatting for attribute_value only
-      expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: [
-          expect.objectContaining({
-            data: expect.objectContaining({
-              title: '✅ Rule Added',
-              description: expect.stringContaining('Rule 1 for <#channel-id> and <@&role-id> added'),
-              fields: expect.arrayContaining([
-                expect.objectContaining({
-                  name: 'Attribute',
-                  value: 'ALL=gold' // Should show "ALL=gold" not just "ALL"
-                })
-              ])
-            })
-          })
-        ],
-        components: []
-      });
+      expect(mockInteraction.editReply).toHaveBeenCalled();
+      const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
+      
+      // Check the embed
+      expect(editReplyCall.embeds).toBeDefined();
+      expect(editReplyCall.embeds[0].data.title).toBe('✅ Rule Added');
+      expect(editReplyCall.embeds[0].data.description).toContain('Rule 1 for <#channel-id> and <@&role-id> added');
+      
+      // Check specific field values
+      const fields = editReplyCall.embeds[0].data.fields;
+      expect(fields.find(f => f.name === 'Collection')?.value).toBe('call-data-comrades');
+      expect(fields.find(f => f.name === 'Attribute')?.value).toBe('ALL=gold');
+      
+      // Check the components
+      expect(editReplyCall.components).toBeDefined();
+      expect(editReplyCall.components[0].components).toHaveLength(1);
+      expect(editReplyCall.components[0].components[0].label).toBe('Undo');
+      expect(editReplyCall.components[0].components[0].custom_id).toBe('undo_rule_interaction-456');
     });
 
     it('should reject roles that are not editable', async () => {
@@ -620,6 +638,7 @@ describe('DiscordCommandsService', () => {
 
       mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
       mockDbService.checkForDuplicateRule.mockResolvedValue(null);
+      mockDbService.checkForDuplicateRole.mockResolvedValue(null);
       mockDbService.getRulesByChannel.mockResolvedValue([]);
       mockDbService.addRoleMapping.mockResolvedValue({ id: 1, slug: 'ALL' });
       mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
@@ -687,6 +706,7 @@ describe('DiscordCommandsService', () => {
           attribute_value: 'rare',
           min_items: 1
         });
+        mockDbService.checkForDuplicateRole.mockResolvedValue(null); // No role duplicate
 
         mockDiscordService.getRole.mockResolvedValue({ name: 'Existing Role' });
 
@@ -762,6 +782,7 @@ describe('DiscordCommandsService', () => {
 
         mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
         mockDbService.checkForDuplicateRule.mockResolvedValue(null);
+        mockDbService.checkForDuplicateRole.mockResolvedValue(null);
         mockDbService.getRulesByChannel.mockResolvedValue([]);
         mockDbService.addRoleMapping.mockResolvedValue({ id: 1, slug: 'ALL' });
         mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-123');
@@ -850,6 +871,63 @@ describe('DiscordCommandsService', () => {
         });
         expect(mockDbService.addRoleMapping).not.toHaveBeenCalled();
       });
+
+      it('should warn about duplicate role and allow confirmation', async () => {
+        const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
+        const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
+        const mockInteraction = {
+          id: 'interaction-123',
+          guild: {
+            id: 'guild-id',
+            name: 'test-guild',
+            channels: { cache: new Map([['channel-id', mockChannel]]) },
+            roles: {
+              cache: {
+                find: jest.fn().mockReturnValue(mockRole)
+              }
+            }
+          },
+          user: { tag: 'test-user#1234' },
+          channel: {
+            createMessageComponentCollector: jest.fn(() => ({
+              on: jest.fn(),
+              stop: jest.fn(),
+            }))
+          },
+          options: {
+            getChannel: () => mockChannel,
+            getString: (key: string) => {
+              if (key === 'role') return 'Test Role';
+              if (key === 'slug') return 'different-collection';
+              return null;
+            },
+            getInteger: () => null,
+          },
+          deferReply: jest.fn(),
+          editReply: jest.fn(),
+          followUp: jest.fn(),
+        } as any;
+
+        // Mock existing role rule (same role, different criteria)
+        mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
+        mockDbService.checkForDuplicateRule.mockResolvedValue(null);
+        mockDbService.checkForDuplicateRole.mockResolvedValue({
+          id: 1,
+          role_id: 'role-id', // Same role
+          channel_id: 'channel-id', 
+          slug: 'original-collection', // Different criteria
+          attribute_key: 'ALL',
+          attribute_value: 'ALL',
+          min_items: 1
+        });
+
+        await service.handleAddRule(mockInteraction);
+
+        // Verify warning message was sent (basic check)
+        expect(mockInteraction.editReply).toHaveBeenCalled();
+        // Verify rule was NOT created yet
+        expect(mockDbService.addRoleMapping).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -857,6 +935,14 @@ describe('DiscordCommandsService', () => {
     it('should remove rule successfully', async () => {
       const mockInteraction = {
         guild: { id: 'guild-id' },
+        id: 'interaction-id',
+        user: { id: 'user-id' },
+        channel: {
+          createMessageComponentCollector: jest.fn(() => ({
+            on: jest.fn(),
+            stop: jest.fn()
+          }))
+        },
         options: {
           getChannel: () => ({ id: 'channel-id', name: 'test-channel' }),
           getRole: () => ({ id: 'role-id', name: 'test-role' }),
@@ -867,21 +953,75 @@ describe('DiscordCommandsService', () => {
         editReply: jest.fn(),
       } as any;
 
+      const mockRule = {
+        id: 1,
+        server_id: 'guild-id',
+        server_name: 'Test Guild',
+        channel_id: 'channel-id',
+        channel_name: 'test-channel',
+        role_id: 'role-id',
+        role_name: 'test-role',
+        slug: 'test-collection',
+        attribute_key: 'Gold',
+        attribute_value: 'rare',
+        min_items: 1
+      };
+
+      mockDbService.getRoleMappings.mockResolvedValue([mockRule]);
       mockDbService.deleteRoleMapping.mockResolvedValue({ error: null });
 
       await service.handleRemoveRule(mockInteraction);
 
+      expect(mockDbService.getRoleMappings).toHaveBeenCalledWith('guild-id');
       expect(mockDbService.deleteRoleMapping).toHaveBeenCalledWith('1', 'guild-id');
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: [
-          expect.objectContaining({
-            data: {
-              color: 0x00FF00, // Green color for success
-              title: '✅ Rule Removed',
-              description: 'Rule ID 1 removed.'
-            }
-          })
-        ]
+        embeds: [expect.objectContaining({
+          data: {
+            color: 0x00FF00, // Green color for success
+            title: '✅ Rule Removed',
+            description: 'Rule 1 for test-channel and @test-role removed.',
+            fields: [
+              { name: 'Collection', value: 'test-collection', inline: true },
+              { name: 'Attribute', value: 'Gold=rare', inline: true },
+              { name: 'Min Items', value: '1', inline: true }
+            ]
+          }
+        })],
+        components: [{
+          type: 1,
+          components: [{
+            type: 2,
+            custom_id: 'undo_removal_interaction-id',
+            label: 'Undo',
+            style: 2,
+            emoji: { name: '↩️' }
+          }]
+        }],
+        ephemeral: true
+      });
+    });
+
+    it('should handle rule not found for removal', async () => {
+      const mockInteraction = {
+        guild: { id: 'guild-id' },
+        id: 'interaction-id',
+        user: { id: 'user-id' },
+        options: {
+          getInteger: () => 999, // rule_id that doesn't exist
+        },
+        reply: jest.fn(),
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
+      mockDbService.getRoleMappings.mockResolvedValue([]);
+
+      await service.handleRemoveRule(mockInteraction);
+
+      expect(mockDbService.getRoleMappings).toHaveBeenCalledWith('guild-id');
+      expect(mockDbService.deleteRoleMapping).not.toHaveBeenCalled();
+      expect(mockInteraction.editReply).toHaveBeenCalledWith({
+        content: '❌ Rule not found.'
       });
     });
   });
@@ -1026,6 +1166,231 @@ describe('DiscordCommandsService', () => {
         content: '✅ Channel already has a verification message. No recovery needed.'
       });
       expect(mockDiscordMessageService.createVerificationMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Undo functionality', () => {
+    it('should include Undo button in confirmation message', async () => {
+      const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
+      const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
+      const mockInteraction = {
+        id: 'interaction-123',
+        guild: { 
+          id: 'guild-id', 
+          name: 'test-guild',
+          roles: {
+            cache: {
+              find: jest.fn().mockReturnValue(mockRole)
+            }
+          }
+        },
+        user: { tag: 'test-user#1234' },
+        channel: {
+          createMessageComponentCollector: jest.fn(() => ({
+            on: jest.fn(),
+            stop: jest.fn(),
+          }))
+        },
+        options: {
+          getChannel: () => mockChannel,
+          getString: (key: string) => {
+            if (key === 'role') return 'Test Role';
+            if (key === 'slug') return 'test-collection';
+            return null;
+          },
+          getInteger: () => 1,
+        },
+        deferReply: jest.fn(),
+        editReply: jest.fn(),
+        followUp: jest.fn(),
+      } as any;
+
+      mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
+      mockDbService.checkForDuplicateRule.mockResolvedValue(null);
+      mockDbService.checkForDuplicateRole.mockResolvedValue(null);
+      mockDbService.getRulesByChannel.mockResolvedValue([]);
+      mockDbService.addRoleMapping.mockResolvedValue({ id: 1, slug: 'test-collection' });
+      mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
+
+      await service.handleAddRule(mockInteraction);
+
+      // Verify that editReply was called with components (buttons)
+      const editReplyCall = mockInteraction.editReply.mock.calls.find(call => 
+        call[0].components && call[0].components.length > 0
+      );
+      expect(editReplyCall).toBeDefined();
+      expect(editReplyCall[0].components).toHaveLength(1);
+      
+      // Check button configuration
+      const actionRow = editReplyCall[0].components[0];
+      expect(actionRow.components).toHaveLength(1);
+      expect(actionRow.components[0].label).toBe('Undo');
+    });
+
+    it('should handle Undo button interaction', async () => {
+      const mockButtonInteraction = {
+        customId: 'undo_rule_interaction-123',
+        reply: jest.fn(),
+      } as any;
+
+      // Simulate confirmation data
+      const confirmationInfo = {
+        ruleId: 1,
+        serverId: 'guild-id',
+        channel: { id: 'channel-id', name: 'test-channel' },
+        role: { id: 'role-id', name: 'Test Role' },
+        slug: 'test-collection',
+        attributeKey: 'ALL',
+        attributeValue: 'ALL',
+        minItems: 1
+      };
+      
+      // Access private property for testing
+      (service as any).confirmationData.set('interaction-123', confirmationInfo);
+
+      const mockRule = {
+        id: 1,
+        server_id: 'guild-id',
+        channel_id: 'channel-id',
+        role_id: 'role-id',
+        slug: 'test-collection',
+        attribute_key: 'ALL',
+        attribute_value: 'ALL',
+        min_items: 1
+      };
+
+      mockDbService.getRoleMappings.mockResolvedValue([mockRule]);
+      mockDbService.deleteRoleMapping.mockResolvedValue({});
+
+      // Call the private method directly for testing
+      await (service as any).handleUndoRule(mockButtonInteraction);
+
+      expect(mockDbService.getRoleMappings).toHaveBeenCalledWith('guild-id');
+      expect(mockDbService.deleteRoleMapping).toHaveBeenCalledWith('1', 'guild-id');
+    });
+
+    it('should handle Undo removal button interaction', async () => {
+      const mockButtonInteraction = {
+        customId: 'undo_removal_interaction-123',
+        id: 'interaction-123',
+        reply: jest.fn(),
+        guild: { id: 'guild-id', name: 'Test Guild' }
+      } as any;
+
+      // Simulate removed rule data
+      const removedRule = {
+        id: 1,
+        server_id: 'guild-id',
+        server_name: 'Test Guild',
+        channel_id: 'channel-id',
+        channel_name: 'test-channel',
+        role_id: 'role-id',
+        role_name: 'test-role',
+        slug: 'test-collection',
+        attribute_key: 'Gold',
+        attribute_value: 'rare',
+        min_items: 1
+      };
+      
+      // Access private property for testing
+      (service as any).removedRules.set('interaction-123', removedRule);
+
+      mockDbService.restoreRuleWithOriginalId.mockResolvedValue({ id: 1 }); // Same ID as original
+
+      // Call the private method directly for testing
+      await (service as any).handleUndoRemoval(mockButtonInteraction);
+
+      expect(mockDbService.restoreRuleWithOriginalId).toHaveBeenCalledWith(removedRule);
+      // Note: Not checking reply content structure as it contains Discord.js builders
+    });
+
+    it('should handle Undo restore button interaction', async () => {
+      const mockButtonInteraction = {
+        customId: 'undo_restore_interaction-123',
+        id: 'interaction-123',
+        user: { id: 'user-123' },
+        channel: { createMessageComponentCollector: jest.fn() },
+        reply: jest.fn(),
+      } as any;
+
+      // Simulate restored rule data
+      const restoredRule = {
+        id: 1,
+        server_id: 'guild-id',
+        server_name: 'Test Guild',
+        channel_id: 'channel-id',
+        channel_name: 'test-channel',
+        role_id: 'role-id',
+        role_name: 'test-role',
+        slug: 'test-collection',
+        attribute_key: 'Gold',
+        attribute_value: 'rare',
+        min_items: 1
+      };
+      
+      // Access private property for testing
+      (service as any).restoredRules.set('interaction-123', restoredRule);
+
+      mockDbService.deleteRoleMapping.mockResolvedValue(undefined);
+
+      // Call the private method directly for testing
+      await (service as any).handleUndoRestore(mockButtonInteraction);
+
+      expect(mockDbService.deleteRoleMapping).toHaveBeenCalledWith('1', 'guild-id');
+      
+      // Verify that the rule is stored in removedRules for the next undo cycle
+      expect((service as any).removedRules.get('interaction-123')).toEqual(restoredRule);
+      
+      // Verify that the restoredRules data is cleaned up
+      expect((service as any).restoredRules.has('interaction-123')).toBe(false);
+      
+      // Note: Not checking reply content structure as it contains Discord.js builders
+    });
+
+    it('should handle expired undo removal session', async () => {
+      const mockButtonInteraction = {
+        customId: 'undo_removal_interaction-456',
+        reply: jest.fn(),
+      } as any;
+
+      // Call the private method directly for testing (no stored data)
+      await (service as any).handleUndoRemoval(mockButtonInteraction);
+
+      expect(mockButtonInteraction.reply).toHaveBeenCalledWith({
+        content: '❌ Undo session expired. Rule removal cannot be undone.',
+        ephemeral: true
+      });
+    });
+
+    it('should handle expired undo cancellation session', async () => {
+      const mockButtonInteraction = {
+        customId: 'undo_cancellation_interaction-456',
+        reply: jest.fn(),
+      } as any;
+
+      // Call the private method directly for testing (no stored data)
+      await (service as any).handleUndoCancellation(mockButtonInteraction);
+
+      expect(mockButtonInteraction.reply).toHaveBeenCalledWith({
+        content: '❌ Undo session expired. Rule cancellation cannot be undone.',
+        ephemeral: true
+      });
+    });
+
+    it('should handle expired undo restore session', async () => {
+      const mockButtonInteraction = {
+        customId: 'undo_restore_interaction-456',
+        id: 'interaction-456',
+        reply: jest.fn(),
+      } as any;
+
+      // Call the private method directly for testing (no stored data)
+      await (service as any).handleUndoRestore(mockButtonInteraction);
+
+      expect(mockButtonInteraction.reply).toHaveBeenCalledWith({
+        content: '❌ Could not find the restored rule to undo.',
+        ephemeral: true
+      });
     });
   });
 });
