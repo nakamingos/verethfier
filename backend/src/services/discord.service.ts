@@ -357,8 +357,8 @@ export class DiscordService {
         )
         .addSubcommand(sc =>
           sc.setName('remove-rule')
-            .setDescription('Remove a verification rule')
-            .addIntegerOption(option => option.setName('rule_id').setDescription('Rule ID').setRequired(true))
+            .setDescription('Remove verification rule(s)')
+            .addStringOption(option => option.setName('rule_id').setDescription('Rule ID(s) - single (e.g., 5) or multiple comma-separated (e.g., 1,2,3)').setRequired(true))
         )
         .addSubcommand(sc =>
           sc.setName('list-rules')
