@@ -36,6 +36,9 @@ const mockClient = {
             },
             roles: {
               add: jest.fn(),
+              cache: {
+                has: jest.fn().mockReturnValue(false), // User doesn't have the role by default
+              }
             },
           }),
         },
@@ -243,7 +246,11 @@ describe('DiscordVerificationService', () => {
       const nonce = 'test-nonce';
       service.tempMessages[nonce] = mockInteraction as any;
 
-      await service.sendVerificationComplete('guild-id', nonce, ['role-id']);
+      const roleResults = [
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false }
+      ];
+
+      await service.sendVerificationComplete('guild-id', nonce, roleResults);
 
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
         embeds: expect.arrayContaining([
@@ -271,7 +278,12 @@ describe('DiscordVerificationService', () => {
       });
       service.tempMessages[nonce] = mockInteraction as any;
 
-      await service.sendVerificationComplete('guild-id', nonce, ['role-id', 'role-id-2']);
+      const roleResults = [
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false },
+        { roleId: 'role-id-2', roleName: 'Test Role 2', wasAlreadyAssigned: true }
+      ];
+
+      await service.sendVerificationComplete('guild-id', nonce, roleResults);
 
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
         embeds: expect.arrayContaining([
@@ -297,7 +309,13 @@ describe('DiscordVerificationService', () => {
       service.tempMessages[nonce] = mockInteraction as any;
 
       // Pass duplicate role IDs (same role assigned by multiple rules)
-      await service.sendVerificationComplete('guild-id', nonce, ['role-id', 'role-id', 'role-id']);
+      const roleResults = [
+        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false },
+        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false },
+        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false }
+      ];
+
+      await service.sendVerificationComplete('guild-id', nonce, roleResults);
 
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
         embeds: expect.arrayContaining([
@@ -322,7 +340,11 @@ describe('DiscordVerificationService', () => {
       const nonce = 'test-nonce';
       service.tempMessages[nonce] = mockInteraction as any;
 
-      await service.sendVerificationComplete('guild-id', nonce, ['role-id']);
+      const roleResults = [
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false }
+      ];
+
+      await service.sendVerificationComplete('guild-id', nonce, roleResults);
 
       // Verify that components array is empty (no "Verify Now" button)
       const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
@@ -333,8 +355,12 @@ describe('DiscordVerificationService', () => {
       const nonce = 'test-nonce';
       service.tempMessages[nonce] = mockInteraction as any;
 
+      const roleResults = [
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false }
+      ];
+
       await expect(
-        service.sendVerificationComplete('invalid-guild', nonce, ['role-id'])
+        service.sendVerificationComplete('invalid-guild', nonce, roleResults)
       ).rejects.toThrow('Guild not found');
     });
   });

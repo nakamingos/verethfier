@@ -21,7 +21,11 @@ const mockDiscordService = {
   getRole: jest.fn().mockResolvedValue({ name: 'Test Role' })
 };
 const mockDiscordVerificationService = {
-  addUserRole: jest.fn(),
+  addUserRole: jest.fn().mockResolvedValue({
+    roleId: 'test-role-id',
+    roleName: 'Test Role',
+    wasAlreadyAssigned: false
+  }),
   throwError: jest.fn(),
   sendVerificationComplete: jest.fn(),
   getVerificationRoleId: jest.fn().mockResolvedValue('role-id')
@@ -181,9 +185,13 @@ describe('VerifyService', () => {
     expect(mockVerificationService.getRulesForChannel).toHaveBeenCalledWith('guild123', 'ch-456');
     expect(mockVerificationService.verifyUserBulk).toHaveBeenCalledWith('user123', [1], '0xabc');
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('user123', 'role-123', 'guild123', '0xabc', 'nonce123');
-    expect(mockDiscordVerificationService.sendVerificationComplete).toHaveBeenCalledWith('guild123', 'nonce123', ['role-123']);
+    expect(mockDiscordVerificationService.sendVerificationComplete).toHaveBeenCalledWith('guild123', 'nonce123', [{
+      roleId: 'test-role-id',
+      roleName: 'Test Role',
+      wasAlreadyAssigned: false
+    }]);
     expect(result.message).toContain('message-based');
-    expect(result.assignedRoles).toEqual(['role-123']);
+    expect(result.assignedRoles).toEqual(['test-role-id']);
   });
 
   it('handles message-based verification with multiple rules', async () => {
@@ -231,8 +239,11 @@ describe('VerifyService', () => {
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledTimes(2);
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('user123', 'role-123', 'guild123', '0xabc', 'nonce123');
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('user123', 'role-456', 'guild123', '0xabc', 'nonce123');
-    expect(mockDiscordVerificationService.sendVerificationComplete).toHaveBeenCalledWith('guild123', 'nonce123', ['role-123', 'role-456']);
-    expect(result.assignedRoles).toEqual(['role-123', 'role-456']);
+    expect(mockDiscordVerificationService.sendVerificationComplete).toHaveBeenCalledWith('guild123', 'nonce123', [
+      { roleId: 'test-role-id', roleName: 'Test Role', wasAlreadyAssigned: false },
+      { roleId: 'test-role-id', roleName: 'Test Role', wasAlreadyAssigned: false }
+    ]);
+    expect(result.assignedRoles).toEqual(['test-role-id', 'test-role-id']);
   });
 
   it('handles message-based verification when no rules found', async () => {
@@ -339,7 +350,7 @@ describe('VerifyService', () => {
     // Should only assign the first role
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledTimes(1);
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('user123', 'role-123', 'guild123', '0xabc', 'nonce123');
-    expect(result.assignedRoles).toEqual(['role-123']);
+    expect(result.assignedRoles).toEqual(['test-role-id']);
   });
 
   it('handles message-based verification with role assignment error', async () => {
@@ -412,7 +423,11 @@ describe('VerifyService', () => {
       invalidRules: [],
       matchingAssetCounts: new Map([['2', 1]])
     });
-    mockDiscordVerificationService.addUserRole.mockResolvedValue(undefined);
+    mockDiscordVerificationService.addUserRole.mockResolvedValue({
+      roleId: 'role-456',
+      roleName: 'Test Role 456',
+      wasAlreadyAssigned: false
+    });
     
     const payload = { 
       userId: 'user123', 
@@ -475,6 +490,13 @@ describe('VerifyService', () => {
       validRules: mockRules, // Rule passes because min_items=0
       invalidRules: [],
       matchingAssetCounts: new Map([['1', 0]]) // 0 assets but still valid
+    });
+    
+    // Reset the mock for this test
+    mockDiscordVerificationService.addUserRole.mockResolvedValue({
+      roleId: 'role123',
+      roleName: 'Test Role',
+      wasAlreadyAssigned: false
     });
 
     const result = await service.verifySignatureFlow(mockPayload, mockSignature);

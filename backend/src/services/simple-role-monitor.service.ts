@@ -223,9 +223,14 @@ export class SimpleRoleMonitorService {
    */
   private async grantRole(userId: string, serverId: string, rule: any, address: string): Promise<void> {
     try {
-      await this.discordVerificationSvc.addUserRole(userId, rule.role_id, serverId, address, 'reverification');
+      const roleResult = await this.discordVerificationSvc.addUserRole(userId, rule.role_id, serverId, address, 'reverification');
       await this.dbSvc.logUserRole(userId, serverId, rule.role_id, address, null, null, rule.role_name);
-      Logger.log(`✅ Granted role ${rule.role_name || rule.role_id} to user ${userId}`);
+      
+      if (roleResult.wasAlreadyAssigned) {
+        Logger.log(`✅ User ${userId} already had role ${rule.role_name || rule.role_id} (reverification)`);
+      } else {
+        Logger.log(`✅ Granted role ${rule.role_name || rule.role_id} to user ${userId} (reverification)`);
+      }
     } catch (error) {
       Logger.error(`Failed to grant role ${rule.role_id} to user ${userId}:`, error.message);
       throw error;
