@@ -498,10 +498,13 @@ export class DiscordService {
         .sort((a, b) => a.name.localeCompare(b.name))
         .first(24); // Discord allows max 25 choices, save 1 for "create new" option
 
-      const choices = roles.map(role => ({
-        name: role.name,
-        value: role.name
-      }));
+      const choices = roles.map(role => {
+        // Format with @ prefix for better UX
+        return {
+          name: `@${role.name}`,
+          value: role.name
+        };
+      });
 
       // Check if any role (manageable or not) already exists with the focused value
       const existingRoleWithName = guild.roles.cache.find(role => 

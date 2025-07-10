@@ -289,7 +289,7 @@ export class DiscordCommandsService {
       // Use existing verification message
       const embed = AdminFeedback.success(
         isDuplicateConfirmed ? 'Duplicate Rule Created' : 'Rule Added',
-        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> ${hasExistingMessage ? 'added using existing verification message' : 'created'}.`,
+        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> ${hasExistingMessage ? 'has been added using existing verification message' : 'created'}.`,
         [
           { name: 'Collection', value: slug, inline: true },
           { name: 'Attribute', value: AdminFeedback.formatRule(newRule).split('\n')[2].replace('**Attribute:** ', ''), inline: true },
@@ -375,7 +375,7 @@ export class DiscordCommandsService {
 
       const embed = AdminFeedback.success(
         isDuplicateConfirmed ? 'Duplicate Rule Created' : 'Rule Added',
-        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> ${messageCreated ? 'added with new verification message' : 'added using existing verification message'}.`,
+        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> ${messageCreated ? 'has been added with new verification message' : 'has been added using existing verification message'}.`,
         [
           { name: 'Collection', value: slug, inline: true },
           { name: 'Attribute', value: formatAttribute(attributeKey, attributeValue), inline: true },
@@ -694,9 +694,12 @@ export class DiscordCommandsService {
     interaction: ChatInputCommandInteraction, 
     roleName: string
   ): Promise<Role | null> {
+    // Strip @ prefix if present (users can enter @RoleName or RoleName)
+    const cleanRoleName = roleName.startsWith('@') ? roleName.slice(1) : roleName;
+    
     // Try to find existing role (including ones we can't manage)
     let role = interaction.guild.roles.cache.find(r => 
-      r.name.toLowerCase() === roleName.toLowerCase()
+      r.name.toLowerCase() === cleanRoleName.toLowerCase()
     );
 
     // If role exists, check if we can manage it or provide appropriate error
@@ -705,11 +708,11 @@ export class DiscordCommandsService {
         await interaction.editReply({
           embeds: [AdminFeedback.error(
             'Role Hierarchy Issue',
-            `A role named "${roleName}" already exists but is positioned higher than the bot's role. The bot cannot manage this role.`,
+            `A role named "${cleanRoleName}" already exists but is positioned higher than the bot's role. The bot cannot manage this role.`,
             [
               'Use a different role name',
               'Move the bot\'s role higher in the server settings',
-              `Ask an admin to move the "${roleName}" role below the bot's role`
+              `Ask an admin to move the "${cleanRoleName}" role below the bot's role`
             ]
           )]
         });
@@ -722,14 +725,14 @@ export class DiscordCommandsService {
     // If role doesn't exist, create it
     // Double-check that no role with this name exists anywhere in the server
     const existingRoleWithName = interaction.guild.roles.cache.find(r => 
-      r.name.toLowerCase() === roleName.toLowerCase()
+      r.name.toLowerCase() === cleanRoleName.toLowerCase()
     );
     
     if (existingRoleWithName) {
       await interaction.editReply({
         embeds: [AdminFeedback.error(
           'Duplicate Role Name',
-          `A role named "${roleName}" already exists in this server.`,
+          `A role named "${cleanRoleName}" already exists in this server.`,
           ['Choose a different name for the new role']
         )]
       });
@@ -748,7 +751,7 @@ export class DiscordCommandsService {
       }
 
       role = await interaction.guild.roles.create({
-        name: roleName,
+        name: cleanRoleName,
         color: 'Blue', // Default color
         position: position,
         reason: `Auto-created for verification rule by ${interaction.user.tag}`
@@ -765,7 +768,7 @@ export class DiscordCommandsService {
       await interaction.editReply({
         embeds: [AdminFeedback.error(
           'Role Creation Failed',
-          `Failed to create role "${roleName}": ${error.message}`,
+          `Failed to create role "${cleanRoleName}": ${error.message}`,
           ['Try again with a different role name']
         )]
       });
@@ -796,7 +799,7 @@ export class DiscordCommandsService {
     
     // Create detailed rule info fields
     const ruleInfoFields = this.createRuleInfoFields(removedRuleData);
-    const embed = AdminFeedback.success('Rule Removed', `Rule ${ruleId} for ${removedRuleData.channel_name} and @${removedRuleData.role_name} removed.`);
+    const embed = AdminFeedback.success('Rule Removed', `Rule ${ruleId} for ${removedRuleData.channel_name} and @${removedRuleData.role_name} has been removed.`);
     embed.addFields(ruleInfoFields);
 
     const messageContent = {
@@ -973,7 +976,7 @@ export class DiscordCommandsService {
       
       // Create detailed rule info fields
       const ruleInfoFields = this.createRuleInfoFields(restoredRule);
-      const embed = AdminFeedback.success('Rule Removed', `Rule ${restoredRule.id} for ${restoredRule.channel_name} and @${restoredRule.role_name} removed.`);
+      const embed = AdminFeedback.success('Rule Removed', `Rule ${restoredRule.id} for ${restoredRule.channel_name} and @${restoredRule.role_name} has been removed.`);
       embed.addFields(ruleInfoFields);
       
       await interaction.reply({
@@ -1138,7 +1141,7 @@ export class DiscordCommandsService {
       
       // Create detailed rule info fields
       const ruleInfoFields = this.createRuleInfoFields(createdRule);
-      const embed = AdminFeedback.success('Rule Added', `Rule ${createdRule.id} for ${cancelledRule.channel.name} and @${cancelledRule.role.name} added using existing verification message.`);
+      const embed = AdminFeedback.success('Rule Added', `Rule ${createdRule.id} for ${cancelledRule.channel.name} and @${cancelledRule.role.name} has been added using existing verification message.`);
       embed.addFields(ruleInfoFields);
       
       // Create Undo button
