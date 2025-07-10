@@ -562,8 +562,15 @@ export class DbService {
       .single();
 
     if (error) {
-      Logger.error('Error tracking role assignment:', error);
-      throw error;
+      // Check if it's a unique constraint violation
+      if (error.message && error.message.includes('duplicate key value violates unique constraint')) {
+        Logger.debug('Role assignment already exists in database - this is expected during concurrent verifications');
+        // Return a mock successful response for duplicate key violations
+        return { id: 'duplicate', ...assignment };
+      } else {
+        Logger.error('Error tracking role assignment:', error);
+        throw error;
+      }
     }
 
     return data;

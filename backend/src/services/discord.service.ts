@@ -332,7 +332,7 @@ export class DiscordService {
     address: string,
     nonce: string
   ): Promise<void> {
-    return this.discordVerificationSvc.addUserRole(userId, roleId, guildId, address, nonce);
+    await this.discordVerificationSvc.addUserRole(userId, roleId, guildId, address, nonce);
   }
 
   /**

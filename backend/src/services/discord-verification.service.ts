@@ -164,6 +164,7 @@ export class DiscordVerificationService {
    * @param userId - The ID of the user.
    * @param roleId - The ID of the role to be added.
    * @param guildId - The ID of the guild.
+   * @returns Object indicating if the role was newly assigned or already possessed
    * @throws Error if the Discord bot is not initialized, guild is not found, or member is not found.
    */
   async addUserRole(
@@ -173,7 +174,7 @@ export class DiscordVerificationService {
     address: string,
     nonce: string,
     ruleId?: string
-  ): Promise<void> {
+  ): Promise<{ roleId: string; roleName: string; wasAlreadyAssigned: boolean }> {
     if (!this.client) throw new Error('Discord bot not initialized');
 
     const guild = this.client.guilds.cache.get(guildId);
@@ -186,25 +187,48 @@ export class DiscordVerificationService {
     if (!role) throw new Error('Role not found');
       
     const storedInteraction = this.tempMessages[nonce];
-    if (!storedInteraction) {
+    // For reverification or other background processes, nonce might not have a stored interaction
+    if (!storedInteraction && nonce !== 'reverification') {
       throw new Error('No stored interaction found for this nonce');
     }
 
-    // Add the role - don't send success message here as there might be more roles coming
+    // Check if user already has the role
+    // We can use the already fetched member as Discord.js handles caching appropriately
+    const wasAlreadyAssigned = member.roles.cache.has(roleId);
+
+    // Add the role - Discord will handle this gracefully if user already has it
     await member.roles.add(role);
 
-    // Track role assignment in unified table
-    await this.dbSvc.trackRoleAssignment({
-      userId,
-      serverId: guildId,
+    // Only track role assignment if it's a new assignment
+    if (!wasAlreadyAssigned) {
+      try {
+        await this.dbSvc.trackRoleAssignment({
+          userId,
+          serverId: guildId,
+          roleId,
+          ruleId: ruleId || null,
+          address,
+          userName: member.displayName || member.user.username,
+          serverName: guild.name,
+          roleName: role.name,
+          expiresInHours: undefined // No expiration by default
+        });
+      } catch (error) {
+        // Check if it's a unique constraint violation (role already tracked)
+        if (error.message && error.message.includes('duplicate key value violates unique constraint')) {
+          // This is expected during concurrent verifications - don't log as error
+        } else {
+          Logger.error(`addUserRole: Unexpected error tracking role assignment for user ${userId}, role ${roleId}:`, error);
+        }
+        // Don't fail the entire process if tracking fails
+      }
+    }
+
+    return {
       roleId,
-      ruleId: ruleId || null,
-      address,
-      userName: member.displayName || member.user.username,
-      serverName: guild.name,
       roleName: role.name,
-      expiresInHours: undefined // No expiration by default
-    });
+      wasAlreadyAssigned
+    };
   }
 
   /**
@@ -249,7 +273,7 @@ export class DiscordVerificationService {
   async sendVerificationComplete(
     guildId: string,
     nonce: string,
-    assignedRoles: string[]
+    roleResults: Array<{ roleId: string; roleName: string; wasAlreadyAssigned: boolean }>
   ): Promise<void> {
     if (!this.client) throw new Error('Discord bot not initialized');
 
@@ -262,19 +286,43 @@ export class DiscordVerificationService {
     }
 
     try {
-      // Deduplicate role IDs to prevent showing the same role multiple times
-      const uniqueRoleIds = [...new Set(assignedRoles)];
-      
-      // Get role names from unique role IDs
-      const roleNames = uniqueRoleIds.map(roleId => {
-        const role = guild.roles.cache.get(roleId);
-        return role ? role.name : `Unknown Role (${roleId})`;
-      });
+      // Deduplicate roles based on roleId and assignment status
+      const uniqueRoleResults = roleResults.reduce((acc, role) => {
+        const key = `${role.roleId}-${role.wasAlreadyAssigned}`;
+        if (!acc.some(r => `${r.roleId}-${r.wasAlreadyAssigned}` === key)) {
+          acc.push(role);
+        }
+        return acc;
+      }, [] as Array<{ roleId: string; roleName: string; wasAlreadyAssigned: boolean }>);
 
+      // Separate roles into newly assigned and already possessed
+      const newRoles = uniqueRoleResults.filter(r => !r.wasAlreadyAssigned);
+      const existingRoles = uniqueRoleResults.filter(r => r.wasAlreadyAssigned);
+      
       let description = `You have been successfully verified in ${guild.name}`;
       
-      if (roleNames.length > 0) {
-        description += `\n\n**Roles Assigned:**\n${roleNames.map(name => `• ${name}`).join('\n')}`;
+      // Add new roles section if any
+      if (newRoles.length > 0) {
+        description += `\n\n**🎉 New Roles Assigned:**\n${newRoles.map(r => `• ${r.roleName}`).join('\n')}`;
+      }
+      
+      // Add existing roles section if any
+      if (existingRoles.length > 0) {
+        description += `\n\n**✅ Roles You Already Have:**\n${existingRoles.map(r => `• ${r.roleName}`).join('\n')}`;
+      }
+      
+      // Show summary at the end
+      if (uniqueRoleResults.length > 0) {
+        const totalNew = newRoles.length;
+        const totalExisting = existingRoles.length;
+        
+        if (totalNew > 0 && totalExisting > 0) {
+          description += `\n\n*${totalNew} new role${totalNew > 1 ? 's' : ''}, ${totalExisting} existing role${totalExisting > 1 ? 's' : ''}*`;
+        } else if (totalNew > 0) {
+          description += `\n\n*${totalNew} new role${totalNew > 1 ? 's' : ''} assigned*`;
+        } else if (totalExisting > 0) {
+          description += `\n\n*You already had all ${totalExisting} role${totalExisting > 1 ? 's' : ''} for this verification*`;
+        }
       }
 
       if (!storedInteraction.isRepliable()) {

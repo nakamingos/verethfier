@@ -183,7 +183,11 @@ describe('SimpleRoleMonitorService', () => {
       discordVerificationService.getGuildMember.mockResolvedValue({
         roles: { cache: mockRolesCache }, // No roles currently
       });
-      discordVerificationService.addUserRole.mockResolvedValue(undefined);
+      discordVerificationService.addUserRole.mockResolvedValue({
+        roleId: 'role1',
+        roleName: 'Test Role',
+        wasAlreadyAssigned: false
+      });
       dbService.logUserRole.mockResolvedValue(undefined);
 
       const result = await service.reverifyUser('user1', 'server1');

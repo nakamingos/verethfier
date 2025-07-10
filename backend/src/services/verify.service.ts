@@ -88,7 +88,7 @@ export class VerifyService {
       const verificationResult = await this.verificationSvc.verifyUserBulk(payload.userId, ruleIds, address);
       const { validRules, invalidRules, matchingAssetCounts } = verificationResult;
       
-      const assignedRoles = [];
+      const roleResults = [];
       let hasMatchingAssets = validRules.length > 0;
       
       for (const rule of validRules) {
@@ -115,7 +115,7 @@ export class VerifyService {
             Logger.warn(`Discord API calls failed for role assignment:`, discordError.message);
           }
           
-          await this.discordVerificationSvc.addUserRole(
+          const roleResult = await this.discordVerificationSvc.addUserRole(
             payload.userId,
             rule.role_id,
             payload.discordId,
@@ -126,11 +126,13 @@ export class VerifyService {
           // Role assignment and tracking is handled by assignRole() method
           // No need for additional tracking here
 
-          assignedRoles.push(rule.role_id);
+          if (roleResult) {
+            roleResults.push(roleResult);
+          }
           Logger.debug(`✅ Role assigned for rule ${rule.id} (${rule.slug})`);
         } catch (error) {
           Logger.error(`❌ Failed to assign role ${rule.role_id}:`, error.message);
-          // Continue with other roles even if one fails
+          // Continue with other roles even if one fails - don't add to roleResults
         }
       }
       
@@ -142,23 +144,26 @@ export class VerifyService {
         throw new Error(errorMsg);
       }
       
-      // Send verification complete message with all assigned roles
+      // Send verification complete message with role assignment details
       try {
         await this.discordVerificationSvc.sendVerificationComplete(
           payload.discordId,
           payload.nonce,
-          assignedRoles
+          roleResults
         );
       } catch (error) {
         Logger.error('Failed to send verification complete message:', error);
         // Log the error but don't fail the verification process
       }
       
-      Logger.log(`✅ User verification completed (${assignedRoles.length} roles assigned)`);
+      const totalAssigned = roleResults.length;
+      const newlyAssigned = roleResults.filter(r => !r.wasAlreadyAssigned).length;
+      
+      Logger.log(`✅ User verification completed (${newlyAssigned} new roles, ${totalAssigned - newlyAssigned} existing roles)`);
       return { 
-        message: `Verification successful (message-based) - ${assignedRoles.length} roles assigned`, 
+        message: `Verification successful (message-based) - ${newlyAssigned} new roles assigned, ${totalAssigned - newlyAssigned} existing roles`, 
         address,
-        assignedRoles
+        assignedRoles: roleResults.map(r => r.roleId)
       };
     }
 
@@ -187,13 +192,13 @@ export class VerifyService {
       throw new Error(errorMsg);
     }
 
-    const assignedRoleIds = [];
+    const roleResults = [];
     for (const rule of validRules) {
       const assetCount = matchingAssetCounts.get(rule.id.toString()) || 0;
       Logger.debug(`Unified verification: Assigning role ${rule.role_id} for rule ${rule.id}: ${assetCount} matching assets`);
       
       try {
-        await this.discordVerificationSvc.addUserRole(
+        const roleResult = await this.discordVerificationSvc.addUserRole(
           payload.userId,
           rule.role_id,
           payload.discordId,
@@ -204,30 +209,36 @@ export class VerifyService {
         // Role assignment and tracking is handled by addUserRole() method
         // No need for additional tracking here
 
-        assignedRoleIds.push(rule.role_id);
+        if (roleResult) {
+          roleResults.push(roleResult);
+        }
         Logger.debug(`✅ Unified verification: Successfully assigned role: ${rule.role_id} for rule ${rule.id}`);
       } catch (error) {
         Logger.error(`❌ Failed to assign role ${rule.role_id} for rule ${rule.id}:`, error.message);
+        // Continue with other roles even if one fails - don't add to roleResults
       }
     }
     
-    // Send verification complete message with all assigned roles
+    // Send verification complete message with role assignment details
     try {
       await this.discordVerificationSvc.sendVerificationComplete(
         payload.discordId,
         payload.nonce,
-        assignedRoleIds
+        roleResults
       );
     } catch (error) {
       Logger.error('Failed to send verification complete message:', error);
       // Log the error but don't fail the verification process
     }
     
-    Logger.log(`✅ Unified verification completed (${assignedRoleIds.length} roles assigned)`);
+    const totalAssigned = roleResults.length;
+    const newlyAssigned = roleResults.filter(r => !r.wasAlreadyAssigned).length;
+    
+    Logger.log(`✅ Unified verification completed (${newlyAssigned} new roles, ${totalAssigned - newlyAssigned} existing roles)`);
     return { 
-      message: `Verification successful - ${assignedRoleIds.length} roles assigned`, 
+      message: `Verification successful - ${newlyAssigned} new roles assigned, ${totalAssigned - newlyAssigned} existing roles`, 
       address, 
-      assignedRoles: assignedRoleIds 
+      assignedRoles: roleResults.map(r => r.roleId)
     };
   }
 }
