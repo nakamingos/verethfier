@@ -504,8 +504,8 @@ describe('DiscordService - Enhanced Tests', () => {
 
   describe('Role Autocomplete', () => {
     it('should filter roles by focused value and bot permissions', async () => {
-      const role1 = { id: 'role1', name: 'admin', position: 5, editable: true };
-      const role2 = { id: 'role2', name: 'moderator', position: 3, editable: true };
+      const role1 = { id: 'role1', name: 'admin', position: 5, editable: true, color: 0xFF0000 }; // Red color
+      const role2 = { id: 'role2', name: 'moderator', position: 3, editable: true, color: 0x00FF00 }; // Green color
       
       const mockGuildWithRoles = {
         members: { me: { roles: { highest: { position: 10 } } } },
@@ -530,8 +530,8 @@ describe('DiscordService - Enhanced Tests', () => {
       await service.handleRoleAutocomplete(mockInteraction);
 
       expect(mockInteraction.respond).toHaveBeenCalledWith([
-        { name: 'admin', value: 'admin' },
-        { name: 'moderator', value: 'moderator' },
+        { name: '@admin', value: 'admin' },
+        { name: '@moderator', value: 'moderator' },
         { name: '💡 Create new role: "mod"', value: 'mod' }
       ]);
     });
@@ -567,7 +567,7 @@ describe('DiscordService - Enhanced Tests', () => {
       await service.handleRoleAutocomplete(mockInteraction);
 
       expect(mockInteraction.respond).toHaveBeenCalledWith([
-        { name: 'poop', value: 'poop' }
+        { name: '@poop', value: 'poop' }
       ]);
     });
 
@@ -682,12 +682,45 @@ describe('DiscordService - Enhanced Tests', () => {
       await service.handleRoleAutocomplete(mockInteraction);
 
       const expectedChoices = [
-        ...roles.slice(0, 24).map(role => ({ name: role.name, value: role.name })),
+        ...roles.slice(0, 24).map(role => ({ name: `@${role.name}`, value: role.name })),
         { name: '💡 Create new role: "role"', value: 'role' }
       ];
 
       expect(mockInteraction.respond).toHaveBeenCalledWith(expectedChoices);
       expect(expectedChoices.length).toBe(25);
+    });
+
+    it('should display role colors when roles have colors and omit when roles are default color', async () => {
+      const coloredRole = { id: 'role1', name: 'VIP', position: 5, editable: true, color: 0x9932CC }; // Purple
+      const defaultColorRole = { id: 'role2', name: 'Member', position: 3, editable: true, color: 0 }; // Default/black
+
+      const mockGuild = {
+        members: { me: { roles: { highest: { position: 10 } } } },
+        roles: {
+          cache: {
+            filter: jest.fn().mockReturnThis(),
+            sort: jest.fn().mockReturnThis(),
+            first: jest.fn().mockReturnValue([coloredRole, defaultColorRole]),
+            find: jest.fn().mockReturnValue(undefined)
+          }
+        }
+      };
+
+      const mockInteraction = {
+        guild: mockGuild,
+        options: {
+          getFocused: jest.fn().mockReturnValue('test')
+        },
+        respond: jest.fn()
+      };
+
+      await service.handleRoleAutocomplete(mockInteraction);
+
+      expect(mockInteraction.respond).toHaveBeenCalledWith([
+        { name: '@VIP', value: 'VIP' },
+        { name: '@Member', value: 'Member' },
+        { name: '💡 Create new role: "test"', value: 'test' }
+      ]);
     });
   });
 
