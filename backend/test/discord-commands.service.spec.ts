@@ -114,7 +114,7 @@ describe('DiscordCommandsService', () => {
           expect.objectContaining({
             data: expect.objectContaining({
               title: '✅ Rule Added',
-              description: expect.stringContaining('Rule 1 for <#channel-id> and <@&role-id> added'),
+              description: expect.stringContaining('Rule 1 for <#channel-id> and <@&role-id> has been added'),
               fields: expect.arrayContaining([
                 expect.objectContaining({ name: 'Collection', value: 'test-collection' }),
                 expect.objectContaining({ name: 'Attribute', value: 'ALL' }),
@@ -355,7 +355,7 @@ describe('DiscordCommandsService', () => {
       // Check the embed
       expect(editReplyCall.embeds).toBeDefined();
       expect(editReplyCall.embeds[0].data.title).toBe('✅ Rule Added');
-      expect(editReplyCall.embeds[0].data.description).toContain('Rule 1 for <#channel-id> and <@&role-id> added');
+      expect(editReplyCall.embeds[0].data.description).toContain('Rule 1 for <#channel-id> and <@&role-id> has been added');
       
       // Check the components
       expect(editReplyCall.components).toBeDefined();
@@ -425,7 +425,7 @@ describe('DiscordCommandsService', () => {
       // Check the embed
       expect(editReplyCall.embeds).toBeDefined();
       expect(editReplyCall.embeds[0].data.title).toBe('✅ Rule Added');
-      expect(editReplyCall.embeds[0].data.description).toContain('Rule 1 for <#channel-id> and <@&role-id> added');
+      expect(editReplyCall.embeds[0].data.description).toContain('Rule 1 for <#channel-id> and <@&role-id> has been added');
       
       // Check specific field values
       const fields = editReplyCall.embeds[0].data.fields;
@@ -946,7 +946,7 @@ describe('DiscordCommandsService', () => {
         options: {
           getChannel: () => ({ id: 'channel-id', name: 'test-channel' }),
           getRole: () => ({ id: 'role-id', name: 'test-role' }),
-          getInteger: () => 1, // rule_id
+          getString: () => '1', // rule_id as string
         },
         reply: jest.fn(),
         deferReply: jest.fn(),
@@ -1007,7 +1007,7 @@ describe('DiscordCommandsService', () => {
         id: 'interaction-id',
         user: { id: 'user-id' },
         options: {
-          getInteger: () => 999, // rule_id that doesn't exist
+          getString: () => '999', // rule_id as string
         },
         reply: jest.fn(),
         deferReply: jest.fn(),
@@ -1021,7 +1021,7 @@ describe('DiscordCommandsService', () => {
       expect(mockDbService.getRoleMappings).toHaveBeenCalledWith('guild-id');
       expect(mockDbService.deleteRoleMapping).not.toHaveBeenCalled();
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        content: '❌ Rule not found.'
+        content: '❌ Rule 999 not found.'
       });
     });
   });
@@ -1388,23 +1388,27 @@ describe('DiscordCommandsService', () => {
       await (service as any).handleUndoRestore(mockButtonInteraction);
 
       expect(mockButtonInteraction.reply).toHaveBeenCalledWith({
-        content: '❌ Could not find the restored rule to undo.',
+        content: '❌ Undo session expired. Rule restoration cannot be undone.',
         ephemeral: true
       });
     });
-  });
 
-  describe('Role Name Handling with @ Prefix', () => {
-    it('should handle role names with @ prefix correctly for new role creation', async () => {
+    it('should cleanup newly created role when undoing rule creation if no other rules use it', async () => {
       const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
-      const mockCreatedRole = { id: 'new-role-id', name: 'NewRole', editable: true };
+      const mockCreatedRole = { 
+        id: 'new-role-id', 
+        name: 'NewRole', 
+        editable: true,
+        delete: jest.fn().mockResolvedValue(undefined)
+      };
       const mockGuild = {
         id: 'guild-id',
         name: 'test-guild',
         channels: { cache: new Map([['channel-id', mockChannel]]) },
         roles: {
           cache: {
-            find: jest.fn().mockReturnValue(undefined) // No existing role found
+            find: jest.fn().mockReturnValue(undefined), // No existing role found
+            get: jest.fn().mockReturnValue(mockCreatedRole) // Return created role for cleanup
           },
           create: jest.fn().mockResolvedValue(mockCreatedRole)
         },
@@ -1424,7 +1428,7 @@ describe('DiscordCommandsService', () => {
         options: {
           getChannel: () => mockChannel,
           getString: (name: string) => {
-            if (name === 'role') return '@NewRole'; // User enters role name with @ prefix
+            if (name === 'role') return 'NewRole';
             if (name === 'slug') return 'test-collection';
             return null;
           },
@@ -1436,41 +1440,75 @@ describe('DiscordCommandsService', () => {
         followUp: jest.fn(),
       } as any;
 
+      // Mock the undo interaction
+      const mockUndoInteraction = {
+        id: 'undo-interaction-456',
+        customId: 'undo_rule_interaction-123',
+        guild: mockGuild,
+        reply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
       mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
       mockDbService.checkForDuplicateRule.mockResolvedValue(null);
       mockDbService.checkForDuplicateRole.mockResolvedValue(null);
       mockDbService.getRulesByChannel.mockResolvedValue([]);
-      mockDbService.addRoleMapping.mockResolvedValue({ id: 1, slug: 'test-collection' });
+      mockDbService.addRoleMapping.mockResolvedValue({ id: 1, slug: 'test-collection', role_id: 'new-role-id' });
       mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
       mockDbService.updateRuleMessageId.mockResolvedValue({});
+      
+      // Mock for undo operation - first call returns the rule to be removed, second call returns empty (no other rules)
+      mockDbService.getRoleMappings
+        .mockResolvedValueOnce([{ id: 1, slug: 'test-collection', role_id: 'new-role-id' }])  // Rule lookup for removal
+        .mockResolvedValueOnce([]);  // No other rules using this role
+      mockDbService.deleteRoleMapping.mockResolvedValue(undefined);
 
+      // First create the rule (which creates the role)
       await service.handleAddRule(mockInteraction);
 
-      // Verify that the role was created with the cleaned name (without @)
+      // Verify role was created
       expect(mockGuild.roles.create).toHaveBeenCalledWith({
-        name: 'NewRole', // Should be cleaned of @ prefix
+        name: 'NewRole',
         color: 'Blue',
         position: 9,
         reason: 'Auto-created for verification rule by testuser#1234'
       });
 
-      // Verify followUp was called to notify about role creation
-      expect(mockInteraction.followUp).toHaveBeenCalledWith({
-        content: expect.stringContaining('Created new role: **NewRole**'),
-        ephemeral: true
-      });
+      // Now simulate undo action
+      const handleUndoRule = (service as any).handleUndoRule.bind(service);
+      await handleUndoRule(mockUndoInteraction);
+
+      // Verify rule was deleted
+      expect(mockDbService.deleteRoleMapping).toHaveBeenCalledWith('1', 'guild-id');
+      
+      // Verify role was also deleted since no other rules use it
+      expect(mockCreatedRole.delete).toHaveBeenCalledWith('Cleaning up unused role after rule undo');
     });
 
-    it('should handle role names with @ prefix correctly for existing role lookup', async () => {
+    it('should not cleanup newly created role when undoing if other rules are using it', async () => {
       const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
-      const mockExistingRole = { id: 'existing-role-id', name: 'ExistingRole', editable: true };
+      const mockCreatedRole = { 
+        id: 'new-role-id', 
+        name: 'NewRole', 
+        editable: true,
+        delete: jest.fn().mockResolvedValue(undefined)
+      };
       const mockGuild = {
         id: 'guild-id',
         name: 'test-guild',
         channels: { cache: new Map([['channel-id', mockChannel]]) },
         roles: {
           cache: {
-            find: jest.fn().mockReturnValue(mockExistingRole) // Existing role found
+            find: jest.fn().mockReturnValue(undefined), // No existing role found
+            get: jest.fn().mockReturnValue(mockCreatedRole) // Return created role for cleanup check
+          },
+          create: jest.fn().mockResolvedValue(mockCreatedRole)
+        },
+        members: {
+          me: {
+            roles: {
+              highest: { position: 10 }
+            }
           }
         }
       };
@@ -1482,7 +1520,7 @@ describe('DiscordCommandsService', () => {
         options: {
           getChannel: () => mockChannel,
           getString: (name: string) => {
-            if (name === 'role') return '@ExistingRole'; // User enters role name with @ prefix
+            if (name === 'role') return 'NewRole';
             if (name === 'slug') return 'test-collection';
             return null;
           },
@@ -1494,32 +1532,43 @@ describe('DiscordCommandsService', () => {
         followUp: jest.fn(),
       } as any;
 
+      // Mock the undo interaction
+      const mockUndoInteraction = {
+        id: 'undo-interaction-456',
+        customId: 'undo_rule_interaction-123',
+        guild: mockGuild,
+        reply: jest.fn(),
+        editReply: jest.fn(),
+      } as any;
+
       mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
       mockDbService.checkForDuplicateRule.mockResolvedValue(null);
       mockDbService.checkForDuplicateRole.mockResolvedValue(null);
       mockDbService.getRulesByChannel.mockResolvedValue([]);
-      mockDbService.addRoleMapping.mockResolvedValue({ id: 1, slug: 'test-collection' });
+      mockDbService.addRoleMapping.mockResolvedValue({ id: 1, slug: 'test-collection', role_id: 'new-role-id' });
       mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
       mockDbService.updateRuleMessageId.mockResolvedValue({});
+      
+      // Mock for undo operation - first call returns the rule to be removed, second call returns other rules still using role
+      mockDbService.getRoleMappings
+        .mockResolvedValueOnce([{ id: 1, slug: 'test-collection', role_id: 'new-role-id' }])  // Rule lookup for removal
+        .mockResolvedValueOnce([
+          { id: 2, role_id: 'new-role-id', slug: 'other-collection' }
+        ]);  // Another rule is still using this role
+      mockDbService.deleteRoleMapping.mockResolvedValue(undefined);
 
+      // First create the rule (which creates the role)
       await service.handleAddRule(mockInteraction);
 
-      // Verify that the existing role was found and used (despite @ prefix in input)
-      expect(mockDbService.addRoleMapping).toHaveBeenCalledWith(
-        'guild-id',
-        'test-guild',
-        'channel-id',
-        'test-channel',
-        'test-collection',
-        'existing-role-id',
-        'ExistingRole',  // Should use the actual role name
-        'ALL',
-        'ALL',
-        1
-      );
+      // Now simulate undo action
+      const handleUndoRule = (service as any).handleUndoRule.bind(service);
+      await handleUndoRule(mockUndoInteraction);
 
-      // Verify no followUp was called (no new role created)
-      expect(mockInteraction.followUp).not.toHaveBeenCalled();
+      // Verify rule was deleted
+      expect(mockDbService.deleteRoleMapping).toHaveBeenCalledWith('1', 'guild-id');
+      
+      // Verify role was NOT deleted since another rule is using it
+      expect(mockCreatedRole.delete).not.toHaveBeenCalled();
     });
   });
 });

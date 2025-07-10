@@ -66,13 +66,15 @@ export class DiscordCommandsService {
       const { channel, roleName, slug, attributeKey, attributeValue, minItems } = params;
 
       // Find or create the role
-      const role = await this.findOrCreateRole(interaction, roleName);
-      if (!role) {
+      const roleResult = await this.findOrCreateRole(interaction, roleName);
+      if (!roleResult) {
         return; // Error already handled in findOrCreateRole
       }
+      
+      const { role, wasNewlyCreated } = roleResult;
 
       // Check for duplicate rules
-      if (!(await this.checkForDuplicateRules(interaction, channel, role, slug, attributeKey, attributeValue, minItems))) {
+      if (!(await this.checkForDuplicateRules(interaction, channel, role, slug, attributeKey, attributeValue, minItems, wasNewlyCreated))) {
         return; // Duplicate found and handled
       }
 
@@ -83,7 +85,8 @@ export class DiscordCommandsService {
         slug,
         attributeKey,
         attributeValue,
-        minItems
+        minItems,
+        wasNewlyCreated
       });
 
     } catch (error) {
@@ -109,6 +112,7 @@ export class DiscordCommandsService {
       attributeKey: string;
       attributeValue: string;
       minItems: number;
+      wasNewlyCreated?: boolean;
     }
   ): Promise<void> {
     // Get the existing role name for display
@@ -240,10 +244,11 @@ export class DiscordCommandsService {
       attributeKey: string;
       attributeValue: string;
       minItems: number;
+      wasNewlyCreated?: boolean;
     },
     isDuplicateConfirmed: boolean = false
   ): Promise<void> {
-    const { channel, role, slug, attributeKey, attributeValue, minItems } = ruleData;
+    const { channel, role, slug, attributeKey, attributeValue, minItems, wasNewlyCreated = false } = ruleData;
 
     // Check for existing verification setup
     const existingRules = await this.dbSvc.getRulesByChannel(interaction.guild.id, channel.id);
@@ -314,7 +319,8 @@ export class DiscordCommandsService {
         slug,
         attributeKey,
         attributeValue,
-        minItems
+        minItems,
+        wasNewlyCreated
       };
       this.confirmationData.set(interaction.id, confirmationInfo);
 
@@ -330,7 +336,7 @@ export class DiscordCommandsService {
       this.setupConfirmationButtonHandler(interaction);
     } else {
       // Create new verification message
-      await this.createNewVerificationSetup(interaction, channel, role, slug, attributeKey, attributeValue, minItems, isDuplicateConfirmed, newRule);
+      await this.createNewVerificationSetup(interaction, channel, role, slug, attributeKey, attributeValue, minItems, isDuplicateConfirmed, newRule, wasNewlyCreated);
     }
   }
 
@@ -343,7 +349,8 @@ export class DiscordCommandsService {
     attributeValue: string,
     minItems: number,
     isDuplicateConfirmed: boolean = false,
-    newRule: any
+    newRule: any,
+    wasNewlyCreated: boolean = false
   ): Promise<void> {
     try {
       if (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement) {
@@ -400,7 +407,8 @@ export class DiscordCommandsService {
         slug,
         attributeKey,
         attributeValue,
-        minItems
+        minItems,
+        wasNewlyCreated
       };
       this.confirmationData.set(interaction.id, confirmationInfo);
 
@@ -424,36 +432,112 @@ export class DiscordCommandsService {
   }
 
   async handleRemoveRule(interaction: ChatInputCommandInteraction): Promise<void> {
-    const ruleId = interaction.options.getInteger('rule_id');
+    const ruleIdInput = interaction.options.getString('rule_id');
     
     // Defer the reply early to prevent timeout
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     
+    if (!ruleIdInput) {
+      await interaction.editReply({
+        content: AdminFeedback.simple('Rule ID is required.', true)
+      });
+      return;
+    }
+
     try {
-      // Get the rule data before deletion for undo functionality
-      const allRules = await this.dbSvc.getRoleMappings(interaction.guild.id);
-      const ruleToRemove = allRules.find(rule => rule.id === ruleId);
-      
-      if (!ruleToRemove) {
+      // Parse comma-separated rule IDs (handle both "1,2,3" and "1, 2, 3" formats)
+      const ruleIds = ruleIdInput
+        .split(',')
+        .map(id => id.trim())
+        .filter(id => id.length > 0)
+        .map(id => {
+          const parsed = parseInt(id, 10);
+          if (isNaN(parsed)) {
+            throw new Error(`"${id}" is not a valid rule ID`);
+          }
+          return parsed;
+        });
+
+      if (ruleIds.length === 0) {
         await interaction.editReply({
-          content: AdminFeedback.simple('Rule not found.', true)
+          content: AdminFeedback.simple('No valid rule IDs provided.', true)
         });
         return;
       }
 
-      // Delete the rule
-      await this.dbSvc.deleteRoleMapping(String(ruleId), interaction.guild.id);
+      // Get all rules for the server
+      const allRules = await this.dbSvc.getRoleMappings(interaction.guild.id);
       
-      // Use the universal rule removed message method
-      await this.sendRuleRemovedMessage(
-        interaction,
-        ruleId,
-        ruleToRemove,
-        { ephemeral: true, isReply: false }
-      );
-    } catch (err) {
+      // Find rules to remove and validate they exist
+      const rulesToRemove = [];
+      const notFoundIds = [];
+      
+      for (const ruleId of ruleIds) {
+        const ruleToRemove = allRules.find(rule => rule.id === ruleId);
+        if (ruleToRemove) {
+          rulesToRemove.push({ id: ruleId, data: ruleToRemove });
+        } else {
+          notFoundIds.push(ruleId);
+        }
+      }
+
+      // Handle not found rules
+      if (notFoundIds.length > 0) {
+        const notFoundMessage = notFoundIds.length === 1 
+          ? `Rule ${notFoundIds[0]} not found.`
+          : `Rules ${notFoundIds.join(', ')} not found.`;
+          
+        if (rulesToRemove.length === 0) {
+          // No valid rules to remove
+          await interaction.editReply({
+            content: AdminFeedback.simple(notFoundMessage, true)
+          });
+          return;
+        } else {
+          // Some valid rules, show warning but continue
+          await interaction.followUp({
+            content: AdminFeedback.simple(`⚠️ ${notFoundMessage}`, true),
+            ephemeral: true
+          });
+        }
+      }
+
+      // Delete rules from database
+      const deletionResults = [];
+      for (const { id, data } of rulesToRemove) {
+        try {
+          await this.dbSvc.deleteRoleMapping(String(id), interaction.guild.id);
+          deletionResults.push({ id, data, success: true });
+        } catch (error) {
+          deletionResults.push({ id, data, success: false, error: error.message });
+        }
+      }
+
+      // Handle results
+      const successful = deletionResults.filter(r => r.success);
+      const failed = deletionResults.filter(r => !r.success);
+
+      if (successful.length === 1 && failed.length === 0) {
+        // Single successful removal - use existing single rule method
+        await this.sendRuleRemovedMessage(
+          interaction,
+          successful[0].id,
+          successful[0].data,
+          { ephemeral: true, isReply: false }
+        );
+      } else {
+        // Multiple rules or mixed results - use new bulk method
+        await this.sendBulkRuleRemovedMessage(
+          interaction,
+          successful,
+          failed,
+          { ephemeral: true, isReply: false }
+        );
+      }
+
+    } catch (error) {
       await interaction.editReply({
-        content: AdminFeedback.simple(`Error: ${err.message}`, true)
+        content: AdminFeedback.simple(`Error: ${error.message}`, true)
       });
     }
   }
@@ -464,14 +548,14 @@ export class DiscordCommandsService {
     
     // Get all verification rules for the server (unified system handles all rule types)
     const allRules = await this.dbSvc.getRoleMappings(interaction.guild.id);
-    const rules = allRules.filter(rule => 
-      rule.server_id !== '000000000000000000'
-    );
+    const rules = allRules
+      .filter(rule => rule.server_id !== '000000000000000000')
+      .sort((a, b) => a.id - b.id); // Sort by Rule ID in ascending order
     
     let desc = rules.length
       ? rules.map(r =>
           `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attribute_key && r.attribute_key !== 'ALL' ? (r.attribute_value && r.attribute_value !== 'ALL' ? `${r.attribute_key}=${r.attribute_value}` : `${r.attribute_key} (any value)`) : (r.attribute_value && r.attribute_value !== 'ALL' ? `ALL=${r.attribute_value}` : 'ALL')} | Min: ${r.min_items || 1}`
-        ).join('\n')
+        ).join('\n\n')
       : 'No verification rules found.';
     
     await interaction.editReply({
@@ -594,7 +678,8 @@ export class DiscordCommandsService {
     slug: string,
     attributeKey: string,
     attributeValue: string,
-    minItems: number
+    minItems: number,
+    wasNewlyCreated: boolean = false
   ): Promise<boolean> {
     // Check for exact duplicate rules first (same role + same criteria)
     const exactDuplicate = await this.dbSvc.checkForExactDuplicateRule(
@@ -649,7 +734,8 @@ export class DiscordCommandsService {
           slug,
           attributeKey,
           attributeValue,
-          minItems
+          minItems,
+          wasNewlyCreated
         }
       );
       return false;
@@ -693,7 +779,7 @@ export class DiscordCommandsService {
   private async findOrCreateRole(
     interaction: ChatInputCommandInteraction, 
     roleName: string
-  ): Promise<Role | null> {
+  ): Promise<{ role: Role; wasNewlyCreated: boolean } | null> {
     // Strip @ prefix if present (users can enter @RoleName or RoleName)
     const cleanRoleName = roleName.startsWith('@') ? roleName.slice(1) : roleName;
     
@@ -719,7 +805,7 @@ export class DiscordCommandsService {
         return null;
       }
       // Role exists and is manageable - we'll use it
-      return role;
+      return { role, wasNewlyCreated: false };
     }
 
     // If role doesn't exist, create it
@@ -763,7 +849,7 @@ export class DiscordCommandsService {
         ephemeral: true
       });
 
-      return role;
+      return { role, wasNewlyCreated: true };
     } catch (error) {
       await interaction.editReply({
         embeds: [AdminFeedback.error(
@@ -819,6 +905,158 @@ export class DiscordCommandsService {
   }
 
   /**
+   * Sends "Multiple Rules Removed" message with Undo button for bulk operations
+   * This ensures bulk rule removal scenarios have consistent Undo functionality
+   */
+  private async sendBulkRuleRemovedMessage(
+    interaction: any,
+    successful: Array<{ id: number; data: any; success: true }>,
+    failed: Array<{ id: number; data: any; success: false; error: string }>,
+    options: {
+      ephemeral?: boolean;
+      isReply?: boolean;
+    } = {}
+  ): Promise<void> {
+    const { ephemeral = true, isReply = true } = options;
+    
+    // Store the removed rules data for undo functionality (only successful ones)
+    if (successful.length > 0) {
+      const bulkRemovedData = {
+        rules: successful.map(s => s.data),
+        isBulk: true
+      };
+      this.removedRules.set(interaction.id, bulkRemovedData);
+    }
+
+    // Create success message
+    let description = '';
+    if (successful.length > 0) {
+      const ruleList = successful.map(s => `Rule ${s.id}`).join(', ');
+      description += `✅ **Successfully removed:** ${ruleList}\n\n`;
+      
+      // Add rule details
+      successful.forEach(s => {
+        description += `**Rule ${s.id}:** ${s.data.channel_name} → @${s.data.role_name}\n`;
+      });
+    }
+
+    if (failed.length > 0) {
+      description += '\n❌ **Failed to remove:**\n';
+      failed.forEach(f => {
+        description += `Rule ${f.id}: ${f.error}\n`;
+      });
+    }
+
+    const embed = AdminFeedback.success(
+      successful.length === 1 ? 'Rule Removed' : `${successful.length} Rules Removed`, 
+      description.trim()
+    );
+
+    const components = [];
+    if (successful.length > 0) {
+      // Create Undo button for successful removals
+      const undoButton = this.createUndoRemovalButton(interaction.id, 'removal');
+      components.push(undoButton);
+    }
+
+    const messageContent = {
+      embeds: [embed],
+      components,
+      ...(ephemeral && { ephemeral: true })
+    };
+
+    if (isReply) {
+      await interaction.reply(messageContent);
+    } else {
+      await interaction.editReply(messageContent);
+    }
+
+    // Set up button interaction handler for undo removal (only if there are successful removals)
+    if (successful.length > 0) {
+      this.setupRemovalButtonHandler(interaction);
+    }
+  }
+
+  /**
+   * Sends feedback message for bulk rule restoration (undo removal)
+   */
+  private async sendBulkRuleRestoredMessage(
+    interaction: any,
+    restorationResults: Array<{
+      success: boolean;
+      rule?: any;
+      ruleId?: number;
+      error?: string;
+      originalData?: any;
+    }>
+  ): Promise<void> {
+    const successful = restorationResults.filter(r => r.success);
+    const failed = restorationResults.filter(r => !r.success);
+    
+    // Store the restored rules data for potential undo functionality
+    if (successful.length > 0) {
+      const bulkRestoredData = {
+        rules: successful.map(s => s.rule || s.originalData),
+        isBulk: true
+      };
+      // Store in restoredRules for undo consistency, not confirmationData
+      this.restoredRules.set(interaction.id, bulkRestoredData);
+    }
+
+    // Create success message
+    let description = '';
+    if (successful.length > 0) {
+      const ruleList = successful.map(s => `Rule ${s.rule?.id || s.ruleId}`).join(', ');
+      description += `✅ **Successfully restored:** ${ruleList}\n\n`;
+      
+      // Add rule details
+      successful.forEach(s => {
+        const rule = s.rule || s.originalData;
+        description += `**Rule ${rule.id}:** ${rule.channel_name} → @${rule.role_name}\n`;
+      });
+    }
+
+    if (failed.length > 0) {
+      description += '\n❌ **Failed to restore:**\n';
+      failed.forEach(f => {
+        description += `Rule ${f.ruleId}: ${f.error}\n`;
+      });
+    }
+
+    const embed = AdminFeedback.success(
+      successful.length === 1 ? 'Rule Restored' : `${successful.length} Rules Restored`, 
+      description.trim()
+    );
+
+    const components = [];
+    if (successful.length > 0) {
+      // Create Undo button for successful restorations (to remove them again)
+      const undoButton = new ActionRowBuilder<ButtonBuilder>()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId(`undo_restore_${interaction.id}`)
+            .setLabel('Undo')
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji('↩️')
+        );
+      components.push(undoButton);
+    }
+
+    const messageContent = {
+      embeds: [embed],
+      components,
+      ephemeral: true
+    };
+
+    await interaction.reply(messageContent);
+
+    // Set up button interaction handler for undo (only if there are successful restorations)
+    if (successful.length > 0) {
+      this.setupRestoreButtonHandler(interaction);
+    }
+  }
+
+  /**
    * Creates Undo action button for rule removal/cancellation messages
    */
   private createUndoRemovalButton(interactionId: string, type: 'removal' | 'cancellation') {
@@ -867,13 +1105,44 @@ export class DiscordCommandsService {
   }
 
   /**
-   * Handles Undo button interaction for rule removal - recreates the removed rule
+   * Sets up button interaction handler for removal undo messages with extended timeout
+   * Used in undo chains where sessions need to last longer
+   */
+  private setupRemovalButtonHandlerWithExtendedTimeout(interaction: ChatInputCommandInteraction | ButtonInteraction): void {
+    const filter = (i: any) => 
+      i.customId.startsWith('undo_removal_') && 
+      i.customId.endsWith(`_${interaction.id}`) && 
+      i.user.id === interaction.user.id;
+    
+    const collector = interaction.channel?.createMessageComponentCollector({ 
+      filter, 
+      time: 600000, // 10 minutes (extended timeout for undo chains)
+      componentType: ComponentType.Button
+    });
+
+    collector?.on('collect', async (i) => {
+      if (i.customId.startsWith('undo_removal_')) {
+        await this.handleUndoRemoval(i);
+      }
+      collector.stop();
+    });
+
+    collector?.on('end', (collected) => {
+      if (collected.size === 0) {
+        // Timeout - clean up removal data
+        this.removedRules.delete(interaction.id);
+      }
+    });
+  }
+
+  /**
+   * Handles Undo button interaction for rule removal - recreates the removed rule(s)
    */
   private async handleUndoRemoval(interaction: any): Promise<void> {
     const interactionId = interaction.customId.replace('undo_removal_', '');
-    const removedRule = this.removedRules.get(interactionId);
+    const removedRuleData = this.removedRules.get(interactionId);
     
-    if (!removedRule) {
+    if (!removedRuleData) {
       await interaction.reply({
         content: AdminFeedback.simple('Undo session expired. Rule removal cannot be undone.', true),
         ephemeral: true
@@ -882,44 +1151,162 @@ export class DiscordCommandsService {
     }
 
     try {
-      // Recreate the rule in the database with original ID
-      const recreatedRule = await this.dbSvc.restoreRuleWithOriginalId(removedRule);
-      
-      // Store the restored rule for potential undo
-      this.restoredRules.set(interaction.id, recreatedRule);
-      
-      // Create detailed rule info fields
-      const ruleInfoFields = this.createRuleInfoFields(recreatedRule);
-      const embed = AdminFeedback.success('Rule Restored', `Rule ${recreatedRule.id} for ${recreatedRule.channel_name} and @${recreatedRule.role_name} has been restored.`);
-      embed.addFields(ruleInfoFields);
-      
-      await interaction.reply({
-        embeds: [embed],
-        components: [
-          new ActionRowBuilder<ButtonBuilder>()
-            .addComponents(
-              new ButtonBuilder()
-                .setCustomId(`undo_restore_${interaction.id}`)
-                .setLabel('Undo')
-                .setStyle(ButtonStyle.Secondary)
-                .setEmoji('↩️')
-            )
-        ],
-        ephemeral: true
-      });
-
-      // Set up button handler for potential undo of restoration
-      this.setupRestoreButtonHandler(interaction);
+      // Check if this is a bulk operation
+      if (removedRuleData.isBulk && removedRuleData.rules) {
+        await this.handleBulkUndoRemoval(interaction, removedRuleData.rules);
+      } else {
+        // Single rule removal (existing logic)
+        await this.handleSingleUndoRemoval(interaction, removedRuleData);
+      }
 
       // Clean up the removal data
       this.removedRules.delete(interactionId);
     } catch (error) {
       Logger.error('Error undoing rule removal:', error);
       await interaction.reply({
-        content: AdminFeedback.simple(`Error restoring rule: ${error.message}`, true),
+        content: AdminFeedback.simple(`Error restoring rule(s): ${error.message}`, true),
         ephemeral: true
       });
     }
+  }
+
+  /**
+   * Handles bulk undo removal for multiple rules
+   */
+  private async handleBulkUndoRemoval(interaction: any, removedRules: any[]): Promise<void> {
+    const restorationResults = [];
+    
+    for (const removedRule of removedRules) {
+      try {
+        // Handle role recreation if needed
+        let roleToUse = null;
+        if (removedRule.wasNewlyCreated) {
+          const existingRole = interaction.guild.roles.cache.get(removedRule.role_id);
+          if (!existingRole) {
+            // Recreate role
+            const botMember = interaction.guild.members.me;
+            let position = undefined;
+            if (botMember) {
+              const botHighestPosition = botMember.roles.highest.position;
+              position = Math.max(1, botHighestPosition - 1);
+            }
+
+            roleToUse = await interaction.guild.roles.create({
+              name: removedRule.role_name,
+              color: 'Blue',
+              position: position,
+              reason: `Recreated for bulk rule restoration by ${interaction.user.tag}`
+            });
+            
+            Logger.log(`Recreated role for bulk rule restoration: ${roleToUse.name} (${roleToUse.id})`);
+            removedRule.role_id = roleToUse.id;
+          }
+        }
+        
+        // Recreate the rule
+        const recreatedRule = await this.dbSvc.restoreRuleWithOriginalId(removedRule);
+        restorationResults.push({ 
+          success: true, 
+          rule: recreatedRule, 
+          originalData: { ...removedRule, wasNewlyCreated: removedRule.wasNewlyCreated } 
+        });
+      } catch (error) {
+        restorationResults.push({ 
+          success: false, 
+          ruleId: removedRule.id, 
+          error: error.message,
+          originalData: removedRule
+        });
+      }
+    }
+
+    // Send bulk restoration message
+    await this.sendBulkRuleRestoredMessage(interaction, restorationResults);
+  }
+
+  /**
+   * Handles single undo removal (existing logic)
+   */
+  private async handleSingleUndoRemoval(interaction: any, removedRule: any): Promise<void> {
+    let roleToUse = null;
+    
+    // If this rule had a newly created role, we need to recreate it first
+    if (removedRule.wasNewlyCreated) {
+      try {
+        // Check if the role still exists (might have been recreated by another process)
+        const existingRole = interaction.guild.roles.cache.get(removedRule.role_id);
+        
+        if (!existingRole) {
+          // Role doesn't exist, recreate it
+          // Get bot member to determine role position
+          const botMember = interaction.guild.members.me;
+          let position = undefined;
+          
+          if (botMember) {
+            // Create role below bot's highest role
+            const botHighestPosition = botMember.roles.highest.position;
+            position = Math.max(1, botHighestPosition - 1);
+          }
+
+          roleToUse = await interaction.guild.roles.create({
+            name: removedRule.role_name,
+            color: 'Blue', // Default color (could be enhanced to store original color)
+            position: position,
+            reason: `Recreated for rule restoration by ${interaction.user.tag}`
+          });
+          
+          Logger.log(`Recreated role for rule restoration: ${roleToUse.name} (${roleToUse.id})`);
+          
+          // Update the removed rule data with the new role ID
+          removedRule.role_id = roleToUse.id;
+        } else {
+          // Role exists, use it
+          roleToUse = existingRole;
+          Logger.log(`Using existing role for rule restoration: ${existingRole.name} (${existingRole.id})`);
+        }
+      } catch (roleError) {
+        Logger.error('Error recreating role for rule restoration:', roleError);
+        // Continue with rule restoration even if role recreation fails
+        // The role ID in the rule will still reference the original (now non-existent) role
+      }
+    }
+    
+    // Recreate the rule in the database with original ID
+    const recreatedRule = await this.dbSvc.restoreRuleWithOriginalId(removedRule);
+    
+    // Store the restored rule for potential undo (preserve the wasNewlyCreated flag)
+    const restoredRuleWithMetadata = {
+      ...recreatedRule,
+      wasNewlyCreated: removedRule.wasNewlyCreated
+    };
+    this.restoredRules.set(interaction.id, restoredRuleWithMetadata);
+    
+    // Create detailed rule info fields
+    const ruleInfoFields = this.createRuleInfoFields(recreatedRule);
+    const embedDescription = removedRule.wasNewlyCreated && roleToUse
+      ? `Rule ${recreatedRule.id} for ${recreatedRule.channel_name} and @${recreatedRule.role_name} has been restored${!interaction.guild.roles.cache.has(removedRule.role_id) ? ' and the role has been recreated' : ''}.`
+      : `Rule ${recreatedRule.id} for ${recreatedRule.channel_name} and @${recreatedRule.role_name} has been restored.`;
+    
+    const embed = AdminFeedback.success('Rule Restored', embedDescription);
+    embed.addFields(ruleInfoFields);
+    
+    await interaction.reply({
+      embeds: [embed],
+      components: [
+        new ActionRowBuilder<ButtonBuilder>()
+          .addComponents(
+            new ButtonBuilder()
+              .setCustomId(`undo_restore_${interaction.id}`)
+              .setLabel('Undo')
+              .setStyle(ButtonStyle.Secondary)
+              .setEmoji('↩️')
+          )
+      ],
+      ephemeral: true
+    });
+
+    // Set up button handler for potential undo of restoration
+    this.setupRestoreButtonHandler(interaction);
   }
 
   /**
@@ -953,59 +1340,144 @@ export class DiscordCommandsService {
   }
 
   /**
-   * Handles Undo button interaction for rule restoration - removes the restored rule
+   * Handles Undo button interaction for rule restoration - removes the restored rule(s)
    */
   private async handleUndoRestore(interaction: ButtonInteraction): Promise<void> {
     const interactionId = interaction.customId.replace('undo_restore_', '');
-    const restoredRule = this.restoredRules.get(interactionId);
+    const restoredRuleData = this.restoredRules.get(interactionId);
 
-    if (!restoredRule) {
+    if (!restoredRuleData) {
       await interaction.reply({
-        content: AdminFeedback.simple('Could not find the restored rule to undo.', true),
+        content: AdminFeedback.simple('Undo session expired. Rule restoration cannot be undone.', true),
         ephemeral: true
       });
       return;
     }
 
     try {
-      // Remove the rule that was restored
-      await this.dbSvc.deleteRoleMapping(String(restoredRule.id), restoredRule.server_id);
-      
-      // Store the removed rule for potential undo (restore again)
-      this.removedRules.set(interaction.id, restoredRule);
-      
-      // Create detailed rule info fields
-      const ruleInfoFields = this.createRuleInfoFields(restoredRule);
-      const embed = AdminFeedback.success('Rule Removed', `Rule ${restoredRule.id} for ${restoredRule.channel_name} and @${restoredRule.role_name} has been removed.`);
-      embed.addFields(ruleInfoFields);
-      
-      await interaction.reply({
-        embeds: [embed],
-        components: [
-          new ActionRowBuilder<ButtonBuilder>()
-            .addComponents(
-              new ButtonBuilder()
-                .setCustomId(`undo_removal_${interaction.id}`)
-                .setLabel('Undo')
-                .setStyle(ButtonStyle.Secondary)
-                .setEmoji('↩️')
-            )
-        ],
-        ephemeral: true
-      });
-
-      // Set up button handler for potential undo of removal
-      this.setupRemovalButtonHandler(interaction);
+      // Check if this is a bulk operation
+      if (restoredRuleData.isBulk && restoredRuleData.rules) {
+        await this.handleBulkUndoRestore(interaction, restoredRuleData.rules);
+      } else {
+        // Single rule restoration (existing logic)
+        await this.handleSingleUndoRestore(interaction, restoredRuleData, interactionId);
+      }
 
       // Clean up the restore data
       this.restoredRules.delete(interactionId);
     } catch (error) {
       Logger.error('Error undoing rule restoration:', error);
       await interaction.reply({
-        content: AdminFeedback.simple(`Error removing rule: ${error.message}`, true),
+        content: AdminFeedback.simple(`Error removing rule(s): ${error.message}`, true),
         ephemeral: true
       });
     }
+  }
+
+  /**
+   * Handles bulk undo restore for multiple rules
+   */
+  private async handleBulkUndoRestore(interaction: any, restoredRules: any[]): Promise<void> {
+    const removalResults = [];
+    
+    for (const restoredRule of restoredRules) {
+      try {
+        // Remove the rule that was restored
+        await this.dbSvc.deleteRoleMapping(String(restoredRule.id), restoredRule.server_id);
+        
+        // If this rule was restored with a newly created role, try to clean it up
+        if (restoredRule.wasNewlyCreated) {
+          await this.cleanupNewlyCreatedRole(interaction, restoredRule.role_id, restoredRule.server_id);
+        }
+        
+        removalResults.push({ 
+          success: true, 
+          rule: restoredRule
+        });
+      } catch (error) {
+        removalResults.push({ 
+          success: false, 
+          ruleId: restoredRule.id, 
+          error: error.message,
+          rule: restoredRule
+        });
+      }
+    }
+
+    // Store the removed rules for potential undo (restore again)
+    const successful = removalResults.filter(r => r.success);
+    if (successful.length > 0) {
+      const bulkRemovedData = {
+        rules: successful.map(s => ({ ...s.rule, wasNewlyCreated: s.rule.wasNewlyCreated })),
+        isBulk: true
+      };
+      this.removedRules.set(interaction.id, bulkRemovedData);
+    }
+
+    // Send bulk removal message
+    await this.sendBulkRuleRemovedMessage(
+      interaction,
+      successful.map(s => ({ id: s.rule.id, data: s.rule, success: true })),
+      removalResults.filter(r => !r.success).map(f => ({ id: f.ruleId, data: f.rule, success: false, error: f.error })),
+      { ephemeral: true, isReply: true }
+    );
+  }
+
+  /**
+   * Handles single undo restore (existing logic)
+   */
+  private async handleSingleUndoRestore(interaction: any, restoredRule: any, interactionId: string): Promise<void> {
+    // Remove the rule that was restored
+    await this.dbSvc.deleteRoleMapping(String(restoredRule.id), restoredRule.server_id);
+    
+    // If this rule was restored with a newly created role, try to clean it up
+    if (restoredRule.wasNewlyCreated) {
+      await this.cleanupNewlyCreatedRole(interaction, restoredRule.role_id, restoredRule.server_id);
+    }
+    
+    // Store the removed rule for potential undo (restore again), preserving metadata
+    // Check if this came from a bulk operation by looking at the confirmation data
+    const confirmationInfo = this.confirmationData.get(interactionId);
+    const wasBulkOperation = confirmationInfo && confirmationInfo.isBulk;
+    
+    if (wasBulkOperation) {
+      // Preserve bulk structure - convert single rule back to bulk format
+      const bulkRemovedData = {
+        rules: [{ ...restoredRule, wasNewlyCreated: restoredRule.wasNewlyCreated }],
+        isBulk: true
+      };
+      this.removedRules.set(interaction.id, bulkRemovedData);
+    } else {
+      // Single rule operation
+      const removedRuleWithMetadata = {
+        ...restoredRule,
+        wasNewlyCreated: restoredRule.wasNewlyCreated
+      };
+      this.removedRules.set(interaction.id, removedRuleWithMetadata);
+    }
+    
+    // Create detailed rule info fields
+    const ruleInfoFields = this.createRuleInfoFields(restoredRule);
+    const embed = AdminFeedback.success('Rule Removed', `Rule ${restoredRule.id} for ${restoredRule.channel_name} and @${restoredRule.role_name} has been removed.`);
+    embed.addFields(ruleInfoFields);
+    
+    await interaction.reply({
+      embeds: [embed],
+      components: [
+        new ActionRowBuilder<ButtonBuilder>()
+          .addComponents(
+            new ButtonBuilder()
+              .setCustomId(`undo_removal_${interaction.id}`)
+              .setLabel('Undo')
+              .setStyle(ButtonStyle.Secondary)
+              .setEmoji('↩️')
+          )
+      ],
+      ephemeral: true
+    });
+
+    // Set up button handler for potential undo of removal with extended timeout
+    this.setupRemovalButtonHandlerWithExtendedTimeout(interaction);
   }
 
   /**
@@ -1077,12 +1549,21 @@ export class DiscordCommandsService {
       const ruleToRemove = allRules?.find(rule => rule.id === confirmationInfo.ruleId);
       
       if (ruleToRemove) {
-        // Store for potential undo of this removal
-        this.removedRules.set(interaction.id, ruleToRemove);
+        // Store for potential undo of this removal, including wasNewlyCreated flag
+        const removedRuleWithMetadata = {
+          ...ruleToRemove,
+          wasNewlyCreated: confirmationInfo.wasNewlyCreated
+        };
+        this.removedRules.set(interaction.id, removedRuleWithMetadata);
       }
 
       // Delete the rule from the database
       await this.dbSvc.deleteRoleMapping(confirmationInfo.ruleId.toString(), confirmationInfo.serverId);
+      
+      // If this rule involved creating a new role, try to clean it up
+      if (confirmationInfo.wasNewlyCreated && ruleToRemove) {
+        await this.cleanupNewlyCreatedRole(interaction, ruleToRemove.role_id, confirmationInfo.serverId);
+      }
       
       // Use the universal rule removed message method
       await this.sendRuleRemovedMessage(
@@ -1139,8 +1620,17 @@ export class DiscordCommandsService {
         serverId: interaction.guild.id
       });
       
-      // Create detailed rule info fields
-      const ruleInfoFields = this.createRuleInfoFields(createdRule);
+      // Create detailed rule info fields for the cancelled rule
+      const cancelledRuleFormatted = {
+        role_id: cancelledRule.role.id,
+        role_name: cancelledRule.role.name,
+        channel_name: cancelledRule.channel.name,
+        slug: cancelledRule.slug,
+        attribute_key: cancelledRule.attributeKey,
+        attribute_value: cancelledRule.attributeValue,
+        min_items: cancelledRule.minItems
+      };
+      const ruleInfoFields = this.createRuleInfoFields(cancelledRuleFormatted);
       const embed = AdminFeedback.success('Rule Added', `Rule ${createdRule.id} for ${cancelledRule.channel.name} and @${cancelledRule.role.name} has been added using existing verification message.`);
       embed.addFields(ruleInfoFields);
       
@@ -1327,5 +1817,29 @@ export class DiscordCommandsService {
         }).catch(() => {}); // Ignore errors if interaction is no longer valid
       }
     });
+  }
+
+  /**
+   * Attempts to clean up a newly created role if it's no longer being used
+   * Only deletes the role if no other rules are using it
+   */
+  private async cleanupNewlyCreatedRole(interaction: any, roleId: string, serverId: string): Promise<void> {
+    try {
+      // Check if any other rules are using this role
+      const allRules = await this.dbSvc.getRoleMappings(serverId);
+      const rulesUsingRole = allRules?.filter(rule => rule.role_id === roleId) || [];
+      
+      // If no other rules use this role, delete it
+      if (rulesUsingRole.length === 0) {
+        const role = interaction.guild.roles.cache.get(roleId);
+        if (role && role.editable) {
+          await role.delete('Cleaning up unused role after rule undo');
+          Logger.log(`Cleaned up newly created role: ${role.name} (${roleId})`);
+        }
+      }
+    } catch (error) {
+      // Don't fail the undo operation if role cleanup fails
+      Logger.warn(`Failed to cleanup role ${roleId}:`, error);
+    }
   }
 }
