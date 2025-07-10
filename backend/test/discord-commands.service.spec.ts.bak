@@ -3,8 +3,13 @@ import { DiscordCommandsService } from '../src/services/discord-commands.service
 import { DiscordMessageService } from '../src/services/discord-message.service';
 import { DbService } from '../src/services/db.service';
 import { DiscordService } from '../src/services/discord.service';
+import { AddRuleHandler } from '../src/services/discord-commands/handlers/add-rule.handler';
 import { MessageFlags, ChannelType } from 'discord.js';
 import { Logger } from '@nestjs/common';
+
+const mockAddRuleHandler = {
+  handle: jest.fn(),
+};
 
 const mockDbService = {
   addRoleMapping: jest.fn(),
@@ -40,6 +45,7 @@ describe('DiscordCommandsService', () => {
         { provide: DbService, useValue: mockDbService },
         { provide: DiscordMessageService, useValue: mockDiscordMessageService },
         { provide: DiscordService, useValue: mockDiscordService },
+        { provide: AddRuleHandler, useValue: mockAddRuleHandler },
       ],
     }).compile();
 
@@ -48,70 +54,22 @@ describe('DiscordCommandsService', () => {
   });
 
   describe('handleAddRule', () => {
-    it('should create new rule successfully', async () => {
-      const mockChannel = { id: 'channel-id', name: 'test-channel', type: ChannelType.GuildText };
-      const mockRole = { id: 'role-id', name: 'Test Role', editable: true };
+    it('should delegate to AddRuleHandler', async () => {
       const mockInteraction = {
         id: 'interaction-123',
-        guild: {
-          id: 'guild-id',
-          name: 'test-guild',
-          channels: { cache: new Map([['channel-id', mockChannel]]) },
-          roles: {
-            cache: {
-              find: jest.fn().mockReturnValue(mockRole)
-            }
-          }
-        },
+        guild: { id: 'guild-id', name: 'test-guild' },
         user: { tag: 'test-user#1234' },
-        channel: {
-          createMessageComponentCollector: jest.fn(() => ({
-            on: jest.fn(),
-            stop: jest.fn(),
-          }))
-        },
-        options: {
-          getChannel: () => mockChannel,
-          getString: (key: string) => {
-            if (key === 'role') return 'Test Role';
-            if (key === 'slug') return 'test-collection';
-            if (key === 'attribute_key') return null;
-            if (key === 'attribute_value') return null;
-            return null;
-          },
-          getInteger: () => null,
-        },
-        reply: jest.fn(),
+        options: { getChannel: jest.fn(), getString: jest.fn(), getInteger: jest.fn() },
         deferReply: jest.fn(),
         editReply: jest.fn(),
-        followUp: jest.fn(),
       } as any;
 
-      mockDbService.checkForExactDuplicateRule.mockResolvedValue(null); // No exact duplicate
-      mockDbService.checkForDuplicateRule.mockResolvedValue(null); // No duplicate rule
-      mockDbService.checkForDuplicateRole.mockResolvedValue(null); // No duplicate role
-      mockDbService.getRulesByChannel.mockResolvedValue([]); // No existing rules
-      mockDbService.addRoleMapping.mockResolvedValue({ id: 1, slug: 'test-collection' }); // Returns new rule object
-      mockDiscordMessageService.createVerificationMessage.mockResolvedValue('message-id');
-      mockDbService.updateRuleMessageId.mockResolvedValue({});
+      mockAddRuleHandler.handle.mockResolvedValue(undefined);
 
       await service.handleAddRule(mockInteraction);
 
-      expect(mockDbService.addRoleMapping).toHaveBeenCalledWith(
-        'guild-id',
-        'test-guild',
-        'channel-id',
-        'test-channel',
-        'test-collection',
-        'role-id',
-        'Test Role',  // role_name
-        'ALL', // Now defaults to 'ALL' when null
-        'ALL', // Now defaults to 'ALL' when null
-        1  // min_items now defaults to 1 instead of null
-      );
-      expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: [
-          expect.objectContaining({
+      expect(mockAddRuleHandler.handle).toHaveBeenCalledWith(mockInteraction);
+    });
             data: expect.objectContaining({
               title: '✅ Rule Added',
               description: expect.stringContaining('Rule 1 for <#channel-id> and <@&role-id> has been added'),

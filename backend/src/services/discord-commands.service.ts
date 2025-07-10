@@ -5,6 +5,14 @@ import { DiscordMessageService } from './discord-message.service';
 import { DiscordService } from './discord.service';
 import { VerificationRule } from '@/models/verification-rule.interface';
 import { AdminFeedback } from './utils/admin-feedback.util';
+import { AddRuleHandler } from './discord-commands/handlers/add-rule.handler';
+import { RemoveRuleHandler } from './discord-commands/handlers/remove-rule.handler';
+import { ListRulesHandler } from './discord-commands/handlers/list-rules.handler';
+import { RecoverVerificationHandler } from './discord-commands/handlers/recover-verification.handler';
+import { RemovalUndoInteractionHandler } from './discord-commands/interactions/removal-undo.interaction';
+import { RestoreUndoInteractionHandler } from './discord-commands/interactions/restore-undo.interaction';
+import { RuleConfirmationInteractionHandler } from './discord-commands/interactions/rule-confirmation.interaction';
+import { DuplicateRuleConfirmationInteractionHandler } from './discord-commands/interactions/duplicate-rule-confirmation.interaction';
 
 /**
  * DiscordCommandsService
@@ -27,14 +35,8 @@ import { AdminFeedback } from './utils/admin-feedback.util';
  */
 @Injectable()
 export class DiscordCommandsService {
-  // Store pending rules for confirmation flow
-  private pendingRules: Map<string, any> = new Map();
-  // Store confirmation data for Edit and Undo functionality
-  private confirmationData: Map<string, any> = new Map();
   // Store removed rule data for undo functionality
   private removedRules: Map<string, any> = new Map();
-  // Store cancelled rule data for undo functionality
-  private cancelledRules: Map<string, any> = new Map();
   // Store restored rule data for undo functionality
   private restoredRules: Map<string, any> = new Map();
 
@@ -50,56 +52,20 @@ export class DiscordCommandsService {
     private readonly dbSvc: DbService,
     private readonly messageSvc: DiscordMessageService,
     @Inject(forwardRef(() => DiscordService))
-    private readonly discordSvc: DiscordService
+    private readonly discordSvc: DiscordService,
+    private readonly addRuleHandler: AddRuleHandler,
+    private readonly removeRuleHandler: RemoveRuleHandler,
+    private readonly listRulesHandler: ListRulesHandler,
+    private readonly recoverVerificationHandler: RecoverVerificationHandler,
+    private readonly removalUndoHandler: RemovalUndoInteractionHandler,
+    private readonly restoreUndoHandler: RestoreUndoInteractionHandler,
+    private readonly ruleConfirmationHandler: RuleConfirmationInteractionHandler,
+    private readonly duplicateRuleConfirmationHandler: DuplicateRuleConfirmationInteractionHandler
   ) {}
 
   async handleAddRule(interaction: ChatInputCommandInteraction): Promise<void> {
-    try {
-      await interaction.deferReply({ ephemeral: true });
-
-      // Validate input parameters
-      const params = await this.validateInputParams(interaction);
-      if (!params) {
-        return; // Error already handled
-      }
-
-      const { channel, roleName, slug, attributeKey, attributeValue, minItems } = params;
-
-      // Find or create the role
-      const roleResult = await this.findOrCreateRole(interaction, roleName);
-      if (!roleResult) {
-        return; // Error already handled in findOrCreateRole
-      }
-      
-      const { role, wasNewlyCreated } = roleResult;
-
-      // Check for duplicate rules
-      if (!(await this.checkForDuplicateRules(interaction, channel, role, slug, attributeKey, attributeValue, minItems, wasNewlyCreated))) {
-        return; // Duplicate found and handled
-      }
-
-      // No duplicate found, proceed with normal rule creation
-      await this.createRuleDirectly(interaction, {
-        channel,
-        role,
-        slug,
-        attributeKey,
-        attributeValue,
-        minItems,
-        wasNewlyCreated
-      });
-
-    } catch (error) {
-      Logger.error('Error in handleAddRule:', error);
-      if (interaction.deferred) {
-        await interaction.editReply('An error occurred while adding the rule.');
-      } else {
-        await interaction.reply({ 
-          content: AdminFeedback.simple('An error occurred while adding the rule.', true), 
-          ephemeral: true 
-        });
-      }
-    }
+    // Delegate to the specialized handler
+    return this.addRuleHandler.handle(interaction);
   }
 
   private async showDuplicateRuleWarning(
@@ -156,19 +122,7 @@ export class DiscordCommandsService {
       ]
     );
 
-    const row = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId(`confirm_duplicate_${interaction.id}`)
-          .setLabel('Create Anyway')
-          .setStyle(ButtonStyle.Danger)
-          .setEmoji('✅'),
-        new ButtonBuilder()
-          .setCustomId(`cancel_duplicate_${interaction.id}`)
-          .setLabel('Cancel')
-          .setStyle(ButtonStyle.Secondary)
-          .setEmoji('❌')
-      );
+    const row = this.duplicateRuleConfirmationHandler.createDuplicateRuleButtons(interaction.id);
 
     await interaction.editReply({
       embeds: [embed],
@@ -176,39 +130,31 @@ export class DiscordCommandsService {
     });
 
     // Store the new rule data for later use if confirmed
-    this.pendingRules.set(interaction.id, newRuleData);
+    this.duplicateRuleConfirmationHandler.storeRuleData(interaction.id, newRuleData);
 
     // Set up button interaction handler
-    const filter = (i: any) => i.customId.endsWith(`_${interaction.id}`) && i.user.id === interaction.user.id;
-    const collector = interaction.channel?.createMessageComponentCollector({ filter, time: 60000 });
-
-    collector?.on('collect', async (i) => {
-      if (i.customId.startsWith('confirm_duplicate_')) {
-        await i.deferUpdate();
-        await this.createRuleDirectly(interaction, newRuleData, true);
-        this.pendingRules.delete(interaction.id);
-      } else if (i.customId.startsWith('cancel_duplicate_')) {
-        await i.deferUpdate();
-        
-        // Store the cancelled rule data for undo functionality
-        this.cancelledRules.set(interaction.id, newRuleData);
-        
+    this.duplicateRuleConfirmationHandler.setupDuplicateRuleButtonHandler(
+      interaction,
+      async (ruleData) => {
+        await this.createRuleDirectly(interaction, ruleData, true);
+      },
+      async (ruleData) => {
         // Create detailed rule info fields for the cancelled rule
         const cancelledRuleFormatted = {
-          role_id: newRuleData.role.id,
-          role_name: newRuleData.role.name,
-          channel_name: newRuleData.channel.name,
-          slug: newRuleData.slug,
-          attribute_key: newRuleData.attributeKey,
-          attribute_value: newRuleData.attributeValue,
-          min_items: newRuleData.minItems
+          role_id: ruleData.role.id,
+          role_name: ruleData.role.name,
+          channel_name: ruleData.channel.name,
+          slug: ruleData.slug,
+          attribute_key: ruleData.attributeKey,
+          attribute_value: ruleData.attributeValue,
+          min_items: ruleData.minItems
         };
-        const ruleInfoFields = this.createRuleInfoFields(cancelledRuleFormatted);
-        const embed = AdminFeedback.info('Rule Creation Cancelled', `Rule for ${newRuleData.channel.name} and @${newRuleData.role.name} was not created.`);
+        const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields(cancelledRuleFormatted);
+        const embed = AdminFeedback.info('Rule Creation Cancelled', `Rule for ${ruleData.channel.name} and @${ruleData.role.name} was not created.`);
         embed.addFields(ruleInfoFields);
         
         // Create Undo button
-        const undoButton = this.createUndoRemovalButton(interaction.id, 'cancellation');
+        const undoButton = this.duplicateRuleConfirmationHandler.createUndoRemovalButton(interaction.id, 'cancellation');
         
         await interaction.editReply({
           embeds: [embed],
@@ -216,23 +162,21 @@ export class DiscordCommandsService {
         });
         
         // Set up button interaction handler for undo cancellation
-        this.setupCancellationButtonHandler(interaction);
-        
-        this.pendingRules.delete(interaction.id);
+        this.duplicateRuleConfirmationHandler.setupCancellationButtonHandler(
+          interaction,
+          async (ruleData) => {
+            // Create a mock button interaction for the undo cancellation
+            const mockButtonInteraction = {
+              customId: `undo_cancellation_${interaction.id}`,
+              guild: interaction.guild,
+              id: interaction.id,
+              reply: interaction.editReply.bind(interaction)
+            };
+            await this.handleUndoCancellation(mockButtonInteraction);
+          }
+        );
       }
-      collector.stop();
-    });
-
-    collector?.on('end', (collected) => {
-      if (collected.size === 0) {
-        // Timeout - clean up
-        this.pendingRules.delete(interaction.id);
-        interaction.editReply({
-          embeds: [AdminFeedback.info('Request Timed Out', 'Rule creation was cancelled due to timeout.')],
-          components: []
-        }).catch(() => {}); // Ignore errors if interaction is no longer valid
-      }
-    });
+    );
   }
 
   private async createRuleDirectly(
@@ -322,10 +266,10 @@ export class DiscordCommandsService {
         minItems,
         wasNewlyCreated
       };
-      this.confirmationData.set(interaction.id, confirmationInfo);
+      this.ruleConfirmationHandler.storeConfirmationData(interaction.id, confirmationInfo);
 
       // Create Undo button
-      const actionButtons = this.createConfirmationButtons(interaction.id);
+      const actionButtons = this.ruleConfirmationHandler.createConfirmationButtons(interaction.id);
 
       await interaction.editReply({ 
         embeds: [embed], 
@@ -333,7 +277,7 @@ export class DiscordCommandsService {
       });
 
       // Set up button interaction handler with timeout
-      this.setupConfirmationButtonHandler(interaction);
+      this.ruleConfirmationHandler.setupConfirmationButtonHandler(interaction);
     } else {
       // Create new verification message
       await this.createNewVerificationSetup(interaction, channel, role, slug, attributeKey, attributeValue, minItems, isDuplicateConfirmed, newRule, wasNewlyCreated);
@@ -410,10 +354,10 @@ export class DiscordCommandsService {
         minItems,
         wasNewlyCreated
       };
-      this.confirmationData.set(interaction.id, confirmationInfo);
+      this.ruleConfirmationHandler.storeConfirmationData(interaction.id, confirmationInfo);
 
       // Create Undo button
-      const actionButtons = this.createConfirmationButtons(interaction.id);
+      const actionButtons = this.ruleConfirmationHandler.createConfirmationButtons(interaction.id);
 
       await interaction.editReply({ 
         embeds: [embed], 
@@ -421,7 +365,7 @@ export class DiscordCommandsService {
       });
 
       // Set up button interaction handler with timeout
-      this.setupConfirmationButtonHandler(interaction);
+      this.ruleConfirmationHandler.setupConfirmationButtonHandler(interaction);
     } catch (err) {
       Logger.error('Failed to send Verify Now message', err);
       await interaction.editReply({
@@ -432,210 +376,21 @@ export class DiscordCommandsService {
   }
 
   async handleRemoveRule(interaction: ChatInputCommandInteraction): Promise<void> {
-    const ruleIdInput = interaction.options.getString('rule_id');
-    
-    // Defer the reply early to prevent timeout
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    
-    if (!ruleIdInput) {
-      await interaction.editReply({
-        content: AdminFeedback.simple('Rule ID is required.', true)
-      });
-      return;
-    }
-
-    try {
-      // Parse comma-separated rule IDs (handle both "1,2,3" and "1, 2, 3" formats)
-      const ruleIds = ruleIdInput
-        .split(',')
-        .map(id => id.trim())
-        .filter(id => id.length > 0)
-        .map(id => {
-          const parsed = parseInt(id, 10);
-          if (isNaN(parsed)) {
-            throw new Error(`"${id}" is not a valid rule ID`);
-          }
-          return parsed;
-        });
-
-      if (ruleIds.length === 0) {
-        await interaction.editReply({
-          content: AdminFeedback.simple('No valid rule IDs provided.', true)
-        });
-        return;
-      }
-
-      // Get all rules for the server
-      const allRules = await this.dbSvc.getRoleMappings(interaction.guild.id);
-      
-      // Find rules to remove and validate they exist
-      const rulesToRemove = [];
-      const notFoundIds = [];
-      
-      for (const ruleId of ruleIds) {
-        const ruleToRemove = allRules.find(rule => rule.id === ruleId);
-        if (ruleToRemove) {
-          rulesToRemove.push({ id: ruleId, data: ruleToRemove });
-        } else {
-          notFoundIds.push(ruleId);
-        }
-      }
-
-      // Handle not found rules
-      if (notFoundIds.length > 0) {
-        const notFoundMessage = notFoundIds.length === 1 
-          ? `Rule ${notFoundIds[0]} not found.`
-          : `Rules ${notFoundIds.join(', ')} not found.`;
-          
-        if (rulesToRemove.length === 0) {
-          // No valid rules to remove
-          await interaction.editReply({
-            content: AdminFeedback.simple(notFoundMessage, true)
-          });
-          return;
-        } else {
-          // Some valid rules, show warning but continue
-          await interaction.followUp({
-            content: AdminFeedback.simple(`⚠️ ${notFoundMessage}`, true),
-            ephemeral: true
-          });
-        }
-      }
-
-      // Delete rules from database
-      const deletionResults = [];
-      for (const { id, data } of rulesToRemove) {
-        try {
-          await this.dbSvc.deleteRoleMapping(String(id), interaction.guild.id);
-          deletionResults.push({ id, data, success: true });
-        } catch (error) {
-          deletionResults.push({ id, data, success: false, error: error.message });
-        }
-      }
-
-      // Handle results
-      const successful = deletionResults.filter(r => r.success);
-      const failed = deletionResults.filter(r => !r.success);
-
-      if (successful.length === 1 && failed.length === 0) {
-        // Single successful removal - use existing single rule method
-        await this.sendRuleRemovedMessage(
-          interaction,
-          successful[0].id,
-          successful[0].data,
-          { ephemeral: true, isReply: false }
-        );
-      } else {
-        // Multiple rules or mixed results - use new bulk method
-        await this.sendBulkRuleRemovedMessage(
-          interaction,
-          successful,
-          failed,
-          { ephemeral: true, isReply: false }
-        );
-      }
-
-    } catch (error) {
-      await interaction.editReply({
-        content: AdminFeedback.simple(`Error: ${error.message}`, true)
-      });
-    }
+    // Delegate to the specialized handler
+    return this.removeRuleHandler.handle(interaction);
   }
 
   async handleListRules(interaction: ChatInputCommandInteraction): Promise<void> {
-    // Defer the reply early to prevent timeout
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    
-    // Get all verification rules for the server (unified system handles all rule types)
-    const allRules = await this.dbSvc.getRoleMappings(interaction.guild.id);
-    const rules = allRules
-      .filter(rule => rule.server_id !== '000000000000000000')
-      .sort((a, b) => a.id - b.id); // Sort by Rule ID in ascending order
-    
-    let desc = rules.length
-      ? rules.map(r =>
-          `ID: ${r.id} | Channel: <#${r.channel_id}> | Role: <@&${r.role_id}> | Slug: ${r.slug || 'ALL'} | Attr: ${r.attribute_key && r.attribute_key !== 'ALL' ? (r.attribute_value && r.attribute_value !== 'ALL' ? `${r.attribute_key}=${r.attribute_value}` : `${r.attribute_key} (any value)`) : (r.attribute_value && r.attribute_value !== 'ALL' ? `ALL=${r.attribute_value}` : 'ALL')} | Min: ${r.min_items || 1}`
-        ).join('\n\n')
-      : 'No verification rules found.';
-    
-    await interaction.editReply({
-      embeds: [AdminFeedback.info('Verification Rules', desc)]
-    });
+    // Delegate to the specialized handler
+    return this.listRulesHandler.handle(interaction);
   }
 
   /**
    * Recovers verification setup for a channel by creating a new message and updating orphaned rules
    */
   async handleRecoverVerification(interaction: ChatInputCommandInteraction): Promise<void> {
-    try {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-      const channel = interaction.options.getChannel('channel');
-      if (!channel || channel.type !== ChannelType.GuildText) {
-        await interaction.editReply({
-          content: AdminFeedback.simple('Please specify a valid text channel.', true)
-        });
-        return;
-      }
-
-      const textChannel = channel as GuildTextBasedChannel;
-
-      // Check if there's already a verification message in the channel
-      const hasExistingMessage = await this.messageSvc.findExistingVerificationMessage(textChannel);
-      
-      if (hasExistingMessage) {
-        await interaction.editReply({
-          content: AdminFeedback.simple('Channel already has a verification message. No recovery needed.')
-        });
-        return;
-      }
-
-      // Get all rules for this channel
-      const channelRules = await this.dbSvc.getRulesByChannel(interaction.guild.id, channel.id);
-
-      if (channelRules.length === 0) {
-        await interaction.editReply({
-          content: AdminFeedback.simple('No verification rules found for this channel. Use `/setup add-rule` to create rules first.')
-        });
-        return;
-      }
-
-      // Create a new verification message for the channel (no need to update database)
-      await this.messageSvc.createVerificationMessage(textChannel);
-
-      // Provide feedback to the admin
-      const embed = AdminFeedback.success(
-        'Verification Message Created',
-        `Successfully created verification message for ${textChannel}`,
-        [
-          { name: 'Channel', value: `<#${channel.id}>`, inline: true },
-          { name: 'Active Rules', value: `${channelRules.length} rules will use this message`, inline: true },
-          { name: 'Roles Affected', value: channelRules.map(r => `<@&${r.role_id}>`).join(', ') || 'None', inline: false }
-        ]
-      );
-      
-      embed.setTimestamp();
-
-      await interaction.editReply({
-        embeds: [embed]
-      });
-
-      Logger.debug(`Verification message created for channel ${channel.id} with ${channelRules.length} active rules`);
-
-    } catch (error) {
-      Logger.error('Error in handleRecoverVerification:', error);
-      
-      if (interaction.deferred) {
-        await interaction.editReply({
-          content: AdminFeedback.simple(`Error during recovery: ${error.message}`, true)
-        });
-      } else {
-        await interaction.reply({
-          content: AdminFeedback.simple(`Error during recovery: ${error.message}`, true),
-          flags: MessageFlags.Ephemeral
-        });
-      }
-    }
+    // Delegate to the specialized handler
+    return this.recoverVerificationHandler.handle(interaction);
   }
 
   /**
@@ -881,10 +636,10 @@ export class DiscordCommandsService {
     this.removedRules.set(interaction.id, removedRuleData);
 
     // Create Undo button
-    const undoButton = this.createUndoRemovalButton(interaction.id, 'removal');
+    const undoButton = this.duplicateRuleConfirmationHandler.createUndoRemovalButton(interaction.id, 'removal');
     
     // Create detailed rule info fields
-    const ruleInfoFields = this.createRuleInfoFields(removedRuleData);
+    const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields(removedRuleData);
     const embed = AdminFeedback.success('Rule Removed', `Rule ${ruleId} for ${removedRuleData.channel_name} and @${removedRuleData.role_name} has been removed.`);
     embed.addFields(ruleInfoFields);
 
@@ -901,7 +656,7 @@ export class DiscordCommandsService {
     }
 
     // Set up button interaction handler for undo removal
-    this.setupRemovalButtonHandler(interaction);
+    this.removalUndoHandler.setupRemovalButtonHandler(interaction, this.removedRules);
   }
 
   /**
@@ -955,7 +710,7 @@ export class DiscordCommandsService {
     const components = [];
     if (successful.length > 0) {
       // Create Undo button for successful removals
-      const undoButton = this.createUndoRemovalButton(interaction.id, 'removal');
+      const undoButton = this.duplicateRuleConfirmationHandler.createUndoRemovalButton(interaction.id, 'removal');
       components.push(undoButton);
     }
 
@@ -973,7 +728,7 @@ export class DiscordCommandsService {
 
     // Set up button interaction handler for undo removal (only if there are successful removals)
     if (successful.length > 0) {
-      this.setupRemovalButtonHandler(interaction);
+      this.removalUndoHandler.setupRemovalButtonHandler(interaction, this.removedRules);
     }
   }
 
@@ -1052,7 +807,7 @@ export class DiscordCommandsService {
 
     // Set up button interaction handler for undo (only if there are successful restorations)
     if (successful.length > 0) {
-      this.setupRestoreButtonHandler(interaction);
+      this.restoreUndoHandler.setupRestoreButtonHandler(interaction, this.restoredRules);
     }
   }
 
@@ -1060,536 +815,37 @@ export class DiscordCommandsService {
    * Creates Undo action button for rule removal/cancellation messages
    */
   private createUndoRemovalButton(interactionId: string, type: 'removal' | 'cancellation') {
-    return {
-      type: 1, // ActionRow
-      components: [
-        {
-          type: 2, // Button
-          custom_id: `undo_${type}_${interactionId}`,
-          label: 'Undo',
-          style: 2, // Secondary
-          emoji: { name: '↩️' }
-        }
-      ]
-    };
+    return this.duplicateRuleConfirmationHandler.createUndoRemovalButton(interactionId, type);
   }
 
-  /**
-   * Sets up button interaction handler for removal undo messages
-   */
-  private setupRemovalButtonHandler(interaction: ChatInputCommandInteraction | ButtonInteraction): void {
-    const filter = (i: any) => 
-      i.customId.startsWith('undo_removal_') && 
-      i.customId.endsWith(`_${interaction.id}`) && 
-      i.user.id === interaction.user.id;
-    
-    const collector = interaction.channel?.createMessageComponentCollector({ 
-      filter, 
-      time: 300000, // 5 minutes
-      componentType: ComponentType.Button
-    });
 
-    collector?.on('collect', async (i) => {
-      if (i.customId.startsWith('undo_removal_')) {
-        await this.handleUndoRemoval(i);
-      }
-      collector.stop();
-    });
 
-    collector?.on('end', (collected) => {
-      if (collected.size === 0) {
-        // Timeout - clean up removal data
-        this.removedRules.delete(interaction.id);
-      }
-    });
-  }
 
-  /**
-   * Sets up button interaction handler for removal undo messages with extended timeout
-   * Used in undo chains where sessions need to last longer
-   */
-  private setupRemovalButtonHandlerWithExtendedTimeout(interaction: ChatInputCommandInteraction | ButtonInteraction): void {
-    const filter = (i: any) => 
-      i.customId.startsWith('undo_removal_') && 
-      i.customId.endsWith(`_${interaction.id}`) && 
-      i.user.id === interaction.user.id;
-    
-    const collector = interaction.channel?.createMessageComponentCollector({ 
-      filter, 
-      time: 600000, // 10 minutes (extended timeout for undo chains)
-      componentType: ComponentType.Button
-    });
 
-    collector?.on('collect', async (i) => {
-      if (i.customId.startsWith('undo_removal_')) {
-        await this.handleUndoRemoval(i);
-      }
-      collector.stop();
-    });
 
-    collector?.on('end', (collected) => {
-      if (collected.size === 0) {
-        // Timeout - clean up removal data
-        this.removedRules.delete(interaction.id);
-      }
-    });
-  }
 
-  /**
-   * Handles Undo button interaction for rule removal - recreates the removed rule(s)
-   */
-  private async handleUndoRemoval(interaction: any): Promise<void> {
-    const interactionId = interaction.customId.replace('undo_removal_', '');
-    const removedRuleData = this.removedRules.get(interactionId);
-    
-    if (!removedRuleData) {
-      await interaction.reply({
-        content: AdminFeedback.simple('Undo session expired. Rule removal cannot be undone.', true),
-        ephemeral: true
-      });
-      return;
-    }
 
-    try {
-      // Check if this is a bulk operation
-      if (removedRuleData.isBulk && removedRuleData.rules) {
-        await this.handleBulkUndoRemoval(interaction, removedRuleData.rules);
-      } else {
-        // Single rule removal (existing logic)
-        await this.handleSingleUndoRemoval(interaction, removedRuleData);
-      }
 
-      // Clean up the removal data
-      this.removedRules.delete(interactionId);
-    } catch (error) {
-      Logger.error('Error undoing rule removal:', error);
-      await interaction.reply({
-        content: AdminFeedback.simple(`Error restoring rule(s): ${error.message}`, true),
-        ephemeral: true
-      });
-    }
-  }
 
-  /**
-   * Handles bulk undo removal for multiple rules
-   */
-  private async handleBulkUndoRemoval(interaction: any, removedRules: any[]): Promise<void> {
-    const restorationResults = [];
-    
-    for (const removedRule of removedRules) {
-      try {
-        // Handle role recreation if needed
-        let roleToUse = null;
-        if (removedRule.wasNewlyCreated) {
-          const existingRole = interaction.guild.roles.cache.get(removedRule.role_id);
-          if (!existingRole) {
-            // Recreate role
-            const botMember = interaction.guild.members.me;
-            let position = undefined;
-            if (botMember) {
-              const botHighestPosition = botMember.roles.highest.position;
-              position = Math.max(1, botHighestPosition - 1);
-            }
 
-            roleToUse = await interaction.guild.roles.create({
-              name: removedRule.role_name,
-              color: 'Blue',
-              position: position,
-              reason: `Recreated for bulk rule restoration by ${interaction.user.tag}`
-            });
-            
-            Logger.log(`Recreated role for bulk rule restoration: ${roleToUse.name} (${roleToUse.id})`);
-            removedRule.role_id = roleToUse.id;
-          }
-        }
-        
-        // Recreate the rule
-        const recreatedRule = await this.dbSvc.restoreRuleWithOriginalId(removedRule);
-        restorationResults.push({ 
-          success: true, 
-          rule: recreatedRule, 
-          originalData: { ...removedRule, wasNewlyCreated: removedRule.wasNewlyCreated } 
-        });
-      } catch (error) {
-        restorationResults.push({ 
-          success: false, 
-          ruleId: removedRule.id, 
-          error: error.message,
-          originalData: removedRule
-        });
-      }
-    }
 
-    // Send bulk restoration message
-    await this.sendBulkRuleRestoredMessage(interaction, restorationResults);
-  }
 
-  /**
-   * Handles single undo removal (existing logic)
-   */
-  private async handleSingleUndoRemoval(interaction: any, removedRule: any): Promise<void> {
-    let roleToUse = null;
-    
-    // If this rule had a newly created role, we need to recreate it first
-    if (removedRule.wasNewlyCreated) {
-      try {
-        // Check if the role still exists (might have been recreated by another process)
-        const existingRole = interaction.guild.roles.cache.get(removedRule.role_id);
-        
-        if (!existingRole) {
-          // Role doesn't exist, recreate it
-          // Get bot member to determine role position
-          const botMember = interaction.guild.members.me;
-          let position = undefined;
-          
-          if (botMember) {
-            // Create role below bot's highest role
-            const botHighestPosition = botMember.roles.highest.position;
-            position = Math.max(1, botHighestPosition - 1);
-          }
 
-          roleToUse = await interaction.guild.roles.create({
-            name: removedRule.role_name,
-            color: 'Blue', // Default color (could be enhanced to store original color)
-            position: position,
-            reason: `Recreated for rule restoration by ${interaction.user.tag}`
-          });
-          
-          Logger.log(`Recreated role for rule restoration: ${roleToUse.name} (${roleToUse.id})`);
-          
-          // Update the removed rule data with the new role ID
-          removedRule.role_id = roleToUse.id;
-        } else {
-          // Role exists, use it
-          roleToUse = existingRole;
-          Logger.log(`Using existing role for rule restoration: ${existingRole.name} (${existingRole.id})`);
-        }
-      } catch (roleError) {
-        Logger.error('Error recreating role for rule restoration:', roleError);
-        // Continue with rule restoration even if role recreation fails
-        // The role ID in the rule will still reference the original (now non-existent) role
-      }
-    }
-    
-    // Recreate the rule in the database with original ID
-    const recreatedRule = await this.dbSvc.restoreRuleWithOriginalId(removedRule);
-    
-    // Store the restored rule for potential undo (preserve the wasNewlyCreated flag)
-    const restoredRuleWithMetadata = {
-      ...recreatedRule,
-      wasNewlyCreated: removedRule.wasNewlyCreated
-    };
-    this.restoredRules.set(interaction.id, restoredRuleWithMetadata);
-    
-    // Create detailed rule info fields
-    const ruleInfoFields = this.createRuleInfoFields(recreatedRule);
-    const embedDescription = removedRule.wasNewlyCreated && roleToUse
-      ? `Rule ${recreatedRule.id} for ${recreatedRule.channel_name} and @${recreatedRule.role_name} has been restored${!interaction.guild.roles.cache.has(removedRule.role_id) ? ' and the role has been recreated' : ''}.`
-      : `Rule ${recreatedRule.id} for ${recreatedRule.channel_name} and @${recreatedRule.role_name} has been restored.`;
-    
-    const embed = AdminFeedback.success('Rule Restored', embedDescription);
-    embed.addFields(ruleInfoFields);
-    
-    await interaction.reply({
-      embeds: [embed],
-      components: [
-        new ActionRowBuilder<ButtonBuilder>()
-          .addComponents(
-            new ButtonBuilder()
-              .setCustomId(`undo_restore_${interaction.id}`)
-              .setLabel('Undo')
-              .setStyle(ButtonStyle.Secondary)
-              .setEmoji('↩️')
-          )
-      ],
-      ephemeral: true
-    });
 
-    // Set up button handler for potential undo of restoration
-    this.setupRestoreButtonHandler(interaction);
-  }
 
-  /**
-   * Sets up button handler for rule restoration undo functionality
-   */
-  private setupRestoreButtonHandler(interaction: ChatInputCommandInteraction | ButtonInteraction): void {
-    const filter = (i: any) => 
-      i.customId.startsWith('undo_restore_') && 
-      i.customId.endsWith(`${interaction.id}`) && 
-      i.user.id === interaction.user.id;
-    
-    const collector = interaction.channel?.createMessageComponentCollector({ 
-      filter, 
-      time: 300000, // 5 minutes
-      componentType: ComponentType.Button
-    });
 
-    collector?.on('collect', async (i) => {
-      if (i.customId.startsWith('undo_restore_')) {
-        await this.handleUndoRestore(i);
-      }
-      collector.stop();
-    });
 
-    collector?.on('end', (collected) => {
-      if (collected.size === 0) {
-        // Timeout - clean up restore data
-        this.restoredRules.delete(interaction.id);
-      }
-    });
-  }
 
-  /**
-   * Handles Undo button interaction for rule restoration - removes the restored rule(s)
-   */
-  private async handleUndoRestore(interaction: ButtonInteraction): Promise<void> {
-    const interactionId = interaction.customId.replace('undo_restore_', '');
-    const restoredRuleData = this.restoredRules.get(interactionId);
 
-    if (!restoredRuleData) {
-      await interaction.reply({
-        content: AdminFeedback.simple('Undo session expired. Rule restoration cannot be undone.', true),
-        ephemeral: true
-      });
-      return;
-    }
 
-    try {
-      // Check if this is a bulk operation
-      if (restoredRuleData.isBulk && restoredRuleData.rules) {
-        await this.handleBulkUndoRestore(interaction, restoredRuleData.rules);
-      } else {
-        // Single rule restoration (existing logic)
-        await this.handleSingleUndoRestore(interaction, restoredRuleData, interactionId);
-      }
 
-      // Clean up the restore data
-      this.restoredRules.delete(interactionId);
-    } catch (error) {
-      Logger.error('Error undoing rule restoration:', error);
-      await interaction.reply({
-        content: AdminFeedback.simple(`Error removing rule(s): ${error.message}`, true),
-        ephemeral: true
-      });
-    }
-  }
-
-  /**
-   * Handles bulk undo restore for multiple rules
-   */
-  private async handleBulkUndoRestore(interaction: any, restoredRules: any[]): Promise<void> {
-    const removalResults = [];
-    
-    for (const restoredRule of restoredRules) {
-      try {
-        // Remove the rule that was restored
-        await this.dbSvc.deleteRoleMapping(String(restoredRule.id), restoredRule.server_id);
-        
-        // If this rule was restored with a newly created role, try to clean it up
-        if (restoredRule.wasNewlyCreated) {
-          await this.cleanupNewlyCreatedRole(interaction, restoredRule.role_id, restoredRule.server_id);
-        }
-        
-        removalResults.push({ 
-          success: true, 
-          rule: restoredRule
-        });
-      } catch (error) {
-        removalResults.push({ 
-          success: false, 
-          ruleId: restoredRule.id, 
-          error: error.message,
-          rule: restoredRule
-        });
-      }
-    }
-
-    // Store the removed rules for potential undo (restore again)
-    const successful = removalResults.filter(r => r.success);
-    if (successful.length > 0) {
-      const bulkRemovedData = {
-        rules: successful.map(s => ({ ...s.rule, wasNewlyCreated: s.rule.wasNewlyCreated })),
-        isBulk: true
-      };
-      this.removedRules.set(interaction.id, bulkRemovedData);
-    }
-
-    // Send bulk removal message
-    await this.sendBulkRuleRemovedMessage(
-      interaction,
-      successful.map(s => ({ id: s.rule.id, data: s.rule, success: true })),
-      removalResults.filter(r => !r.success).map(f => ({ id: f.ruleId, data: f.rule, success: false, error: f.error })),
-      { ephemeral: true, isReply: true }
-    );
-  }
-
-  /**
-   * Handles single undo restore (existing logic)
-   */
-  private async handleSingleUndoRestore(interaction: any, restoredRule: any, interactionId: string): Promise<void> {
-    // Remove the rule that was restored
-    await this.dbSvc.deleteRoleMapping(String(restoredRule.id), restoredRule.server_id);
-    
-    // If this rule was restored with a newly created role, try to clean it up
-    if (restoredRule.wasNewlyCreated) {
-      await this.cleanupNewlyCreatedRole(interaction, restoredRule.role_id, restoredRule.server_id);
-    }
-    
-    // Store the removed rule for potential undo (restore again), preserving metadata
-    // Check if this came from a bulk operation by looking at the confirmation data
-    const confirmationInfo = this.confirmationData.get(interactionId);
-    const wasBulkOperation = confirmationInfo && confirmationInfo.isBulk;
-    
-    if (wasBulkOperation) {
-      // Preserve bulk structure - convert single rule back to bulk format
-      const bulkRemovedData = {
-        rules: [{ ...restoredRule, wasNewlyCreated: restoredRule.wasNewlyCreated }],
-        isBulk: true
-      };
-      this.removedRules.set(interaction.id, bulkRemovedData);
-    } else {
-      // Single rule operation
-      const removedRuleWithMetadata = {
-        ...restoredRule,
-        wasNewlyCreated: restoredRule.wasNewlyCreated
-      };
-      this.removedRules.set(interaction.id, removedRuleWithMetadata);
-    }
-    
-    // Create detailed rule info fields
-    const ruleInfoFields = this.createRuleInfoFields(restoredRule);
-    const embed = AdminFeedback.success('Rule Removed', `Rule ${restoredRule.id} for ${restoredRule.channel_name} and @${restoredRule.role_name} has been removed.`);
-    embed.addFields(ruleInfoFields);
-    
-    await interaction.reply({
-      embeds: [embed],
-      components: [
-        new ActionRowBuilder<ButtonBuilder>()
-          .addComponents(
-            new ButtonBuilder()
-              .setCustomId(`undo_removal_${interaction.id}`)
-              .setLabel('Undo')
-              .setStyle(ButtonStyle.Secondary)
-              .setEmoji('↩️')
-          )
-      ],
-      ephemeral: true
-    });
-
-    // Set up button handler for potential undo of removal with extended timeout
-    this.setupRemovalButtonHandlerWithExtendedTimeout(interaction);
-  }
-
-  /**
-   * Creates Undo action button for rule confirmation messages
-   */
-  private createConfirmationButtons(interactionId: string) {
-    return {
-      type: 1, // ActionRow
-      components: [
-        {
-          type: 2, // Button
-          custom_id: `undo_rule_${interactionId}`,
-          label: 'Undo',
-          style: 4, // Danger
-          emoji: { name: '↩️' }
-        }
-      ]
-    };
-  }
-
-  /**
-   * Sets up button interaction handler for confirmation messages
-   */
-  private setupConfirmationButtonHandler(interaction: ChatInputCommandInteraction): void {
-    const filter = (i: any) => 
-      i.customId.startsWith('undo_rule_') && 
-      i.customId.endsWith(`_${interaction.id}`) && 
-      i.user.id === interaction.user.id;
-    
-    const collector = interaction.channel?.createMessageComponentCollector({ 
-      filter, 
-      time: 300000, // 5 minutes
-      componentType: ComponentType.Button
-    });
-
-    collector?.on('collect', async (i) => {
-      if (i.customId.startsWith('undo_rule_')) {
-        await this.handleUndoRule(i);
-      }
-      collector.stop();
-    });
-
-    collector?.on('end', (collected) => {
-      if (collected.size === 0) {
-        // Timeout - clean up confirmation data
-        this.confirmationData.delete(interaction.id);
-      }
-    });
-  }
-
-  /**
-   * Handles Undo button interaction - removes the rule and shows removal message
-   */
-  private async handleUndoRule(interaction: any): Promise<void> {
-    const interactionId = interaction.customId.replace('undo_rule_', '');
-    const confirmationInfo = this.confirmationData.get(interactionId);
-    
-    if (!confirmationInfo) {
-      await interaction.reply({
-        content: AdminFeedback.simple('Undo session expired. Use `/setup remove-rule` if needed.', true),
-        ephemeral: true
-      });
-      return;
-    }
-
-    try {
-      // Get the rule data before deletion for potential future undo
-      const allRules = await this.dbSvc.getRoleMappings(confirmationInfo.serverId);
-      const ruleToRemove = allRules?.find(rule => rule.id === confirmationInfo.ruleId);
-      
-      if (ruleToRemove) {
-        // Store for potential undo of this removal, including wasNewlyCreated flag
-        const removedRuleWithMetadata = {
-          ...ruleToRemove,
-          wasNewlyCreated: confirmationInfo.wasNewlyCreated
-        };
-        this.removedRules.set(interaction.id, removedRuleWithMetadata);
-      }
-
-      // Delete the rule from the database
-      await this.dbSvc.deleteRoleMapping(confirmationInfo.ruleId.toString(), confirmationInfo.serverId);
-      
-      // If this rule involved creating a new role, try to clean it up
-      if (confirmationInfo.wasNewlyCreated && ruleToRemove) {
-        await this.cleanupNewlyCreatedRole(interaction, ruleToRemove.role_id, confirmationInfo.serverId);
-      }
-      
-      // Use the universal rule removed message method
-      await this.sendRuleRemovedMessage(
-        interaction,
-        confirmationInfo.ruleId,
-        ruleToRemove,
-        { ephemeral: true, isReply: true }
-      );
-
-      // Clean up the confirmation data
-      this.confirmationData.delete(interactionId);
-    } catch (error) {
-      Logger.error('Error undoing rule creation:', error);
-      await interaction.reply({
-        content: AdminFeedback.simple(`Error undoing rule: ${error.message}`, true),
-        ephemeral: true
-      });
-    }
-  }
 
   /**
    * Handles Undo button interaction for rule cancellation - creates the cancelled rule
    */
   private async handleUndoCancellation(interaction: any): Promise<void> {
     const interactionId = interaction.customId.replace('undo_cancellation_', '');
-    const cancelledRule = this.cancelledRules.get(interactionId);
+    const cancelledRule = this.duplicateRuleConfirmationHandler.getCancelledRule(interactionId);
     
     if (!cancelledRule) {
       await interaction.reply({
@@ -1615,7 +871,7 @@ export class DiscordCommandsService {
       );
       
       // Store the created rule for potential undo
-      this.confirmationData.set(interaction.id, {
+      this.ruleConfirmationHandler.storeConfirmationData(interaction.id, {
         ruleId: createdRule.id,
         serverId: interaction.guild.id
       });
@@ -1630,12 +886,12 @@ export class DiscordCommandsService {
         attribute_value: cancelledRule.attributeValue,
         min_items: cancelledRule.minItems
       };
-      const ruleInfoFields = this.createRuleInfoFields(cancelledRuleFormatted);
+      const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields(cancelledRuleFormatted);
       const embed = AdminFeedback.success('Rule Added', `Rule ${createdRule.id} for ${cancelledRule.channel.name} and @${cancelledRule.role.name} has been added using existing verification message.`);
       embed.addFields(ruleInfoFields);
       
       // Create Undo button
-      const undoButton = this.createConfirmationButtons(interaction.id);
+      const undoButton = this.ruleConfirmationHandler.createConfirmationButtons(interaction.id);
       
       await interaction.reply({
         embeds: [embed],
@@ -1644,10 +900,10 @@ export class DiscordCommandsService {
       });
       
       // Set up button interaction handler for potential undo of this creation
-      this.setupConfirmationButtonHandler(interaction);
+      this.ruleConfirmationHandler.setupConfirmationButtonHandler(interaction);
 
       // Clean up the cancellation data
-      this.cancelledRules.delete(interactionId);
+      this.duplicateRuleConfirmationHandler.deleteCancelledRule(interactionId);
     } catch (error) {
       Logger.error('Error undoing rule cancellation:', error);
       await interaction.reply({
@@ -1655,53 +911,6 @@ export class DiscordCommandsService {
         ephemeral: true
       });
     }
-  }
-
-  /**
-   * Sets up button interaction handler for cancellation undo messages
-   */
-  private setupCancellationButtonHandler(interaction: ChatInputCommandInteraction): void {
-    const filter = (i: any) => 
-      i.customId.startsWith('undo_cancellation_') && 
-      i.customId.endsWith(`_${interaction.id}`) && 
-      i.user.id === interaction.user.id;
-    
-    const collector = interaction.channel?.createMessageComponentCollector({ 
-      filter, 
-      time: 300000, // 5 minutes
-      componentType: ComponentType.Button
-    });
-
-    collector?.on('collect', async (i) => {
-      if (i.customId.startsWith('undo_cancellation_')) {
-        await this.handleUndoCancellation(i);
-      }
-      collector.stop();
-    });
-
-    collector?.on('end', (collected) => {
-      if (collected.size === 0) {
-        // Timeout - clean up cancellation data
-        this.cancelledRules.delete(interaction.id);
-      }
-    });
-  }
-
-  /**
-   * Creates detailed rule information fields for consistent display across all rule messages
-   */
-  private createRuleInfoFields(rule: any): Array<{name: string, value: string, inline: boolean}> {
-    const collection = rule.slug || 'ALL';
-    const attribute = rule.attribute_key === 'ALL' && rule.attribute_value === 'ALL' 
-      ? 'ALL' 
-      : `${rule.attribute_key}=${rule.attribute_value}`;
-    const minItems = rule.min_items?.toString() || '1';
-
-    return [
-      { name: 'Collection', value: collection, inline: true },
-      { name: 'Attribute', value: attribute, inline: true },
-      { name: 'Min Items', value: minItems, inline: true }
-    ];
   }
 
   private async showDuplicateRoleWarning(
@@ -1774,7 +983,7 @@ export class DiscordCommandsService {
     });
 
     // Store pending rule for confirmation
-    this.pendingRules.set(interaction.id, newRuleData);
+    this.duplicateRuleConfirmationHandler.storeRuleData(interaction.id, newRuleData);
 
     // Set up button handler
     this.setupDuplicateRoleButtonHandler(interaction);
@@ -1794,15 +1003,16 @@ export class DiscordCommandsService {
     collector?.on('collect', async (i) => {
       if (i.customId.startsWith('confirm_duplicate_role_')) {
         await i.deferUpdate();
-        await this.createRuleDirectly(interaction, this.pendingRules.get(interaction.id), true);
-        this.pendingRules.delete(interaction.id);
+        const ruleData = this.duplicateRuleConfirmationHandler.getPendingRule(interaction.id);
+        await this.createRuleDirectly(interaction, ruleData, true);
+        this.duplicateRuleConfirmationHandler.deletePendingRule(interaction.id);
       } else if (i.customId.startsWith('cancel_duplicate_role_')) {
         await i.deferUpdate();
         await interaction.editReply({
           embeds: [AdminFeedback.info('Rule Creation Cancelled', 'The rule was not created.')],
           components: []
         });
-        this.pendingRules.delete(interaction.id);
+        this.duplicateRuleConfirmationHandler.deletePendingRule(interaction.id);
       }
       collector.stop();
     });
@@ -1810,7 +1020,7 @@ export class DiscordCommandsService {
     collector?.on('end', (collected) => {
       if (collected.size === 0) {
         // Timeout - clean up
-        this.pendingRules.delete(interaction.id);
+        this.duplicateRuleConfirmationHandler.deletePendingRule(interaction.id);
         interaction.editReply({
           embeds: [AdminFeedback.info('Request Timed Out', 'Rule creation was cancelled due to timeout.')],
           components: []

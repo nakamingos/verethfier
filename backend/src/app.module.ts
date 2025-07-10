@@ -11,6 +11,14 @@ import { DiscordService } from '@/services/discord.service';
 import { DiscordMessageService } from '@/services/discord-message.service';
 import { DiscordVerificationService } from '@/services/discord-verification.service';
 import { DiscordCommandsService } from '@/services/discord-commands.service';
+import { AddRuleHandler } from '@/services/discord-commands/handlers/add-rule.handler';
+import { RemoveRuleHandler } from '@/services/discord-commands/handlers/remove-rule.handler';
+import { ListRulesHandler } from '@/services/discord-commands/handlers/list-rules.handler';
+import { RecoverVerificationHandler } from '@/services/discord-commands/handlers/recover-verification.handler';
+import { RemovalUndoInteractionHandler } from '@/services/discord-commands/interactions/removal-undo.interaction';
+import { RestoreUndoInteractionHandler } from '@/services/discord-commands/interactions/restore-undo.interaction';
+import { RuleConfirmationInteractionHandler } from '@/services/discord-commands/interactions/rule-confirmation.interaction';
+import { DuplicateRuleConfirmationInteractionHandler } from '@/services/discord-commands/interactions/duplicate-rule-confirmation.interaction';
 import { NonceService } from '@/services/nonce.service';
 import { WalletService } from '@/services/wallet.service';
 import { DbService } from '@/services/db.service';
@@ -108,6 +116,16 @@ import { EnvironmentConfig } from '@/config/environment.config';
     DiscordMessageService,       // Message formatting and sending
     DiscordVerificationService,  // Discord-specific verification logic
     DiscordCommandsService,      // Slash command handling
+    AddRuleHandler,              // Add rule command handler
+    RemoveRuleHandler,           // Remove rule command handler
+    ListRulesHandler,            // List rules command handler
+    RecoverVerificationHandler,  // Recover verification command handler
+
+    // Discord interaction handlers
+    RemovalUndoInteractionHandler,  // Handles undo functionality for rule removals
+    RestoreUndoInteractionHandler,  // Handles undo functionality for rule restorations
+    RuleConfirmationInteractionHandler, // Handles undo functionality for rule confirmations
+    DuplicateRuleConfirmationInteractionHandler, // Handles duplicate rule confirmations
 
     // Verification engine and related services
     VerificationEngine,          // Unified verification processor
