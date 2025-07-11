@@ -31,7 +31,7 @@ export class DynamicRoleService {
    * Main scheduled task - runs every 6 hours
    * Re-verifies all active role assignments
    */
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron(CronExpression.EVERY_6_HOURS)
   async performScheduledReverification() {
     Logger.log('🔄 Starting scheduled role re-verification');
     
