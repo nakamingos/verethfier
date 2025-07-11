@@ -124,8 +124,17 @@ export class RemovalUndoInteractionHandler {
 
     try {
       // Defer the interaction early to prevent timeout and acknowledgment issues
+      // But first check if the interaction is still valid
       if (!interaction.replied && !interaction.deferred) {
-        await interaction.deferReply({ ephemeral: true });
+        try {
+          await interaction.deferReply({ ephemeral: true });
+        } catch (deferError) {
+          // If we can't defer, the interaction is likely expired
+          this.logger.warn('Failed to defer interaction, likely expired:', deferError.message);
+          // Clean up data and return silently
+          this.removedRules.delete(interactionId);
+          return;
+        }
       }
 
       // Check if this is a bulk operation
@@ -140,6 +149,14 @@ export class RemovalUndoInteractionHandler {
       this.removedRules.delete(interactionId);
     } catch (error) {
       this.logger.error('Error undoing rule removal:', error);
+      
+      // Improved error handling - check for specific Discord errors
+      if (error.code === 10062 || error.message?.includes('Unknown interaction')) {
+        // Interaction has expired, clean up silently
+        this.logger.warn('Interaction expired during removal undo, cleaning up silently');
+        this.removedRules.delete(interactionId);
+        return;
+      }
       
       // Only try to respond if we haven't already responded and the interaction is still valid
       // The error might have occurred after a successful reply in handleSingleUndoRemoval,
@@ -162,8 +179,9 @@ export class RemovalUndoInteractionHandler {
           });
         }
       } catch (responseError) {
-        // If we can't respond to the interaction, just log it
+        // If we can't respond to the interaction, just log it and clean up
         this.logger.error('Failed to send error response to interaction:', responseError);
+        this.removedRules.delete(interactionId);
       }
       
       // Don't clean up removal data on error so user can try again
