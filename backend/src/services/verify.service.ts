@@ -120,7 +120,8 @@ export class VerifyService {
             rule.role_id,
             payload.discordId,
             address,
-            payload.nonce
+            payload.nonce,
+            rule.id.toString() // Pass the rule ID for proper tracking
           );
 
           // Role assignment and tracking is handled by assignRole() method
@@ -203,7 +204,8 @@ export class VerifyService {
           rule.role_id,
           payload.discordId,
           address,
-          payload.nonce
+          payload.nonce,
+          rule.id.toString() // Pass the rule ID for proper tracking
         );
 
         // Role assignment and tracking is handled by addUserRole() method

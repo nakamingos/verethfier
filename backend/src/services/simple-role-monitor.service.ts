@@ -223,7 +223,7 @@ export class SimpleRoleMonitorService {
    */
   private async grantRole(userId: string, serverId: string, rule: any, address: string): Promise<void> {
     try {
-      const roleResult = await this.discordVerificationSvc.addUserRole(userId, rule.role_id, serverId, address, 'reverification');
+      const roleResult = await this.discordVerificationSvc.addUserRole(userId, rule.role_id, serverId, address, 'reverification', rule.id.toString());
       await this.dbSvc.logUserRole(userId, serverId, rule.role_id, address, null, null, rule.role_name);
       
       if (roleResult.wasAlreadyAssigned) {

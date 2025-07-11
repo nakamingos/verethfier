@@ -490,570 +490,436 @@ export class DbService {
   // =======================================
 
   /**
-   * Get all active role assignments that need periodic re-verification
+   * Dynamic Role Management Methods
+   * These methods support the DynamicRoleService for automatic role verification
+   */
+
+  /**
+   * Get all active role assignments that need verification
    */
   async getActiveRoleAssignments(): Promise<any[]> {
-    const { data, error } = await this.supabase
-      .from('verifier_user_roles')
-      .select(`
-        *,
-        verifier_rules!inner(*)
-      `)
-      .eq('status', 'active')
-      .order('last_checked', { ascending: true }); // Oldest checks first
+    try {
+      const { data, error } = await this.supabase
+        .from('verifier_user_roles')
+        .select('*')
+        .eq('status', 'active')
+        .order('last_checked', { ascending: true });
 
-    if (error) {
-      Logger.error('Error fetching active role assignments:', error);
-      throw error;
-    }
-
-    return data || [];
-  }
-
-  /**
-   * Get a specific verification rule by ID
-   */
-  async getRuleById(ruleId: string): Promise<any> {
-    const { data, error } = await this.supabase
-      .from('verifier_rules')
-      .select('*')
-      .eq('id', ruleId)
-      .single();
-
-    if (error) {
-      Logger.error(`Error fetching rule ${ruleId}:`, error);
-      throw error;
-    }
-
-    return data;
-  }
-
-  /**
-   * Track a new role assignment in the enhanced tracking table
-   */
-  async trackRoleAssignment(assignment: {
-    userId: string;
-    serverId: string;
-    roleId: string;
-    ruleId: string | null;
-    address: string;
-    userName?: string;
-    serverName?: string;
-    roleName?: string;
-    expiresInHours?: number;
-  }): Promise<any> {
-    const expirationDate = assignment.expiresInHours 
-      ? new Date(Date.now() + assignment.expiresInHours * 60 * 60 * 1000)
-      : null;
-
-    const { data, error } = await this.supabase
-      .from('verifier_user_roles')
-      .insert({
-        user_id: assignment.userId,
-        server_id: assignment.serverId,
-        role_id: assignment.roleId,
-        rule_id: assignment.ruleId,
-        address: assignment.address.toLowerCase(),
-        user_name: assignment.userName || '',
-        server_name: assignment.serverName || '',
-        role_name: assignment.roleName || '',
-        expires_at: expirationDate,
-        status: 'active'
-      })
-      .select()
-      .single();
-
-    if (error) {
-      // Check if it's a unique constraint violation
-      if (error.message && error.message.includes('duplicate key value violates unique constraint')) {
-        Logger.debug('Role assignment already exists in database - this is expected during concurrent verifications');
-        // Return a mock successful response for duplicate key violations
-        return { id: 'duplicate', ...assignment };
-      } else {
-        Logger.error('Error tracking role assignment:', error);
+      if (error) {
+        this.logger.error('Error fetching active role assignments:', error);
         throw error;
       }
-    }
 
-    return data;
+      return data || [];
+    } catch (error) {
+      this.logger.error('Error fetching active role assignments:', error);
+      throw error;
+    }
   }
 
   /**
-   * Update the verification status and timestamp for a role assignment
+   * Get a rule by ID
    */
-  async updateRoleVerification(assignmentId: string, stillValid: boolean): Promise<any> {
-    const updates: any = {
-      last_checked: new Date().toISOString()
-    };
+  async getRuleById(ruleId: string): Promise<any> {
+    try {
+      const { data, error } = await this.supabase
+        .from('verifier_rules')
+        .select('*')
+        .eq('id', ruleId)
+        .single();
 
-    if (!stillValid) {
-      updates.status = 'expired';
-    }
+      if (error) {
+        this.logger.error(`Error fetching rule ${ruleId}:`, error);
+        throw error;
+      }
 
-    const { data, error } = await this.supabase
-      .from('verifier_user_roles')
-      .update(updates)
-      .eq('id', assignmentId)
-      .select()
-      .single();
-
-    if (error) {
-      Logger.error('Error updating role verification:', error);
+      return data;
+    } catch (error) {
+      this.logger.error(`Error fetching rule ${ruleId}:`, error);
       throw error;
     }
-
-    return data;
   }
 
   /**
-   * Revoke a role assignment (mark as revoked)
+   * Update role assignment status
    */
-  async revokeRoleAssignment(assignmentId: string): Promise<any> {
-    const { data, error } = await this.supabase
-      .from('verifier_user_roles')
-      .update({
-        status: 'revoked',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', assignmentId)
-      .select()
-      .single();
+  async updateRoleAssignmentStatus(assignmentId: string, status: string): Promise<void> {
+    try {
+      const { error } = await this.supabase
+        .from('verifier_user_roles')
+        .update({ 
+          status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', assignmentId);
 
-    if (error) {
-      Logger.error('Error revoking role assignment:', error);
+      if (error) {
+        this.logger.error(`Error updating role assignment ${assignmentId} status:`, error);
+        throw error;
+      }
+    } catch (error) {
+      this.logger.error(`Error updating role assignment ${assignmentId} status:`, error);
       throw error;
     }
-
-    return data;
   }
 
   /**
-   * Get role assignments for a specific user in a server
+   * Update last verified timestamp
    */
-  async getUserRoleAssignments(userId: string, serverId?: string): Promise<any[]> {
-    let query = this.supabase
-      .from('verifier_user_roles')
-      .select(`
-        *,
-        verifier_rules!inner(*)
-      `)
-      .eq('user_id', userId)
-      .eq('status', 'active');
+  async updateLastVerified(assignmentId: string): Promise<void> {
+    try {
+      const { error } = await this.supabase
+        .from('verifier_user_roles')
+        .update({ 
+          last_checked: new Date().toISOString(),
+          verified_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', assignmentId);
 
-    if (serverId) {
-      query = query.eq('server_id', serverId);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      Logger.error('Error fetching user role assignments:', error);
+      if (error) {
+        this.logger.error(`Error updating last verified for assignment ${assignmentId}:`, error);
+        throw error;
+      }
+    } catch (error) {
+      this.logger.error(`Error updating last verified for assignment ${assignmentId}:`, error);
       throw error;
     }
-
-    return data || [];
   }
 
   /**
    * Get active assignments for a specific user
    */
   async getUserActiveAssignments(userId: string): Promise<any[]> {
-    const { data, error } = await this.supabase
-      .from('verifier_user_roles')
-      .select(`
-        *,
-        verifier_rules:rule_id (*)
-      `)
-      .eq('user_id', userId)
-      .eq('status', 'active');
+    try {
+      const { data, error } = await this.supabase
+        .from('verifier_user_roles')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'active');
 
-    if (error) {
-      Logger.error('Error fetching user active assignments:', error);
+      if (error) {
+        this.logger.error(`Error fetching active assignments for user ${userId}:`, error);
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      this.logger.error(`Error fetching active assignments for user ${userId}:`, error);
       throw error;
     }
-
-    return data || [];
   }
 
   /**
    * Get active assignments for a specific rule
    */
   async getRuleActiveAssignments(ruleId: string): Promise<any[]> {
-    const { data, error } = await this.supabase
-      .from('verifier_user_roles')
-      .select('*')
-      .eq('rule_id', ruleId)
-      .eq('status', 'active');
-
-    if (error) {
-      Logger.error('Error fetching rule active assignments:', error);
-      throw error;
-    }
-
-    return data || [];
-  }
-
-  /**
-   * Get statistics about role assignments for monitoring
-   */
-  async getRoleAssignmentStats(): Promise<any> {
-    const { data, error } = await this.supabase
-      .from('verifier_user_roles')
-      .select('status, server_id, role_id')
-      .order('status');
-
-    if (error) {
-      Logger.error('Error fetching role assignment stats:', error);
-      throw error;
-    }
-
-    const stats = {
-      total: data?.length || 0,
-      active: data?.filter(r => r.status === 'active').length || 0,
-      expired: data?.filter(r => r.status === 'expired').length || 0,
-      revoked: data?.filter(r => r.status === 'revoked').length || 0,
-      byServer: {} as Record<string, number>
-    };
-
-    // Count by server
-    data?.forEach(assignment => {
-      if (assignment.status === 'active') {
-        stats.byServer[assignment.server_id] = (stats.byServer[assignment.server_id] || 0) + 1;
-      }
-    });
-
-    return stats;
-  }
-
-  /**
-   * Check if the unified verification system is properly set up
-   * (Replaces legacy table existence checking)
-   */
-  async checkVerificationSystemReady(): Promise<boolean> {
     try {
-      // Check if both core tables exist and are accessible
-      const [rulesCheck, rolesCheck] = await Promise.all([
-        this.supabase.from('verifier_rules').select('id').limit(1),
-        this.supabase.from('verifier_user_roles').select('id').limit(1)
-      ]);
+      const { data, error } = await this.supabase
+        .from('verifier_user_roles')
+        .select('*')
+        .eq('rule_id', ruleId)
+        .eq('status', 'active');
 
-      return !rulesCheck.error && !rolesCheck.error;
-    } catch (e) {
-      return false;
-    }
-  }
+      if (error) {
+        this.logger.error(`Error fetching active assignments for rule ${ruleId}:`, error);
+        throw error;
+      }
 
-  /**
-   * @deprecated Use checkVerificationSystemReady() instead
-   */
-  async checkEnhancedTrackingExists(): Promise<boolean> {
-    return await this.checkVerificationSystemReady();
-  }
-
-  /**
-   * Get user role assignment history for a specific server
-   */
-  async getUserRoleHistory(userId: string, serverId?: string): Promise<any[]> {
-    let query = this.supabase
-      .from('verifier_user_roles')
-      .select(`
-        *,
-        verifier_rules!inner(*)
-      `)
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-
-    if (serverId) {
-      query = query.eq('server_id', serverId);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      Logger.error('Error fetching user role history:', error);
+      return data || [];
+    } catch (error) {
+      this.logger.error(`Error fetching active assignments for rule ${ruleId}:`, error);
       throw error;
     }
-
-    return data || [];
   }
 
   /**
-   * Get user's latest verified address
-   * Uses the address from the most recent role assignment to avoid joins
-   */
-  async getUserLatestAddress(userId: string): Promise<string | null> {
-    // First try to get the most recent address from role assignments
-    const { data: roleData, error: roleError } = await this.supabase
-      .from('verifier_user_roles')
-      .select('address')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    if (!roleError && roleData && roleData.length > 0) {
-      return roleData[0].address;
-    }
-
-    // Fallback to verifier_users table for backward compatibility
-    const { data, error } = await this.supabase
-      .from('verifier_users')
-      .select('address')
-      .eq('user_id', userId)
-      .single();
-
-    if (error) {
-      Logger.debug(`No address found for user ${userId}:`, error.message);
-      return null;
-    }
-
-    return data?.address || null;
-  }
-
-  /**
-   * Get all unique users who have role assignments in a server
-   */
-  async getServerUniqueUsers(serverId: string): Promise<string[]> {
-    const { data, error } = await this.supabase
-      .from('verifier_user_roles')
-      .select('user_id')
-      .eq('server_id', serverId)
-      .eq('status', 'active');
-
-    if (error) {
-      Logger.error('Error fetching server users:', error);
-      throw error;
-    }
-
-    // Return unique user IDs
-    const uniqueUsers = [...new Set(data?.map(row => row.user_id) || [])];
-    return uniqueUsers;
-  }
-
-  /**
-   * Update role assignment status by assignment ID
-   */
-  async updateRoleAssignmentStatus(assignmentId: string, status: 'active' | 'expired' | 'revoked'): Promise<any> {
-    const { data, error } = await this.supabase
-      .from('verifier_user_roles')
-      .update({
-        status,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', assignmentId)
-      .select()
-      .single();
-
-    if (error) {
-      Logger.error('Error updating role assignment status:', error);
-      throw error;
-    }
-
-    return data;
-  }
-
-  /**
-   * Update last verified timestamp for an assignment
-   */
-  async updateLastVerified(assignmentId: string): Promise<any> {
-    const { data, error } = await this.supabase
-      .from('verifier_user_roles')
-      .update({
-        last_checked: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', assignmentId)
-      .select()
-      .single();
-
-    if (error) {
-      Logger.error('Error updating last verified:', error);
-      throw error;
-    }
-
-    return data;
-  }
-
-  /**
-   * Count assignments by status
+   * Count active assignments
    */
   async countActiveAssignments(): Promise<number> {
-    const { count, error } = await this.supabase
-      .from('verifier_user_roles')
-      .select('*', { count: 'exact' })
-      .eq('status', 'active');
+    try {
+      const { count, error } = await this.supabase
+        .from('verifier_user_roles')
+        .select('*', { count: 'exact' })
+        .eq('status', 'active');
 
-    if (error) {
-      Logger.error('Error counting active assignments:', error);
+      if (error) {
+        this.logger.error('Error counting active assignments:', error);
+        throw error;
+      }
+
+      return count || 0;
+    } catch (error) {
+      this.logger.error('Error counting active assignments:', error);
       throw error;
     }
-
-    return count || 0;
   }
 
+  /**
+   * Count revoked assignments
+   */
   async countRevokedAssignments(): Promise<number> {
-    const { count, error } = await this.supabase
-      .from('verifier_user_roles')
-      .select('*', { count: 'exact' })
-      .eq('status', 'revoked');
+    try {
+      const { count, error } = await this.supabase
+        .from('verifier_user_roles')
+        .select('*', { count: 'exact' })
+        .eq('status', 'revoked');
 
-    if (error) {
-      Logger.error('Error counting revoked assignments:', error);
+      if (error) {
+        this.logger.error('Error counting revoked assignments:', error);
+        throw error;
+      }
+
+      return count || 0;
+    } catch (error) {
+      this.logger.error('Error counting revoked assignments:', error);
       throw error;
     }
-
-    return count || 0;
-  }
-
-  async countExpiringSoonAssignments(hoursFromNow: number = 24): Promise<number> {
-    const expiryThreshold = new Date();
-    expiryThreshold.setHours(expiryThreshold.getHours() + hoursFromNow);
-
-    const { count, error } = await this.supabase
-      .from('verifier_user_roles')
-      .select('*', { count: 'exact' })
-      .eq('status', 'active')
-      .not('expires_at', 'is', null)
-      .lte('expires_at', expiryThreshold.toISOString());
-
-    if (error) {
-      Logger.error('Error counting expiring assignments:', error);
-      throw error;
-    }
-
-    return count || 0;
   }
 
   /**
-   * Get the last time re-verification was run
+   * Count assignments expiring soon
    */
-  async getLastReverificationTime(): Promise<Date | null> {
-    const { data, error } = await this.supabase
-      .from('verifier_user_roles')
-      .select('last_checked')
-      .order('last_checked', { ascending: false })
-      .limit(1)
-      .single();
+  async countExpiringSoonAssignments(): Promise<number> {
+    try {
+      const soonDate = new Date();
+      soonDate.setHours(soonDate.getHours() + 24); // Next 24 hours
 
-    if (error) {
-      Logger.debug('No re-verification time found:', error.message);
-      return null;
-    }
+      const { count, error } = await this.supabase
+        .from('verifier_user_roles')
+        .select('*', { count: 'exact' })
+        .eq('status', 'active')
+        .lte('expires_at', soonDate.toISOString());
 
-    return data?.last_checked ? new Date(data.last_checked) : null;
-  }
+      if (error) {
+        this.logger.error('Error counting expiring assignments:', error);
+        throw error;
+      }
 
-  /**
-   * Restores a deleted rule with its original ID and data.
-   * This is used when undoing rule removals to maintain ID consistency.
-   * 
-   * @param ruleData - The complete rule data including the original ID
-   * @returns Promise resolving to the restored rule or null on error
-   * @throws Error if database operation fails
-   */
-  async restoreRuleWithOriginalId(ruleData: any): Promise<any> {
-    this.logger.log(`Attempting to restore rule with ID: ${ruleData.id}`);
-    
-    // Use meaningful defaults instead of NULLs for better database constraints
-    const finalSlug = ruleData.slug || 'ALL';
-    const finalAttrKey = ruleData.attribute_key || 'ALL';
-    const finalAttrVal = ruleData.attribute_value || 'ALL';
-    const finalMinItems = ruleData.min_items != null ? ruleData.min_items : 1;
-
-    // First, check if a rule with this ID already exists
-    this.logger.log(`Checking if rule with ID ${ruleData.id} already exists...`);
-    const { data: existingRule, error: checkError } = await this.supabase
-      .from('verifier_rules')
-      .select('id')
-      .eq('id', ruleData.id)
-      .single();
-
-    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 means no rows found
-      this.logger.error(`Error checking for existing rule: ${checkError.message}`);
-      throw checkError;
-    }
-
-    // If a rule with this ID already exists, create a new rule instead
-    if (existingRule) {
-      this.logger.log(`Rule with ID ${ruleData.id} already exists, creating new rule instead`);
-      return this.addRoleMapping(
-        ruleData.server_id,
-        ruleData.server_name,
-        ruleData.channel_id,
-        ruleData.channel_name,
-        finalSlug,
-        ruleData.role_id,
-        ruleData.role_name,
-        finalAttrKey,
-        finalAttrVal,
-        finalMinItems
-      );
-    }
-
-    // Otherwise, restore with the original ID
-    this.logger.log(`No ID conflict, restoring rule with original ID ${ruleData.id}`);
-    const { data, error } = await this.supabase
-      .from('verifier_rules')
-      .insert({
-        id: ruleData.id, // Preserve the original ID
-        server_id: ruleData.server_id,
-        server_name: ruleData.server_name,
-        channel_id: ruleData.channel_id,
-        channel_name: ruleData.channel_name,
-        slug: finalSlug,
-        role_id: ruleData.role_id,
-        role_name: ruleData.role_name,
-        attribute_key: finalAttrKey,
-        attribute_value: finalAttrVal,
-        min_items: finalMinItems
-        // Note: created_at will be set to current time by database
-        // This is intentional as we want to track when the rule was restored
-      })
-      .select()
-      .single();
-    
-    if (error) {
-      this.logger.error(`Error inserting rule with original ID: ${error.message}`);
+      return count || 0;
+    } catch (error) {
+      this.logger.error('Error counting expiring assignments:', error);
       throw error;
     }
-    
-    this.logger.log(`Successfully restored rule with ID: ${data.id}`);
-    return data;
   }
 
   /**
-   * Check if a role already has a rule with different criteria
+   * Get last reverification time (placeholder - could be stored in a settings table)
    */
-  async checkForDuplicateRole(
-    serverId: string,
-    roleId: string,
-    channelId: string,
-    slug: string,
-    attributeKey: string,
-    attributeValue: string,
-    minItems: number
-  ): Promise<any> {
-    const { data, error } = await this.supabase
-      .from('verifier_rules')
-      .select('*')
-      .eq('server_id', serverId)
-      .eq('role_id', roleId);
+  async getLastReverificationTime(): Promise<string | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from('verifier_user_roles')
+        .select('updated_at')
+        .eq('status', 'active')
+        .order('updated_at', { ascending: false })
+        .limit(1);
 
-    if (error) throw error;
+      if (error) {
+        this.logger.error('Error getting last reverification time:', error);
+        throw error;
+      }
 
-    if (data && data.length > 0) {
-      // Check if any existing rule for this role has different criteria
-      const existingRule = data.find(rule => 
-        rule.channel_id !== channelId ||
-        rule.slug !== slug ||
-        rule.attribute_key !== attributeKey ||
-        rule.attribute_value !== attributeValue ||
-        rule.min_items !== minItems
-      );
-      
-      return existingRule || null;
+      return data?.[0]?.updated_at || null;
+    } catch (error) {
+      this.logger.error('Error getting last reverification time:', error);
+      throw error;
     }
+  }
 
-    return null;
+  /**
+   * Track role assignment in the verifier_user_roles table
+   */
+  async trackRoleAssignment(assignment: {
+    userId: string;
+    serverId: string;
+    roleId: string;
+    address: string;
+    ruleId?: string;
+    userName?: string;
+    serverName?: string;
+    roleName?: string;
+    verificationData?: any;
+    expiresInHours?: number;
+  }): Promise<any> {
+    try {
+      // Calculate expiration date if provided
+      let expiresAt = null;
+      if (assignment.expiresInHours && assignment.expiresInHours > 0) {
+        const expiration = new Date();
+        expiration.setHours(expiration.getHours() + assignment.expiresInHours);
+        expiresAt = expiration.toISOString();
+      }
+
+      const { data, error } = await this.supabase
+        .from('verifier_user_roles')
+        .upsert({
+          user_id: assignment.userId,
+          server_id: assignment.serverId,
+          role_id: assignment.roleId,
+          address: assignment.address,
+          rule_id: assignment.ruleId,
+          user_name: assignment.userName || '',
+          server_name: assignment.serverName || '',
+          role_name: assignment.roleName || '',
+          verification_data: assignment.verificationData || {},
+          status: 'active',
+          verified_at: new Date().toISOString(),
+          last_checked: new Date().toISOString(),
+          expires_at: expiresAt,
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) {
+        this.logger.error('Error tracking role assignment:', error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      this.logger.error('Error tracking role assignment:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user role history for a specific server
+   */
+  async getUserRoleHistory(userId: string, serverId: string): Promise<any[]> {
+    try {
+      const { data, error } = await this.supabase
+        .from('verifier_user_roles')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('server_id', serverId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        this.logger.error(`Error fetching user role history for ${userId} in server ${serverId}:`, error);
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      this.logger.error(`Error fetching user role history for ${userId} in server ${serverId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update role verification status
+   */
+  async updateRoleVerification(assignmentId: string, isValid: boolean): Promise<any> {
+    try {
+      const { data, error } = await this.supabase
+        .from('verifier_user_roles')
+        .update({
+          status: isValid ? 'active' : 'revoked',
+          verified_at: new Date().toISOString(),
+          last_checked: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', assignmentId)
+        .select()
+        .single();
+
+      if (error) {
+        this.logger.error(`Error updating role verification for assignment ${assignmentId}:`, error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      this.logger.error(`Error updating role verification for assignment ${assignmentId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user's latest address from their most recent verification
+   */
+  async getUserLatestAddress(userId: string): Promise<string | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from('verifier_user_roles')
+        .select('address')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) {
+        this.logger.error(`Error fetching latest address for user ${userId}:`, error);
+        throw error;
+      }
+
+      return data?.[0]?.address || null;
+    } catch (error) {
+      this.logger.error(`Error fetching latest address for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get unique users for a server
+   */
+  async getServerUniqueUsers(serverId: string): Promise<string[]> {
+    try {
+      const { data, error } = await this.supabase
+        .from('verifier_user_roles')
+        .select('user_id')
+        .eq('server_id', serverId)
+        .eq('status', 'active');
+
+      if (error) {
+        this.logger.error(`Error fetching unique users for server ${serverId}:`, error);
+        throw error;
+      }
+
+      // Get unique user IDs
+      const uniqueUsers = [...new Set(data?.map(row => row.user_id) || [])];
+      return uniqueUsers;
+    } catch (error) {
+      this.logger.error(`Error fetching unique users for server ${serverId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Restore a rule with its original ID (for undo operations)
+   */
+  async restoreRuleWithOriginalId(removedRule: any): Promise<any> {
+    try {
+      const { data, error } = await this.supabase
+        .from('verifier_rules')
+        .insert({
+          id: removedRule.id,
+          server_id: removedRule.server_id,
+          server_name: removedRule.server_name,
+          channel_id: removedRule.channel_id,
+          channel_name: removedRule.channel_name,
+          role_id: removedRule.role_id,
+          role_name: removedRule.role_name,
+          slug: removedRule.slug,
+          attribute_key: removedRule.attribute_key,
+          attribute_value: removedRule.attribute_value,
+          min_items: removedRule.min_items,
+          created_at: removedRule.created_at
+        })
+        .select()
+        .single();
+
+      if (error) {
+        this.logger.error('Error restoring rule with original ID:', error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      this.logger.error('Error restoring rule with original ID:', error);
+      throw error;
+    }
   }
 
 }

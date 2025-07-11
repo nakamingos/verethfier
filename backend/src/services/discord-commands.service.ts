@@ -503,9 +503,8 @@ export class DiscordCommandsService {
     }
 
     // Check for duplicate roles (same role with different criteria)
-    const existingRoleRule = await this.dbSvc.checkForDuplicateRole(
+    const existingRoleRule = await this.dbSvc.checkForDuplicateRule(
       interaction.guild.id,
-      role.id,
       channel.id,
       slug,
       attributeKey,
