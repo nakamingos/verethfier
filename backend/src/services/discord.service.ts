@@ -6,6 +6,7 @@ import { DbService } from '@/services/db.service';
 import { DiscordMessageService } from '@/services/discord-message.service';
 import { DiscordVerificationService } from '@/services/discord-verification.service';
 import { DiscordCommandsService } from '@/services/discord-commands.service';
+import { DataService } from '@/services/data.service';
 import { VerificationService } from '@/services/verification.service';
 import { CONSTANTS } from '@/constants';
 
@@ -62,6 +63,7 @@ export class DiscordService {
     @Inject(forwardRef(() => DiscordCommandsService))
     private readonly discordCommandsSvc: DiscordCommandsService,
     private readonly verificationSvc: VerificationService,
+    private readonly dataSvc: DataService,
   ) {
     // Don't initialize during tests or when Discord is disabled
     const isTestEnvironment = EnvironmentConfig.IS_TEST;
@@ -153,12 +155,14 @@ export class DiscordService {
     await this.registerSlashCommands();
 
     this.client.on('interactionCreate', async (interaction) => {
-      // Handle autocomplete interactions for role selection
+      // Handle autocomplete interactions for role and slug selection
       if (interaction.isAutocomplete()) {
         if (interaction.commandName === 'setup' && interaction.options.getSubcommand() === 'add-rule') {
           const focusedOption = interaction.options.getFocused(true);
           if (focusedOption.name === 'role') {
             await this.handleRoleAutocomplete(interaction);
+          } else if (focusedOption.name === 'slug') {
+            await this.handleSlugAutocomplete(interaction);
           }
         }
         return;
@@ -350,7 +354,7 @@ export class DiscordService {
             .setDescription('Add a new verification rule')
             .addChannelOption(option => option.setName('channel').setDescription('Channel').setRequired(true))
             .addStringOption(option => option.setName('role').setDescription('Select existing role or type new role name to create').setRequired(true).setAutocomplete(true))
-            .addStringOption(option => option.setName('slug').setDescription('Asset slug (leave empty for ALL collections)'))
+            .addStringOption(option => option.setName('slug').setDescription('Asset slug (leave empty for ALL collections)').setAutocomplete(true))
             .addStringOption(option => option.setName('attribute_key').setDescription('Attribute key (leave empty for ALL attributes)'))
             .addStringOption(option => option.setName('attribute_value').setDescription('Attribute value (leave empty for ALL values)'))
             .addIntegerOption(option => option.setName('min_items').setDescription('Minimum items (default: 1)'))
@@ -523,6 +527,37 @@ export class DiscordService {
       await interaction.respond(choices);
     } catch (error) {
       Logger.error('Error in handleRoleAutocomplete:', error);
+      await interaction.respond([]);
+    }
+  }
+
+  /**
+   * Handles slug autocomplete for the add-rule command.
+   * Only allows selection of existing slugs from the marketplace database.
+   * @param interaction - The autocomplete interaction.
+   */
+  async handleSlugAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+    try {
+      const focusedValue = interaction.options.getFocused().toLowerCase();
+      
+      // Get all available slugs from the marketplace database
+      const allSlugs = await this.dataSvc.getAllSlugs();
+      
+      // Filter slugs based on user input and exclude 'all-collections' as it's handled by leaving slug empty
+      const filteredSlugs = allSlugs
+        .filter(slug => slug !== 'all-collections') // Exclude the special 'all-collections' option
+        .filter(slug => slug.toLowerCase().includes(focusedValue))
+        .sort((a, b) => a.localeCompare(b))
+        .slice(0, 25); // Discord allows max 25 choices
+
+      const choices = filteredSlugs.map(slug => ({
+        name: slug,
+        value: slug
+      }));
+
+      await interaction.respond(choices);
+    } catch (error) {
+      Logger.error('Error in handleSlugAutocomplete:', error);
       await interaction.respond([]);
     }
   }

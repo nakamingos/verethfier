@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ButtonInteraction, ChatInputCommandInteraction, ComponentType, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { DbService } from '../../db.service';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
+import { RemovalUndoInteractionHandler } from './removal-undo.interaction';
+import { DuplicateRuleConfirmationInteractionHandler } from './duplicate-rule-confirmation.interaction';
 
 /**
  * Rule Confirmation Interaction Handler
@@ -16,9 +18,14 @@ export class RuleConfirmationInteractionHandler {
   // Store confirmation data for Edit and Undo functionality
   private confirmationData: Map<string, any> = new Map();
   private removedRules = new Map<string, any>();
+  private removedRulesForUndo: Map<string, any> = new Map(); // For passing to RemovalUndoInteractionHandler
 
   constructor(
-    private readonly dbSvc: DbService
+    private readonly dbSvc: DbService,
+    @Inject(forwardRef(() => RemovalUndoInteractionHandler))
+    private readonly removalUndoHandler: RemovalUndoInteractionHandler,
+    @Inject(forwardRef(() => DuplicateRuleConfirmationInteractionHandler))
+    private readonly duplicateRuleConfirmationHandler: DuplicateRuleConfirmationInteractionHandler
   ) {}
 
   /**
@@ -66,7 +73,6 @@ export class RuleConfirmationInteractionHandler {
   setupConfirmationButtonHandler(interaction: ChatInputCommandInteraction): void {
     const filter = (i: any) => 
       i.customId.startsWith('undo_rule_') && 
-      i.customId.endsWith(`_${interaction.id}`) && 
       i.user.id === interaction.user.id;
     
     const collector = interaction.channel?.createMessageComponentCollector({ 
@@ -110,13 +116,15 @@ export class RuleConfirmationInteractionHandler {
       const allRules = await this.dbSvc.getRoleMappings(confirmationInfo.serverId);
       const ruleToRemove = allRules?.find(rule => rule.id === confirmationInfo.ruleId);
       
+      let removedRuleWithMetadata = null;
       if (ruleToRemove) {
         // Store for potential undo of this removal, including wasNewlyCreated flag
-        const removedRuleWithMetadata = {
+        removedRuleWithMetadata = {
           ...ruleToRemove,
           wasNewlyCreated: confirmationInfo.wasNewlyCreated
         };
-        this.removedRules.set(interaction.id, removedRuleWithMetadata);
+        // Use the original interaction ID to maintain the chain
+        this.removedRules.set(interactionId, removedRuleWithMetadata);
       }
 
       // Delete the rule from the database
@@ -128,7 +136,16 @@ export class RuleConfirmationInteractionHandler {
       }
       
       // Create rule info fields for the removed rule
-      const ruleInfoFields = this.createRuleInfoFields(ruleToRemove);
+      const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields({
+        rule_id: ruleToRemove.id,
+        role_id: ruleToRemove.role_id,
+        role_name: ruleToRemove.role_name,
+        channel_name: ruleToRemove.channel_name,
+        slug: ruleToRemove.slug,
+        attribute_key: ruleToRemove.attribute_key,
+        attribute_value: ruleToRemove.attribute_value,
+        min_items: ruleToRemove.min_items
+      });
       const embed = AdminFeedback.success('Rule Removed', `Rule ${ruleToRemove.id} for ${ruleToRemove.channel_name} and @${ruleToRemove.role_name} has been removed.`);
       embed.addFields(ruleInfoFields);
       
@@ -138,7 +155,7 @@ export class RuleConfirmationInteractionHandler {
           new ActionRowBuilder<ButtonBuilder>()
             .addComponents(
               new ButtonBuilder()
-                .setCustomId(`undo_removal_${interaction.id}`)
+                .setCustomId(`undo_removal_${interactionId}`) // Use original ID to maintain chain
                 .setLabel('Undo')
                 .setStyle(ButtonStyle.Secondary)
                 .setEmoji('↩️')
@@ -147,45 +164,38 @@ export class RuleConfirmationInteractionHandler {
         ephemeral: true
       });
 
+      // Set up removal undo handler for the "Rule Removed" message
+      if (removedRuleWithMetadata) {
+        // Store in the dedicated map for undo functionality using original ID
+        this.removedRulesForUndo.clear(); // Clear any previous data
+        this.removedRulesForUndo.set(interactionId, removedRuleWithMetadata);
+        this.removalUndoHandler.setupRemovalButtonHandler(interaction, this.removedRulesForUndo);
+      }
+
       // Clean up the confirmation data
       this.confirmationData.delete(interactionId);
     } catch (error) {
       this.logger.error('Error undoing rule creation:', error);
-      await interaction.reply({
-        content: AdminFeedback.simple(`Error undoing rule: ${error.message}`, true),
-        ephemeral: true
-      });
-    }
-  }
-
-  /**
-   * Creates detailed rule information fields for consistent display
-   */
-  createRuleInfoFields(ruleData: any): any[] {
-    const formatAttribute = (key: string, value: string) => {
-      if (key !== 'ALL' && value !== 'ALL') return `${key}=${value}`;
-      if (key !== 'ALL' && value === 'ALL') return `${key} (any value)`;
-      if (key === 'ALL' && value !== 'ALL') return `ALL=${value}`;
-      return 'ALL';
-    };
-
-    return [
-      {
-        name: 'Collection',
-        value: ruleData.slug || 'ALL',
-        inline: true
-      },
-      {
-        name: 'Attribute',
-        value: formatAttribute(ruleData.attribute_key || 'ALL', ruleData.attribute_value || 'ALL'),
-        inline: true
-      },
-      {
-        name: 'Min Items',
-        value: (ruleData.min_items || 1).toString(),
-        inline: true
+      
+      // Only try to respond if we haven't already responded and the interaction is still valid
+      try {
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({
+            content: AdminFeedback.simple(`Error undoing rule: ${error.message}`, true),
+            ephemeral: true
+          });
+        } else if (interaction.replied) {
+          // Use followUp if already replied
+          await interaction.followUp({
+            content: AdminFeedback.simple(`Error undoing rule: ${error.message}`, true),
+            ephemeral: true
+          });
+        }
+      } catch (responseError) {
+        // If we can't respond to the interaction, just log it
+        this.logger.error('Failed to send error response to interaction:', responseError);
       }
-    ];
+    }
   }
 
   /**

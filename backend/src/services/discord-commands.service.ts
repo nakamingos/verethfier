@@ -122,7 +122,9 @@ export class DiscordCommandsService {
       ]
     );
 
-    const row = this.duplicateRuleConfirmationHandler.createDuplicateRuleButtons(interaction.id);
+    // Generate chain ID first, then use it consistently
+    const chainId = `${interaction.user.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const row = this.duplicateRuleConfirmationHandler.createDuplicateRuleButtons(chainId);
 
     await interaction.editReply({
       embeds: [embed],
@@ -130,11 +132,12 @@ export class DiscordCommandsService {
     });
 
     // Store the new rule data for later use if confirmed
-    this.duplicateRuleConfirmationHandler.storeRuleData(interaction.id, newRuleData);
+    this.duplicateRuleConfirmationHandler.storeRuleData(chainId, newRuleData);
 
     // Set up button interaction handler
     this.duplicateRuleConfirmationHandler.setupDuplicateRuleButtonHandler(
       interaction,
+      chainId,
       async (ruleData) => {
         await this.createRuleDirectly(interaction, ruleData, true);
       },
@@ -150,11 +153,11 @@ export class DiscordCommandsService {
           min_items: ruleData.minItems
         };
         const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields(cancelledRuleFormatted);
-        const embed = AdminFeedback.info('Rule Creation Cancelled', `Rule for ${ruleData.channel.name} and @${ruleData.role.name} was not created.`);
+        const embed = AdminFeedback.info('Rule Creation Cancelled', `Proposed rule for ${ruleData.channel.name} and @${ruleData.role.name} was not created.`);
         embed.addFields(ruleInfoFields);
         
         // Create Undo button
-        const undoButton = this.duplicateRuleConfirmationHandler.createUndoRemovalButton(interaction.id, 'cancellation');
+        const undoButton = this.duplicateRuleConfirmationHandler.createUndoRemovalButton(chainId, 'cancellation');
         
         await interaction.editReply({
           embeds: [embed],
@@ -164,10 +167,11 @@ export class DiscordCommandsService {
         // Set up button interaction handler for undo cancellation
         this.duplicateRuleConfirmationHandler.setupCancellationButtonHandler(
           interaction,
+          chainId,
           async (ruleData) => {
             // Create a mock button interaction for the undo cancellation
             const mockButtonInteraction = {
-              customId: `undo_cancellation_${interaction.id}`,
+              customId: `undo_cancellation_${chainId}`,
               guild: interaction.guild,
               id: interaction.id,
               reply: interaction.editReply.bind(interaction)
@@ -224,13 +228,6 @@ export class DiscordCommandsService {
       return;
     }
 
-    const formatAttribute = (key: string, value: string) => {
-      if (key !== 'ALL' && value !== 'ALL') return `${key}=${value}`;
-      if (key !== 'ALL' && value === 'ALL') return `${key} (any value)`;
-      if (key === 'ALL' && value !== 'ALL') return `ALL=${value}`;
-      return 'ALL';
-    };
-
     if (existingRules.length > 0) {
       // Check if there's already a verification message from our bot in this channel
       const hasExistingMessage = await this.messageSvc.findExistingVerificationMessage(channel);
@@ -238,13 +235,21 @@ export class DiscordCommandsService {
       // Use existing verification message
       const embed = AdminFeedback.success(
         isDuplicateConfirmed ? 'Duplicate Rule Created' : 'Rule Added',
-        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> ${hasExistingMessage ? 'has been added using existing verification message' : 'created'}.`,
-        [
-          { name: 'Collection', value: slug, inline: true },
-          { name: 'Attribute', value: AdminFeedback.formatRule(newRule).split('\n')[2].replace('**Attribute:** ', ''), inline: true },
-          { name: 'Min Items', value: minItems.toString(), inline: true }
-        ]
+        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> ${hasExistingMessage ? 'has been added using existing verification message' : 'created'}.`
       );
+
+      // Add detailed rule info fields
+      const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields({
+        rule_id: newRule.id,
+        role_id: role.id,
+        role_name: role.name,
+        channel_name: channel.name,
+        slug: slug,
+        attribute_key: attributeKey,
+        attribute_value: attributeValue,
+        min_items: minItems
+      });
+      embed.addFields(ruleInfoFields);
 
       if (isDuplicateConfirmed) {
         embed.addFields({
@@ -317,22 +322,23 @@ export class DiscordCommandsService {
       
       // No need to track message_id in database anymore
 
-      const formatAttribute = (key: string, value: string) => {
-        if (key !== 'ALL' && value !== 'ALL') return `${key}=${value}`;
-        if (key !== 'ALL' && value === 'ALL') return `${key} (any value)`;
-        if (key === 'ALL' && value !== 'ALL') return `ALL=${value}`;
-        return 'ALL';
-      };
-
       const embed = AdminFeedback.success(
         isDuplicateConfirmed ? 'Duplicate Rule Created' : 'Rule Added',
-        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> ${messageCreated ? 'has been added with new verification message' : 'has been added using existing verification message'}.`,
-        [
-          { name: 'Collection', value: slug, inline: true },
-          { name: 'Attribute', value: formatAttribute(attributeKey, attributeValue), inline: true },
-          { name: 'Min Items', value: minItems.toString(), inline: true }
-        ]
+        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> ${messageCreated ? 'has been added with new verification message' : 'has been added using existing verification message'}.`
       );
+
+      // Add detailed rule info fields
+      const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields({
+        rule_id: newRule.id,
+        role_id: role.id,
+        role_name: role.name,
+        channel_name: channel.name,
+        slug: slug,
+        attribute_key: attributeKey,
+        attribute_value: attributeValue,
+        min_items: minItems
+      });
+      embed.addFields(ruleInfoFields);
 
       if (isDuplicateConfirmed) {
         embed.addFields({
@@ -689,9 +695,14 @@ export class DiscordCommandsService {
       const ruleList = successful.map(s => `Rule ${s.id}`).join(', ');
       description += `✅ **Successfully removed:** ${ruleList}\n\n`;
       
-      // Add rule details
+      // Add clean rule info for each removed rule using list format
       successful.forEach(s => {
-        description += `**Rule ${s.id}:** ${s.data.channel_name} → @${s.data.role_name}\n`;
+        const attribute = this.formatAttribute(s.data.attribute_key, s.data.attribute_value);
+        const slug = s.data.slug || 'ALL';
+        const minItems = s.data.min_items || 1;
+        
+        const ruleInfo = `ID: ${s.id} | Channel: <#${s.data.channel_id}> | Role: <@&${s.data.role_id}> | Slug: ${slug} | Attr: ${attribute} | Min: ${minItems}`;
+        description += ruleInfo + '\n\n';
       });
     }
 
@@ -764,10 +775,15 @@ export class DiscordCommandsService {
       const ruleList = successful.map(s => `Rule ${s.rule?.id || s.ruleId}`).join(', ');
       description += `✅ **Successfully restored:** ${ruleList}\n\n`;
       
-      // Add rule details
+      // Add clean rule info for each restored rule using list format
       successful.forEach(s => {
         const rule = s.rule || s.originalData;
-        description += `**Rule ${rule.id}:** ${rule.channel_name} → @${rule.role_name}\n`;
+        const attribute = this.formatAttribute(rule.attribute_key, rule.attribute_value);
+        const slug = rule.slug || 'ALL';
+        const minItems = rule.min_items || 1;
+        
+        const ruleInfo = `ID: ${rule.id} | Channel: <#${rule.channel_id}> | Role: <@&${rule.role_id}> | Slug: ${slug} | Attr: ${attribute} | Min: ${minItems}`;
+        description += ruleInfo + '\n\n';
       });
     }
 
@@ -876,8 +892,9 @@ export class DiscordCommandsService {
         serverId: interaction.guild.id
       });
       
-      // Create detailed rule info fields for the cancelled rule
-      const cancelledRuleFormatted = {
+      // Create detailed rule info fields for the created rule
+      const createdRuleFormatted = {
+        rule_id: createdRule.id,
         role_id: cancelledRule.role.id,
         role_name: cancelledRule.role.name,
         channel_name: cancelledRule.channel.name,
@@ -886,7 +903,7 @@ export class DiscordCommandsService {
         attribute_value: cancelledRule.attributeValue,
         min_items: cancelledRule.minItems
       };
-      const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields(cancelledRuleFormatted);
+      const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields(createdRuleFormatted);
       const embed = AdminFeedback.success('Rule Added', `Rule ${createdRule.id} for ${cancelledRule.channel.name} and @${cancelledRule.role.name} has been added using existing verification message.`);
       embed.addFields(ruleInfoFields);
       
@@ -963,15 +980,18 @@ export class DiscordCommandsService {
       ]
     );
 
+    // Generate chain ID first, then use it consistently
+    const chainId = `${interaction.user.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     const row = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
         new ButtonBuilder()
-          .setCustomId(`confirm_duplicate_role_${interaction.id}`)
+          .setCustomId(`confirm_duplicate_role_${chainId}`)
           .setLabel('Create Anyway')
           .setStyle(ButtonStyle.Danger)
           .setEmoji('✅'),
         new ButtonBuilder()
-          .setCustomId(`cancel_duplicate_role_${interaction.id}`)
+          .setCustomId(`cancel_duplicate_role_${chainId}`)
           .setLabel('Cancel')
           .setStyle(ButtonStyle.Secondary)
           .setEmoji('❌')
@@ -982,17 +1002,16 @@ export class DiscordCommandsService {
       components: [row]
     });
 
-    // Store pending rule for confirmation
-    this.duplicateRuleConfirmationHandler.storeRuleData(interaction.id, newRuleData);
+    // Store pending rule for confirmation using chainId
+    this.duplicateRuleConfirmationHandler.storeRuleData(chainId, newRuleData);
 
-    // Set up button handler
-    this.setupDuplicateRoleButtonHandler(interaction);
+    // Set up button handler with chainId
+    this.setupDuplicateRoleButtonHandler(interaction, chainId);
   }
 
-  private setupDuplicateRoleButtonHandler(interaction: ChatInputCommandInteraction): void {
+  private setupDuplicateRoleButtonHandler(interaction: ChatInputCommandInteraction, chainId: string): void {
     const filter = (i: any) => 
-      (i.customId.startsWith('confirm_duplicate_role_') || i.customId.startsWith('cancel_duplicate_role_')) && 
-      i.customId.endsWith(`_${interaction.id}`) && 
+      (i.customId === `confirm_duplicate_role_${chainId}` || i.customId === `cancel_duplicate_role_${chainId}`) && 
       i.user.id === interaction.user.id;
     
     const collector = interaction.channel?.createMessageComponentCollector({ 
@@ -1001,18 +1020,57 @@ export class DiscordCommandsService {
     });
 
     collector?.on('collect', async (i) => {
-      if (i.customId.startsWith('confirm_duplicate_role_')) {
+      if (i.customId === `confirm_duplicate_role_${chainId}`) {
         await i.deferUpdate();
-        const ruleData = this.duplicateRuleConfirmationHandler.getPendingRule(interaction.id);
+        const ruleData = this.duplicateRuleConfirmationHandler.getPendingRule(chainId);
         await this.createRuleDirectly(interaction, ruleData, true);
-        this.duplicateRuleConfirmationHandler.deletePendingRule(interaction.id);
-      } else if (i.customId.startsWith('cancel_duplicate_role_')) {
+        this.duplicateRuleConfirmationHandler.deletePendingRule(chainId);
+      } else if (i.customId === `cancel_duplicate_role_${chainId}`) {
         await i.deferUpdate();
+        const ruleData = this.duplicateRuleConfirmationHandler.getPendingRule(chainId);
+        
+        // Create detailed rule info fields for the cancelled rule
+        const cancelledRuleFormatted = {
+          role_id: ruleData.role.id,
+          role_name: ruleData.role.name,
+          channel_name: ruleData.channel.name,
+          slug: ruleData.slug,
+          attribute_key: ruleData.attributeKey,
+          attribute_value: ruleData.attributeValue,
+          min_items: ruleData.minItems
+        };
+        const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields(cancelledRuleFormatted);
+        const embed = AdminFeedback.info('Rule Creation Cancelled', `Proposed rule for ${ruleData.channel.name} and @${ruleData.role.name} was not created.`);
+        embed.addFields(ruleInfoFields);
+        
+        // Create Undo button using the same chain ID
+        const undoButton = this.duplicateRuleConfirmationHandler.createUndoRemovalButton(chainId, 'cancellation');
+        
+        // Store the cancelled rule for undo functionality
+        this.duplicateRuleConfirmationHandler.storeCancelledRule(chainId, ruleData);
+        
         await interaction.editReply({
-          embeds: [AdminFeedback.info('Rule Creation Cancelled', 'The rule was not created.')],
-          components: []
+          embeds: [embed],
+          components: [undoButton]
         });
-        this.duplicateRuleConfirmationHandler.deletePendingRule(interaction.id);
+        
+        // Set up button interaction handler for undo cancellation
+        this.duplicateRuleConfirmationHandler.setupCancellationButtonHandler(
+          interaction,
+          chainId,
+          async (ruleData) => {
+            // Create a mock button interaction for the undo cancellation
+            const mockButtonInteraction = {
+              customId: `undo_cancellation_${chainId}`,
+              guild: interaction.guild,
+              id: interaction.id,
+              reply: interaction.editReply.bind(interaction)
+            };
+            await this.handleUndoCancellation(mockButtonInteraction);
+          }
+        );
+        
+        this.duplicateRuleConfirmationHandler.deletePendingRule(chainId);
       }
       collector.stop();
     });
@@ -1020,7 +1078,7 @@ export class DiscordCommandsService {
     collector?.on('end', (collected) => {
       if (collected.size === 0) {
         // Timeout - clean up
-        this.duplicateRuleConfirmationHandler.deletePendingRule(interaction.id);
+        this.duplicateRuleConfirmationHandler.deletePendingRule(chainId);
         interaction.editReply({
           embeds: [AdminFeedback.info('Request Timed Out', 'Rule creation was cancelled due to timeout.')],
           components: []
@@ -1051,5 +1109,21 @@ export class DiscordCommandsService {
       // Don't fail the undo operation if role cleanup fails
       Logger.warn(`Failed to cleanup role ${roleId}:`, error);
     }
+  }
+
+  /**
+   * Formats attribute key/value pairs for display
+   */
+  private formatAttribute(key: string, value: string): string {
+    if (key && key !== 'ALL' && value && value !== 'ALL') {
+      return `${key}=${value}`;
+    }
+    if (key && key !== 'ALL' && (!value || value === 'ALL')) {
+      return `${key} (any value)`;
+    }
+    if ((!key || key === 'ALL') && value && value !== 'ALL') {
+      return `ALL=${value}`;
+    }
+    return 'ALL';
   }
 }

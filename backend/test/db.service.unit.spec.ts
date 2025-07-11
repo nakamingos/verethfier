@@ -354,4 +354,114 @@ describe('DbService (Unit Tests)', () => {
       await expect(service.getServerRole('123')).rejects.toThrow('Network timeout');
     });
   });
+
+  describe('restoreRuleWithOriginalId', () => {
+    const mockRuleData = {
+      id: 42,
+      server_id: 'server123',
+      server_name: 'Test Server',
+      channel_id: 'channel123',
+      channel_name: 'test-channel',
+      slug: 'test-collection',
+      role_id: 'role123',
+      role_name: 'Test Role',
+      attribute_key: 'trait',
+      attribute_value: 'rare',
+      min_items: 1
+    };
+
+    it('should restore rule with original ID when no conflict exists', async () => {
+      // Mock that no existing rule is found
+      mockSupabaseClient.single.mockResolvedValueOnce({
+        data: null,
+        error: { code: 'PGRST116' } // No rows found
+      });
+
+      // Mock successful insert
+      mockSupabaseClient.single.mockResolvedValueOnce({
+        data: { ...mockRuleData, created_at: new Date() },
+        error: null
+      });
+
+      const result = await service.restoreRuleWithOriginalId(mockRuleData);
+
+      expect(result.id).toBe(42);
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('verifier_rules');
+      expect(mockSupabaseClient.select).toHaveBeenCalledWith('id');
+      expect(mockSupabaseClient.eq).toHaveBeenCalledWith('id', 42);
+      expect(mockSupabaseClient.insert).toHaveBeenCalledWith(expect.objectContaining({
+        id: 42,
+        server_id: 'server123',
+        role_id: 'role123'
+      }));
+    });
+
+    it('should create new rule when ID conflict exists', async () => {
+      // Mock that existing rule is found
+      mockSupabaseClient.single.mockResolvedValueOnce({
+        data: { id: 42 },
+        error: null
+      });
+
+      // Mock successful insert with new ID
+      mockSupabaseClient.single.mockResolvedValueOnce({
+        data: { ...mockRuleData, id: 43, created_at: new Date() },
+        error: null
+      });
+
+      const result = await service.restoreRuleWithOriginalId(mockRuleData);
+
+      expect(result.id).toBe(43); // Should get a new ID
+      // Should call insert twice: once for the ID check, once for the new rule
+      expect(mockSupabaseClient.insert).toHaveBeenCalledWith(expect.objectContaining({
+        server_id: 'server123',
+        role_id: 'role123'
+        // Should NOT include the original ID when creating new rule
+      }));
+    });
+
+    it('should handle database errors during ID conflict check', async () => {
+      const dbError = new Error('Database connection failed');
+      mockSupabaseClient.single.mockResolvedValueOnce({
+        data: null,
+        error: dbError
+      });
+
+      await expect(service.restoreRuleWithOriginalId(mockRuleData))
+        .rejects.toThrow('Database connection failed');
+    });
+
+    it('should use default values for missing rule data', async () => {
+      const incompleteRuleData = {
+        id: 42,
+        server_id: 'server123',
+        server_name: 'Test Server',
+        channel_id: 'channel123',
+        channel_name: 'test-channel',
+        role_id: 'role123',
+        role_name: 'Test Role'
+        // Missing slug, attribute_key, attribute_value, min_items
+      };
+
+      // Mock that no existing rule is found
+      mockSupabaseClient.single.mockResolvedValueOnce({
+        data: null,
+        error: { code: 'PGRST116' }
+      });
+
+      mockSupabaseClient.single.mockResolvedValueOnce({
+        data: { ...incompleteRuleData, created_at: new Date() },
+        error: null
+      });
+
+      await service.restoreRuleWithOriginalId(incompleteRuleData);
+
+      expect(mockSupabaseClient.insert).toHaveBeenCalledWith(expect.objectContaining({
+        slug: 'ALL',
+        attribute_key: 'ALL',
+        attribute_value: 'ALL',
+        min_items: 1
+      }));
+    });
+  });
 });

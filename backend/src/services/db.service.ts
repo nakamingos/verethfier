@@ -31,6 +31,8 @@ import { VerifierRole } from '@/models/verifier-role.interface';
  */
 @Injectable()
 export class DbService {
+  private readonly logger = new Logger(DbService.name);
+
   constructor(
     @Inject('SUPABASE_CLIENT') private readonly supabase: SupabaseClient
   ) {}
@@ -949,12 +951,46 @@ export class DbService {
    * @throws Error if database operation fails
    */
   async restoreRuleWithOriginalId(ruleData: any): Promise<any> {
+    this.logger.log(`Attempting to restore rule with ID: ${ruleData.id}`);
+    
     // Use meaningful defaults instead of NULLs for better database constraints
     const finalSlug = ruleData.slug || 'ALL';
     const finalAttrKey = ruleData.attribute_key || 'ALL';
     const finalAttrVal = ruleData.attribute_value || 'ALL';
     const finalMinItems = ruleData.min_items != null ? ruleData.min_items : 1;
 
+    // First, check if a rule with this ID already exists
+    this.logger.log(`Checking if rule with ID ${ruleData.id} already exists...`);
+    const { data: existingRule, error: checkError } = await this.supabase
+      .from('verifier_rules')
+      .select('id')
+      .eq('id', ruleData.id)
+      .single();
+
+    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 means no rows found
+      this.logger.error(`Error checking for existing rule: ${checkError.message}`);
+      throw checkError;
+    }
+
+    // If a rule with this ID already exists, create a new rule instead
+    if (existingRule) {
+      this.logger.log(`Rule with ID ${ruleData.id} already exists, creating new rule instead`);
+      return this.addRoleMapping(
+        ruleData.server_id,
+        ruleData.server_name,
+        ruleData.channel_id,
+        ruleData.channel_name,
+        finalSlug,
+        ruleData.role_id,
+        ruleData.role_name,
+        finalAttrKey,
+        finalAttrVal,
+        finalMinItems
+      );
+    }
+
+    // Otherwise, restore with the original ID
+    this.logger.log(`No ID conflict, restoring rule with original ID ${ruleData.id}`);
     const { data, error } = await this.supabase
       .from('verifier_rules')
       .insert({
@@ -975,7 +1011,12 @@ export class DbService {
       .select()
       .single();
     
-    if (error) throw error;
+    if (error) {
+      this.logger.error(`Error inserting rule with original ID: ${error.message}`);
+      throw error;
+    }
+    
+    this.logger.log(`Successfully restored rule with ID: ${data.id}`);
     return data;
   }
 
