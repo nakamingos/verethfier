@@ -117,6 +117,148 @@ export class DataService {
   }
 
   /**
+   * Get all unique attribute keys for a specific collection slug
+   * @param slug - Collection slug to filter by (optional)
+   * @returns Array of unique attribute keys
+   */
+  async getAttributeKeys(slug?: string): Promise<string[]> {
+    try {
+      // If no slug specified or it's 'ALL', get a small sample of attributes
+      if (!slug || slug === 'ALL' || slug === 'all-collections') {
+        const { data, error } = await supabase
+          .from('attributes_new')
+          .select('values')
+          .limit(50); // Limit to prevent large responses
+        
+        if (error) throw new Error(error.message);
+        
+        const allKeys = new Set<string>();
+        (data || []).forEach(item => {
+          if (item.values && typeof item.values === 'object') {
+            Object.keys(item.values).forEach(key => allKeys.add(key));
+          }
+        });
+        
+        return ['ALL', ...Array.from(allKeys).sort().slice(0, 24)]; // Discord limit
+      }
+
+      // For specific slug, first get a limited set of SHAs to avoid URL overflow
+      const { data: ethscriptions, error: ethError } = await supabase
+        .from('ethscriptions')
+        .select('sha')
+        .eq('slug', slug)
+        .limit(100); // Limit to prevent URL overflow
+      
+      if (ethError) throw new Error(ethError.message);
+      
+      if (!ethscriptions || ethscriptions.length === 0) {
+        return ['ALL'];
+      }
+
+      // Get attributes for this limited set of SHAs
+      const shas = ethscriptions.map(e => e.sha);
+      const { data, error } = await supabase
+        .from('attributes_new')
+        .select('values')
+        .in('sha', shas);
+
+      if (error) throw new Error(error.message);
+
+      // Extract all unique attribute keys from the values JSONB
+      const allKeys = new Set<string>();
+      (data || []).forEach(item => {
+        if (item.values && typeof item.values === 'object') {
+          Object.keys(item.values).forEach(key => allKeys.add(key));
+        }
+      });
+
+      return ['ALL', ...Array.from(allKeys).sort().slice(0, 24)]; // Discord limit
+    } catch (error) {
+      Logger.error('Error getting attribute keys:', error);
+      return ['ALL'];
+    }
+  }
+
+  /**
+   * Get all unique attribute values for a specific attribute key and collection slug
+   * @param attributeKey - Attribute key to get values for
+   * @param slug - Collection slug to filter by (optional)
+   * @returns Array of unique attribute values
+   */
+  async getAttributeValues(attributeKey: string, slug?: string): Promise<string[]> {
+    try {
+      if (!attributeKey || attributeKey === 'ALL') {
+        return [];
+      }
+
+      let data;
+      
+      // If no slug specified or it's 'ALL', get a small sample
+      if (!slug || slug === 'ALL' || slug === 'all-collections') {
+        const { data: attributeData, error } = await supabase
+          .from('attributes_new')
+          .select('values')
+          .limit(50); // Limit to prevent large responses
+        
+        if (error) throw new Error(error.message);
+        data = attributeData;
+      } else {
+        // For specific slug, first get a limited set of SHAs to avoid URL overflow
+        const { data: ethscriptions, error: ethError } = await supabase
+          .from('ethscriptions')
+          .select('sha')
+          .eq('slug', slug)
+          .limit(100); // Limit to prevent URL overflow
+        
+        if (ethError) throw new Error(ethError.message);
+        
+        if (!ethscriptions || ethscriptions.length === 0) {
+          return [];
+        }
+
+        // Get attributes for this limited set of SHAs
+        const shas = ethscriptions.map(e => e.sha);
+        const { data: attributeData, error } = await supabase
+          .from('attributes_new')
+          .select('values')
+          .in('sha', shas);
+
+        if (error) throw new Error(error.message);
+        data = attributeData;
+      }
+
+      // Extract all unique values for the specified attribute key
+      const allValues = new Set<string>();
+      
+      // Generate possible key variations for case-insensitive matching
+      const keyVariations = [
+        attributeKey,
+        attributeKey.charAt(0).toUpperCase() + attributeKey.slice(1).toLowerCase(),
+        attributeKey.toLowerCase(),
+        attributeKey.toUpperCase()
+      ];
+
+      (data || []).forEach(item => {
+        if (item.values && typeof item.values === 'object') {
+          keyVariations.forEach(keyVariation => {
+            if (item.values.hasOwnProperty(keyVariation)) {
+              const value = item.values[keyVariation];
+              if (value !== null && value !== undefined) {
+                allValues.add(value.toString());
+              }
+            }
+          });
+        }
+      });
+
+      return Array.from(allValues).sort().slice(0, 25); // Discord limit
+    } catch (error) {
+      Logger.error('Error getting attribute values:', error);
+      return [];
+    }
+  }
+
+  /**
    * Check asset ownership with specific criteria (slug, attributes, minimum count)
    * 
    * @param address - Wallet address to check

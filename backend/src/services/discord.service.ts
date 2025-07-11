@@ -163,6 +163,10 @@ export class DiscordService {
             await this.handleRoleAutocomplete(interaction);
           } else if (focusedOption.name === 'slug') {
             await this.handleSlugAutocomplete(interaction);
+          } else if (focusedOption.name === 'attribute_key') {
+            await this.handleAttributeKeyAutocomplete(interaction);
+          } else if (focusedOption.name === 'attribute_value') {
+            await this.handleAttributeValueAutocomplete(interaction);
           }
         }
         return;
@@ -355,8 +359,8 @@ export class DiscordService {
             .addChannelOption(option => option.setName('channel').setDescription('Channel').setRequired(true))
             .addStringOption(option => option.setName('role').setDescription('Select existing role or type new role name to create').setRequired(true).setAutocomplete(true))
             .addStringOption(option => option.setName('slug').setDescription('Asset slug (leave empty for ALL collections)').setAutocomplete(true))
-            .addStringOption(option => option.setName('attribute_key').setDescription('Attribute key (leave empty for ALL attributes)'))
-            .addStringOption(option => option.setName('attribute_value').setDescription('Attribute value (leave empty for ALL values)'))
+            .addStringOption(option => option.setName('attribute_key').setDescription('Attribute key (leave empty for ALL attributes)').setAutocomplete(true))
+            .addStringOption(option => option.setName('attribute_value').setDescription('Attribute value (leave empty for ALL values)').setAutocomplete(true))
             .addIntegerOption(option => option.setName('min_items').setDescription('Minimum items (default: 1)'))
         )
         .addSubcommand(sc =>
@@ -559,6 +563,99 @@ export class DiscordService {
     } catch (error) {
       Logger.error('Error in handleSlugAutocomplete:', error);
       await interaction.respond([]);
+    }
+  }
+
+  /**
+   * Handles attribute key autocomplete for the add-rule command.
+   * Only shows attribute keys if a slug has been selected.
+   * @param interaction - The autocomplete interaction.
+   */
+  async handleAttributeKeyAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+    try {
+      const focusedValue = interaction.options.getFocused().toLowerCase();
+      const selectedSlug = interaction.options.getString('slug');
+      
+      // Only provide autocomplete if a slug has been specifically selected
+      if (!selectedSlug) {
+        await interaction.respond([
+          { name: 'Please select a collection first', value: 'ALL' }
+        ]);
+        return;
+      }
+      
+      // Get all available attribute keys for the selected slug
+      const allKeys = await this.dataSvc.getAttributeKeys(selectedSlug);
+      
+      // Filter keys based on user input
+      const filteredKeys = allKeys
+        .filter(key => key.toLowerCase().includes(focusedValue))
+        .sort((a, b) => a.localeCompare(b))
+        .slice(0, 25); // Discord allows max 25 choices
+
+      const choices = filteredKeys.map(key => ({
+        name: key,
+        value: key
+      }));
+
+      // Ensure we always have at least one option
+      if (choices.length === 0) {
+        choices.push({ name: 'ALL (no specific attributes)', value: 'ALL' });
+      }
+
+      await interaction.respond(choices);
+    } catch (error) {
+      Logger.error('Error in handleAttributeKeyAutocomplete:', error);
+      await interaction.respond([
+        { name: 'Error loading attributes', value: 'ALL' }
+      ]);
+    }
+  }
+
+  /**
+   * Handles attribute value autocomplete for the add-rule command.
+   * Only shows attribute values if both slug and attribute key have been selected.
+   * @param interaction - The autocomplete interaction.
+   */
+  async handleAttributeValueAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+    try {
+      const focusedValue = interaction.options.getFocused().toLowerCase();
+      const selectedSlug = interaction.options.getString('slug');
+      const selectedAttributeKey = interaction.options.getString('attribute_key');
+      
+      // Only provide autocomplete if both slug and attribute key have been specifically selected
+      if (!selectedSlug || !selectedAttributeKey) {
+        await interaction.respond([
+          { name: 'Please select collection and attribute key first', value: 'ALL' }
+        ]);
+        return;
+      }
+      
+      // Get all available attribute values for the selected slug and attribute key
+      const allValues = await this.dataSvc.getAttributeValues(selectedAttributeKey, selectedSlug);
+      
+      // Filter values based on user input
+      const filteredValues = allValues
+        .filter(value => value.toLowerCase().includes(focusedValue))
+        .sort((a, b) => a.localeCompare(b))
+        .slice(0, 25); // Discord allows max 25 choices
+
+      const choices = filteredValues.map(value => ({
+        name: value.length > 100 ? value.substring(0, 97) + '...' : value, // Truncate long values
+        value: value
+      }));
+
+      // Ensure we always have at least one option
+      if (choices.length === 0) {
+        choices.push({ name: 'ALL (no specific values)', value: 'ALL' });
+      }
+
+      await interaction.respond(choices);
+    } catch (error) {
+      Logger.error('Error in handleAttributeValueAutocomplete:', error);
+      await interaction.respond([
+        { name: 'Error loading values', value: 'ALL' }
+      ]);
     }
   }
 }
