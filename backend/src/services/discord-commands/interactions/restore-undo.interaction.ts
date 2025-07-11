@@ -19,6 +19,10 @@ export class RestoreUndoInteractionHandler {
   // Maps to store restored rule data for undo functionality
   private restoredRules = new Map<string, any>();
   private removedRules = new Map<string, any>();
+  
+  // Rate limiting for button clicks
+  private lastInteractionTime = new Map<string, number>();
+  private readonly INTERACTION_COOLDOWN_MS = 1000; // 1 second cooldown
 
   constructor(
     private readonly dbSvc: DbService,
@@ -72,6 +76,17 @@ export class RestoreUndoInteractionHandler {
    */
   private async handleUndoRestore(interaction: ButtonInteraction): Promise<void> {
     const interactionId = interaction.customId.replace('undo_restore_', '');
+    const userId = interaction.user.id;
+    
+    // Rate limiting check to prevent rapid clicking
+    const now = Date.now();
+    const lastTime = this.lastInteractionTime.get(userId) || 0;
+    if (now - lastTime < this.INTERACTION_COOLDOWN_MS) {
+      this.logger.debug(`Rate limiting undo restore for user ${userId}`);
+      return; // Silently ignore rapid clicks
+    }
+    this.lastInteractionTime.set(userId, now);
+    
     const restoredRuleData = this.restoredRules.get(interactionId);
 
     if (!restoredRuleData) {
@@ -87,8 +102,17 @@ export class RestoreUndoInteractionHandler {
 
     try {
       // Defer the interaction early to prevent timeout and acknowledgment issues
+      // But first check if the interaction is still valid
       if (!interaction.replied && !interaction.deferred) {
-        await interaction.deferReply({ ephemeral: true });
+        try {
+          await interaction.deferReply({ ephemeral: true });
+        } catch (deferError) {
+          // If we can't defer, the interaction is likely expired
+          this.logger.warn('Failed to defer interaction, likely expired:', deferError.message);
+          // Clean up data and return silently
+          this.restoredRules.delete(interactionId);
+          return;
+        }
       }
 
       // Check if this is a bulk operation
@@ -103,6 +127,14 @@ export class RestoreUndoInteractionHandler {
       this.restoredRules.delete(interactionId);
     } catch (error) {
       this.logger.error('Error undoing rule restoration:', error);
+      
+      // Improved error handling - check for specific Discord errors
+      if (error.code === 10062 || error.message?.includes('Unknown interaction')) {
+        // Interaction has expired, clean up silently
+        this.logger.warn('Interaction expired during restore undo, cleaning up silently');
+        this.restoredRules.delete(interactionId);
+        return;
+      }
       
       // Only try to respond if we haven't already responded and the interaction is still valid
       try {
@@ -123,8 +155,9 @@ export class RestoreUndoInteractionHandler {
           });
         }
       } catch (responseError) {
-        // If we can't respond to the interaction, just log it
+        // If we can't respond to the interaction, just log it and clean up
         this.logger.error('Failed to send error response to interaction:', responseError);
+        this.restoredRules.delete(interactionId);
       }
     }
   }
