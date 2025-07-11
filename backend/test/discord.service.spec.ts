@@ -6,6 +6,7 @@ import { DiscordCommandsService } from '../src/services/discord-commands.service
 import { VerificationService } from '../src/services/verification.service';
 import { DbService } from '../src/services/db.service';
 import { NonceService } from '../src/services/nonce.service';
+import { DataService } from '../src/services/data.service';
 import { Logger } from '@nestjs/common';
 
 // Mock Discord.js client and related objects
@@ -112,6 +113,10 @@ const mockVerificationService = {
   assignRoleToUser: jest.fn(),
 };
 
+const mockDataService = {
+  getAllSlugs: jest.fn().mockResolvedValue(['crypto-punks', 'bored-apes', 'mutant-apes']),
+};
+
 describe('DiscordService - Enhanced Tests', () => {
   let service: DiscordService;
   let originalEnv: NodeJS.ProcessEnv;
@@ -141,6 +146,7 @@ describe('DiscordService - Enhanced Tests', () => {
         { provide: DiscordVerificationService, useValue: mockDiscordVerificationService },
         { provide: DiscordCommandsService, useValue: mockDiscordCommandsService },
         { provide: VerificationService, useValue: mockVerificationService },
+        { provide: DataService, useValue: mockDataService },
       ],
     }).compile();
     service = module.get<DiscordService>(DiscordService);

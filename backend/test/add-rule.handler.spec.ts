@@ -3,6 +3,10 @@ import { AddRuleHandler } from '../src/services/discord-commands/handlers/add-ru
 import { DbService } from '../src/services/db.service';
 import { DiscordMessageService } from '../src/services/discord-message.service';
 import { DiscordService } from '../src/services/discord.service';
+import { DataService } from '../src/services/data.service';
+import { RuleConfirmationInteractionHandler } from '../src/services/discord-commands/interactions/rule-confirmation.interaction';
+import { DuplicateRuleConfirmationInteractionHandler } from '../src/services/discord-commands/interactions/duplicate-rule-confirmation.interaction';
+import { RemovalUndoInteractionHandler } from '../src/services/discord-commands/interactions/removal-undo.interaction';
 import { ChannelType } from 'discord.js';
 
 const mockDbService = {
@@ -23,6 +27,78 @@ const mockDiscordService = {
   getRole: jest.fn(),
 };
 
+const mockDataService = {
+  getAllSlugs: jest.fn(),
+};
+
+const mockRemovalUndoInteractionHandler = {
+  setupRemovalButtonHandler: jest.fn(),
+};
+
+const mockRuleConfirmationHandler = {
+  storeConfirmationData: jest.fn(),
+  createConfirmationButtons: jest.fn().mockReturnValue({
+    type: 1, // ActionRow
+    components: [
+      {
+        type: 2, // Button
+        custom_id: 'undo_rule_test',
+        label: 'Undo',
+        style: 4, // Danger
+        emoji: { name: '↩️' }
+      }
+    ]
+  }),
+  setupConfirmationButtonHandler: jest.fn(),
+};
+
+const mockDuplicateRuleConfirmationHandler = {
+  storeRuleData: jest.fn(),
+  createDuplicateRuleButtons: jest.fn().mockReturnValue({
+    type: 1, // ActionRow
+    components: [
+      {
+        type: 2, // Button
+        custom_id: 'confirm_duplicate_test',
+        label: 'Create Anyway',
+        style: 4, // Danger
+        emoji: { name: '✅' }
+      },
+      {
+        type: 2, // Button
+        custom_id: 'cancel_duplicate_test',
+        label: 'Cancel',
+        style: 2, // Secondary
+        emoji: { name: '❌' }
+      }
+    ]
+  }),
+  setupDuplicateRuleButtonHandler: jest.fn(),
+  createUndoRemovalButton: jest.fn().mockReturnValue({
+    type: 1, // ActionRow
+    components: [
+      {
+        type: 2, // Button
+        custom_id: 'undo_cancellation_test',
+        label: 'Undo',
+        style: 1, // Primary
+        emoji: { name: '↩️' }
+      }
+    ]
+  }),
+  setupCancellationButtonHandler: jest.fn(),
+  getPendingRule: jest.fn(),
+  deletePendingRule: jest.fn(),
+  storeCancelledRule: jest.fn(),
+  getCancelledRule: jest.fn(),
+  deleteCancelledRule: jest.fn(),
+  createRuleInfoFields: jest.fn().mockReturnValue([
+    { name: '**Collection**', value: 'test-collection', inline: true },
+    { name: '**Attribute**', value: 'test-attribute=test-value', inline: true },
+    { name: '**Min Items**', value: '1', inline: true }
+  ]),
+};
+
 describe('AddRuleHandler', () => {
   let handler: AddRuleHandler;
 
@@ -33,11 +109,17 @@ describe('AddRuleHandler', () => {
         { provide: DbService, useValue: mockDbService },
         { provide: DiscordMessageService, useValue: mockDiscordMessageService },
         { provide: DiscordService, useValue: mockDiscordService },
+        { provide: DataService, useValue: mockDataService },
+        { provide: RuleConfirmationInteractionHandler, useValue: mockRuleConfirmationHandler },
+        { provide: DuplicateRuleConfirmationInteractionHandler, useValue: mockDuplicateRuleConfirmationHandler },
       ],
     }).compile();
 
     handler = module.get<AddRuleHandler>(AddRuleHandler);
     jest.clearAllMocks();
+    
+    // Setup default mock return values
+    mockDataService.getAllSlugs.mockResolvedValue(['test-collection', 'another-collection', 'example-slug']);
   });
 
   describe('handle', () => {
@@ -97,6 +179,9 @@ describe('AddRuleHandler', () => {
       mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
       mockDbService.checkForDuplicateRule.mockResolvedValue(null);
       mockDbService.checkForDuplicateRole.mockResolvedValue(null);
+      mockDbService.getRulesByChannel.mockResolvedValue([]);
+      mockDbService.addRoleMapping.mockResolvedValue({ id: 1 });
+      mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(false);
 
       await handler.handle(mockInteraction);
 
@@ -150,6 +235,9 @@ describe('AddRuleHandler', () => {
       mockDbService.checkForExactDuplicateRule.mockResolvedValue(null);
       mockDbService.checkForDuplicateRule.mockResolvedValue(null);
       mockDbService.checkForDuplicateRole.mockResolvedValue(null);
+      mockDbService.getRulesByChannel.mockResolvedValue([]);
+      mockDbService.addRoleMapping.mockResolvedValue({ id: 1 });
+      mockDiscordMessageService.findExistingVerificationMessage.mockResolvedValue(false);
 
       await handler.handle(mockInteraction);
 

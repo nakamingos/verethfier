@@ -3,6 +3,8 @@ import { RemoveRuleHandler } from '../src/services/discord-commands/handlers/rem
 import { DbService } from '../src/services/db.service';
 import { ChatInputCommandInteraction } from 'discord.js';
 import { AdminFeedback } from '../src/services/utils/admin-feedback.util';
+import { RemovalUndoInteractionHandler } from '../src/services/discord-commands/interactions/removal-undo.interaction';
+import { DuplicateRuleConfirmationInteractionHandler } from '../src/services/discord-commands/interactions/duplicate-rule-confirmation.interaction';
 
 describe('RemoveRuleHandler', () => {
   let handler: RemoveRuleHandler;
@@ -40,6 +42,26 @@ describe('RemoveRuleHandler', () => {
         {
           provide: DbService,
           useValue: mockDbService,
+        },
+        {
+          provide: RemovalUndoInteractionHandler,
+          useValue: {
+            setupRemovalButtonHandler: jest.fn(),
+          },
+        },
+        {
+          provide: DuplicateRuleConfirmationInteractionHandler,
+          useValue: {
+            createRuleInfoFields: jest.fn().mockReturnValue([
+              { name: '**Collection**', value: 'test-collection', inline: true },
+              { name: '**Attribute**', value: 'trait=rare', inline: true },
+              { name: '**Min Items**', value: '1', inline: true },
+            ]),
+            createUndoRemovalButton: jest.fn().mockReturnValue({
+              type: 1,
+              components: [{ type: 2, style: 2, label: 'Undo', custom_id: 'undo_removal_test-interaction-id' }]
+            }),
+          },
         },
       ],
     }).compile();
@@ -98,7 +120,7 @@ describe('RemoveRuleHandler', () => {
       expect(embedData.title).toBe('✅ Rule Removed');
       expect(embedData.description).toBe('Rule 1 for test-channel and @test-role has been removed.');
       expect(embedData.color).toBe(65280);
-      expect(embedData.fields).toHaveLength(3);
+      expect(embedData.fields).toHaveLength(3); // Updated to expect 3 compact fields (Collection, Attribute, Min Items)
       expect(editReplyCall).toHaveProperty('components');
     });
 

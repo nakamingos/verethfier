@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ChatInputCommandInteraction, MessageFlags } from 'discord.js';
 import { DbService } from '../../db.service';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
+import { RemovalUndoInteractionHandler } from '../interactions/removal-undo.interaction';
+import { DuplicateRuleConfirmationInteractionHandler } from '../interactions/duplicate-rule-confirmation.interaction';
 
 /**
  * Remove Rule Command Handler
@@ -21,7 +23,11 @@ export class RemoveRuleHandler {
   private removedRules: Map<string, any> = new Map();
 
   constructor(
-    private readonly dbSvc: DbService
+    private readonly dbSvc: DbService,
+    @Inject(forwardRef(() => RemovalUndoInteractionHandler))
+    private readonly removalUndoHandler: RemovalUndoInteractionHandler,
+    @Inject(forwardRef(() => DuplicateRuleConfirmationInteractionHandler))
+    private readonly duplicateRuleConfirmationHandler: DuplicateRuleConfirmationInteractionHandler
   ) {}
 
   /**
@@ -93,6 +99,8 @@ export class RemoveRuleHandler {
    */
   private async parseRuleIds(ruleIdInput: string): Promise<number[] | null> {
     try {
+      this.logger.debug(`Parsing rule ID input: "${ruleIdInput}"`);
+      
       // Parse comma-separated rule IDs (handle both "1,2,3" and "1, 2, 3" formats)
       const ruleIds = ruleIdInput
         .split(',')
@@ -106,8 +114,10 @@ export class RemoveRuleHandler {
           return parsed;
         });
 
+      this.logger.debug(`Parsed rule IDs: [${ruleIds.join(', ')}]`);
       return ruleIds.length > 0 ? ruleIds : null;
     } catch (error) {
+      this.logger.error(`Error parsing rule IDs from "${ruleIdInput}":`, error.message);
       throw new Error(`Invalid rule ID format: ${error.message}`);
     }
   }
@@ -122,8 +132,11 @@ export class RemoveRuleHandler {
     rulesToRemove: Array<{ id: number; data: any }>;
     notFoundIds: number[];
   }> {
+    this.logger.debug(`Finding rules to remove: [${ruleIds.join(', ')}] for server ${interaction.guild.id}`);
+    
     // Get all rules for the server
     const allRules = await this.dbSvc.getRoleMappings(interaction.guild.id);
+    this.logger.debug(`Found ${allRules?.length || 0} total rules for server`);
     
     // Find rules to remove and validate they exist
     const rulesToRemove = [];
@@ -132,12 +145,15 @@ export class RemoveRuleHandler {
     for (const ruleId of ruleIds) {
       const ruleToRemove = allRules.find(rule => rule.id === ruleId);
       if (ruleToRemove) {
+        this.logger.debug(`Found rule ${ruleId}: Channel ${ruleToRemove.channel_name} (${ruleToRemove.channel_id}), Server ID: ${ruleToRemove.server_id}`);
         rulesToRemove.push({ id: ruleId, data: ruleToRemove });
       } else {
+        this.logger.debug(`Rule ${ruleId} not found in server rules`);
         notFoundIds.push(ruleId);
       }
     }
 
+    this.logger.debug(`Rules to remove: ${rulesToRemove.length}, Not found: ${notFoundIds.length}`);
     return { rulesToRemove, notFoundIds };
   }
 
@@ -153,11 +169,16 @@ export class RemoveRuleHandler {
   }> {
     const deletionResults = [];
     
+    this.logger.debug(`Attempting to delete ${rulesToRemove.length} rules:`, rulesToRemove.map(r => `Rule ${r.id} (Channel: ${r.data.channel_name})`));
+    
     for (const { id, data } of rulesToRemove) {
       try {
+        this.logger.debug(`Deleting rule ${id} from server ${interaction.guild.id}, rule belongs to server ${data.server_id}`);
         await this.dbSvc.deleteRoleMapping(String(id), interaction.guild.id);
         deletionResults.push({ id, data, success: true });
+        this.logger.debug(`Successfully deleted rule ${id}`);
       } catch (error) {
+        this.logger.error(`Failed to delete rule ${id}:`, error.message);
         deletionResults.push({ id, data, success: false, error: error.message });
       }
     }
@@ -165,6 +186,8 @@ export class RemoveRuleHandler {
     const successful = deletionResults.filter(r => r.success);
     const failed = deletionResults.filter(r => !r.success);
 
+    this.logger.debug(`Deletion completed: ${successful.length} successful, ${failed.length} failed`);
+    
     return { successful, failed };
   }
 
@@ -209,7 +232,16 @@ export class RemoveRuleHandler {
     this.removedRules.set(interaction.id, removedRuleData);
 
     // Create detailed rule info fields
-    const ruleInfoFields = this.createRuleInfoFields(removedRuleData);
+    const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields({
+      rule_id: ruleId,
+      role_id: removedRuleData.role_id,
+      role_name: removedRuleData.role_name,
+      channel_name: removedRuleData.channel_name,
+      slug: removedRuleData.slug,
+      attribute_key: removedRuleData.attribute_key,
+      attribute_value: removedRuleData.attribute_value,
+      min_items: removedRuleData.min_items
+    });
     const embed = AdminFeedback.success(
       'Rule Removed', 
       `Rule ${ruleId} for ${removedRuleData.channel_name} and @${removedRuleData.role_name} has been removed.`
@@ -251,9 +283,14 @@ export class RemoveRuleHandler {
       const ruleList = successful.map(s => `Rule ${s.id}`).join(', ');
       description += `✅ **Successfully removed:** ${ruleList}\n\n`;
       
-      // Add rule details
+      // Add clean rule info for each removed rule using list format
       successful.forEach(s => {
-        description += `**Rule ${s.id}:** ${s.data.channel_name} → @${s.data.role_name}\n`;
+        const attribute = this.formatAttribute(s.data.attribute_key, s.data.attribute_value);
+        const slug = s.data.slug || 'ALL';
+        const minItems = s.data.min_items || 1;
+        
+        const ruleInfo = `ID: ${s.id} | Channel: <#${s.data.channel_id}> | Role: <@&${s.data.role_id}> | Slug: ${slug} | Attr: ${attribute} | Min: ${minItems}`;
+        description += ruleInfo + '\n\n';
       });
     }
 
@@ -288,36 +325,6 @@ export class RemoveRuleHandler {
   }
 
   /**
-   * Creates detailed rule information fields for consistent display
-   */
-  private createRuleInfoFields(ruleData: any): any[] {
-    const formatAttribute = (key: string, value: string) => {
-      if (key !== 'ALL' && value !== 'ALL') return `${key}=${value}`;
-      if (key !== 'ALL' && value === 'ALL') return `${key} (any value)`;
-      if (key === 'ALL' && value !== 'ALL') return `ALL=${value}`;
-      return 'ALL';
-    };
-
-    return [
-      {
-        name: 'Collection',
-        value: ruleData.slug || 'ALL',
-        inline: true
-      },
-      {
-        name: 'Attribute',
-        value: formatAttribute(ruleData.attribute_key || 'ALL', ruleData.attribute_value || 'ALL'),
-        inline: true
-      },
-      {
-        name: 'Min Items',
-        value: (ruleData.min_items || 1).toString(),
-        inline: true
-      }
-    ];
-  }
-
-  /**
    * Creates Undo action button for rule removal messages
    */
   private createUndoRemovalButton(interactionId: string, type: 'removal' | 'cancellation') {
@@ -339,16 +346,13 @@ export class RemoveRuleHandler {
    * Sets up button interaction handler for removal undo messages
    */
   private setupRemovalButtonHandler(interaction: ChatInputCommandInteraction): void {
-    // TODO: This will be implemented in the interaction handler phase
-    // For now, we'll create a placeholder that logs the setup
-    this.logger.debug(`Setting up removal button handler for interaction ${interaction.id}`);
-    
-    // The actual implementation will be moved to UndoInteractionHandler
-    // This includes:
-    // - Button click detection
-    // - Rule restoration logic
-    // - Role recreation if needed
-    // - Feedback messages
+    // Get the removed rules data and set up the handler
+    const removedRulesMap = new Map<string, any>();
+    const removedData = this.removedRules.get(interaction.id);
+    if (removedData) {
+      removedRulesMap.set(interaction.id, removedData);
+      this.removalUndoHandler.setupRemovalButtonHandler(interaction, removedRulesMap);
+    }
   }
 
   /**
@@ -363,5 +367,21 @@ export class RemoveRuleHandler {
    */
   clearRemovedRuleData(interactionId: string): void {
     this.removedRules.delete(interactionId);
+  }
+
+  /**
+   * Formats attribute key/value pairs for display
+   */
+  private formatAttribute(key: string, value: string): string {
+    if (key && key !== 'ALL' && value && value !== 'ALL') {
+      return `${key}=${value}`;
+    }
+    if (key && key !== 'ALL' && (!value || value === 'ALL')) {
+      return `${key} (any value)`;
+    }
+    if ((!key || key === 'ALL') && value && value !== 'ALL') {
+      return `ALL=${value}`;
+    }
+    return 'ALL';
   }
 }

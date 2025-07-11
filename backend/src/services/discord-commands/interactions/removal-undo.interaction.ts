@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ButtonInteraction, ChatInputCommandInteraction, ComponentType } from 'discord.js';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { ButtonInteraction, ChatInputCommandInteraction, ComponentType, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { DbService } from '../../db.service';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
+import { RestoreUndoInteractionHandler } from './restore-undo.interaction';
 
 /**
  * Removal Undo Interaction Handler
@@ -17,9 +18,12 @@ export class RemovalUndoInteractionHandler {
   // Maps to store removed rule data for undo functionality
   private removedRules = new Map<string, any>();
   private restoredRules = new Map<string, any>();
+  private restoredRulesForUndo = new Map<string, any>(); // For passing to RestoreUndoInteractionHandler
 
   constructor(
-    private readonly dbSvc: DbService
+    private readonly dbSvc: DbService,
+    @Inject(forwardRef(() => RestoreUndoInteractionHandler))
+    private readonly restoreUndoHandler: RestoreUndoInteractionHandler
   ) {}
 
   /**
@@ -34,7 +38,6 @@ export class RemovalUndoInteractionHandler {
 
     const filter = (i: any) => 
       i.customId.startsWith('undo_removal_') && 
-      i.customId.endsWith(`_${interaction.id}`) && 
       i.user.id === interaction.user.id;
     
     const collector = interaction.channel?.createMessageComponentCollector({ 
@@ -53,7 +56,11 @@ export class RemovalUndoInteractionHandler {
     collector?.on('end', (collected) => {
       if (collected.size === 0) {
         // Timeout - clean up removal data
-        this.removedRules.delete(interaction.id);
+        // Use chain ID from the first entry in the map
+        for (const [chainId] of this.removedRules) {
+          this.removedRules.delete(chainId);
+          break;
+        }
       }
     });
   }
@@ -70,7 +77,6 @@ export class RemovalUndoInteractionHandler {
 
     const filter = (i: any) => 
       i.customId.startsWith('undo_removal_') && 
-      i.customId.endsWith(`_${interaction.id}`) && 
       i.user.id === interaction.user.id;
     
     const collector = interaction.channel?.createMessageComponentCollector({ 
@@ -88,8 +94,12 @@ export class RemovalUndoInteractionHandler {
 
     collector?.on('end', (collected) => {
       if (collected.size === 0) {
-        // Timeout - clean up removal data
-        this.removedRules.delete(interaction.id);
+        // Timeout - clean up removal data (extended timeout version)
+        // Use chain ID from the first entry in the map
+        for (const [chainId] of this.removedRules) {
+          this.removedRules.delete(chainId);
+          break;
+        }
       }
     });
   }
@@ -102,30 +112,61 @@ export class RemovalUndoInteractionHandler {
     const removedRuleData = this.removedRules.get(interactionId);
     
     if (!removedRuleData) {
-      await interaction.reply({
-        content: AdminFeedback.simple('Undo session expired. Rule removal cannot be undone.', true),
-        ephemeral: true
-      });
+      // Check if interaction is still valid before responding
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          content: AdminFeedback.simple('Undo session expired. Rule removal cannot be undone.', true),
+          ephemeral: true
+        });
+      }
       return;
     }
 
     try {
+      // Defer the interaction early to prevent timeout and acknowledgment issues
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.deferReply({ ephemeral: true });
+      }
+
       // Check if this is a bulk operation
       if (removedRuleData.isBulk && removedRuleData.rules) {
         await this.handleBulkUndoRemoval(interaction, removedRuleData.rules);
       } else {
-        // Single rule removal (existing logic)
-        await this.handleSingleUndoRemoval(interaction, removedRuleData);
+        // Single rule removal (existing logic) - pass the chain ID
+        await this.handleSingleUndoRemoval(interaction, removedRuleData, interactionId);
       }
 
       // Clean up the removal data
       this.removedRules.delete(interactionId);
     } catch (error) {
       this.logger.error('Error undoing rule removal:', error);
-      await interaction.reply({
-        content: AdminFeedback.simple(`Error restoring rule(s): ${error.message}`, true),
-        ephemeral: true
-      });
+      
+      // Only try to respond if we haven't already responded and the interaction is still valid
+      // The error might have occurred after a successful reply in handleSingleUndoRemoval,
+      // so we need to check if interaction was already replied to
+      try {
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({
+            content: AdminFeedback.simple(`Error restoring rule(s): ${error.message}`, true),
+            ephemeral: true
+          });
+        } else if (interaction.deferred && !interaction.replied) {
+          await interaction.editReply({
+            content: AdminFeedback.simple(`Error restoring rule(s): ${error.message}`, true),
+          });
+        } else if (interaction.replied) {
+          // Use followUp if already replied
+          await interaction.followUp({
+            content: AdminFeedback.simple(`Error restoring rule(s): ${error.message}`, true),
+            ephemeral: true
+          });
+        }
+      } catch (responseError) {
+        // If we can't respond to the interaction, just log it
+        this.logger.error('Failed to send error response to interaction:', responseError);
+      }
+      
+      // Don't clean up removal data on error so user can try again
     }
   }
 
@@ -179,15 +220,14 @@ export class RemovalUndoInteractionHandler {
       }
     }
 
-    // Send bulk restoration message (would need to import sendBulkRuleRestoredMessage or extract it)
-    // TODO: Extract bulk restoration message sending to utils or handle via callback
-    this.logger.log(`Bulk restoration completed: ${restorationResults.length} rules processed`);
+    // Send bulk restoration message and set up next undo handler
+    await this.sendBulkRuleRestoredMessage(interaction, restorationResults);
   }
 
   /**
    * Handles single undo removal
    */
-  private async handleSingleUndoRemoval(interaction: any, removedRule: any): Promise<void> {
+  private async handleSingleUndoRemoval(interaction: any, removedRule: any, chainId: string): Promise<void> {
     let roleToUse = null;
     
     // If this rule had a newly created role, we need to recreate it first
@@ -227,14 +267,161 @@ export class RemovalUndoInteractionHandler {
     // Recreate the rule in the database with original ID
     const recreatedRule = await this.dbSvc.restoreRuleWithOriginalId(removedRule);
     
-    // Store the restored rule for potential undo
+    // Store the restored rule for potential undo using the chain ID
     const restoredRuleWithMetadata = {
       ...recreatedRule,
       wasNewlyCreated: removedRule.wasNewlyCreated
     };
-    this.restoredRules.set(interaction.id, restoredRuleWithMetadata);
+    this.restoredRules.set(chainId, restoredRuleWithMetadata);
     
-    // TODO: Extract message creation logic to utils or handle via callback
-    this.logger.log(`Rule ${recreatedRule.id} restored successfully`);
+    // Create rule info fields for the restored rule
+    const ruleInfoFields = this.createRuleInfoFields(removedRule);
+    const embed = AdminFeedback.success(
+      'Rule Restored', 
+      `Rule ${recreatedRule.id} for ${removedRule.channel_name} and @${removedRule.role_name} has been restored.`
+    );
+    embed.addFields(ruleInfoFields);
+    
+    // Create undo button for the restoration using the chain ID
+    const components = [
+      new ActionRowBuilder<ButtonBuilder>()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId(`undo_restore_${chainId}`) // Use chain ID to maintain continuity
+            .setLabel('Undo')
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji('↩️')
+        )
+    ];
+
+    await interaction.editReply({
+      embeds: [embed],
+      components,
+    });
+
+    // Set up restore undo handler for the "Rule Restored" message
+    const restoredRulesMap = new Map();
+    restoredRulesMap.set(chainId, restoredRuleWithMetadata); // Use chain ID
+    this.restoreUndoHandler.setupRestoreButtonHandler(interaction, restoredRulesMap);
+
+    this.logger.log(`Rule ${recreatedRule.id} restored successfully with user confirmation`);
+  }
+
+  /**
+   * Sends feedback for bulk rule restoration with undo functionality
+   */
+  private async sendBulkRuleRestoredMessage(
+    interaction: ButtonInteraction,
+    restorationResults: any[]
+  ): Promise<void> {
+    const successful = restorationResults.filter(r => r.success);
+    const failed = restorationResults.filter(r => !r.success);
+
+    // Store the restored rules data for undo functionality (only successful ones)
+    if (successful.length > 0) {
+      const bulkRestoredData = {
+        rules: successful.map(s => s.originalData),
+        isBulk: true
+      };
+      // Store using the original chain ID to maintain the undo chain
+      const chainId = interaction.customId.replace('undo_removal_', '');
+      this.restoredRulesForUndo.clear();
+      this.restoredRulesForUndo.set(chainId, bulkRestoredData);
+    }
+
+    // Create success message
+    let description = '';
+    if (successful.length > 0) {
+      const ruleList = successful.map(s => `Rule ${s.rule.id || s.originalData.id}`).join(', ');
+      description += `✅ **Successfully restored:** ${ruleList}\n\n`;
+      
+      // Add clean rule info for each restored rule using list format
+      successful.forEach(s => {
+        const rule = s.rule || s.originalData;
+        const attribute = this.formatAttribute(rule.attribute_key, rule.attribute_value);
+        const slug = rule.slug || 'ALL';
+        const minItems = rule.min_items || 1;
+        
+        const ruleInfo = `ID: ${rule.id} | Channel: <#${rule.channel_id}> | Role: <@&${rule.role_id}> | Slug: ${slug} | Attr: ${attribute} | Min: ${minItems}`;
+        description += ruleInfo + '\n\n';
+      });
+    }
+
+    if (failed.length > 0) {
+      description += '\n❌ **Failed to restore:**\n';
+      failed.forEach(f => {
+        description += `Rule ${f.ruleId}: ${f.error}\n`;
+      });
+    }
+
+    const embed = AdminFeedback.success(
+      successful.length === 1 ? 'Rule Restored' : `${successful.length} Rules Restored`, 
+      description.trim()
+    );
+
+    const components = [];
+    if (successful.length > 0) {
+      // Create Undo button for successful restorations using the chain ID
+      const chainId = interaction.customId.replace('undo_removal_', '');
+      components.push(
+        new ActionRowBuilder<ButtonBuilder>()
+          .addComponents(
+            new ButtonBuilder()
+              .setCustomId(`undo_restore_${chainId}`)
+              .setLabel('Undo')
+              .setStyle(ButtonStyle.Secondary)
+              .setEmoji('↩️')
+          )
+      );
+    }
+
+    await interaction.editReply({
+      embeds: [embed],
+      components,
+    });
+
+    // Set up restore undo handler for the "Rules Restored" message
+    if (successful.length > 0) {
+      this.restoreUndoHandler.setupRestoreButtonHandler(interaction, this.restoredRulesForUndo);
+    }
+  }
+
+  /**
+   * Formats attribute key/value pairs for display
+   */
+  private formatAttribute(key: string, value: string): string {
+    if (key && key !== 'ALL' && value && value !== 'ALL') {
+      return `${key}=${value}`;
+    }
+    if (key && key !== 'ALL' && (!value || value === 'ALL')) {
+      return `${key} (any value)`;
+    }
+    if ((!key || key === 'ALL') && value && value !== 'ALL') {
+      return `ALL=${value}`;
+    }
+    return 'ALL';
+  }
+
+  /**
+   * Creates detailed rule information fields for consistent display
+   */
+  private createRuleInfoFields(ruleData: any): any[] {
+    return [
+      {
+        name: '**Collection**',
+        value: ruleData.slug || 'ALL',
+        inline: true
+      },
+      {
+        name: '**Attribute**',
+        value: this.formatAttribute(ruleData.attribute_key || 'ALL', ruleData.attribute_value || 'ALL'),
+        inline: true
+      },
+      {
+        name: '**Min Items**',
+        value: (ruleData.min_items || 1).toString(),
+        inline: true
+      }
+    ];
   }
 }

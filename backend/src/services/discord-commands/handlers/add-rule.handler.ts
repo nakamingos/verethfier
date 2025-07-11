@@ -6,12 +6,18 @@ import {
   ActionRowBuilder, 
   ButtonBuilder, 
   ButtonStyle,
-  ComponentType
+  ComponentType,
+  ButtonInteraction,
+  ChannelType,
+  GuildTextBasedChannel
 } from 'discord.js';
 import { DbService } from '../../db.service';
 import { DiscordMessageService } from '../../discord-message.service';
 import { DiscordService } from '../../discord.service';
+import { DataService } from '../../data.service';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
+import { RuleConfirmationInteractionHandler } from '../interactions/rule-confirmation.interaction';
+import { DuplicateRuleConfirmationInteractionHandler } from '../interactions/duplicate-rule-confirmation.interaction';
 
 /**
  * Add Rule Command Handler
@@ -34,7 +40,10 @@ export class AddRuleHandler {
     private readonly dbSvc: DbService,
     private readonly messageSvc: DiscordMessageService,
     @Inject(forwardRef(() => DiscordService))
-    private readonly discordSvc: DiscordService
+    private readonly discordSvc: DiscordService,
+    private readonly dataSvc: DataService,
+    private readonly ruleConfirmationHandler: RuleConfirmationInteractionHandler,
+    private readonly duplicateRuleConfirmationHandler: DuplicateRuleConfirmationInteractionHandler
   ) {}
 
   /**
@@ -81,9 +90,9 @@ export class AddRuleHandler {
       if (interaction.deferred) {
         await interaction.editReply('An error occurred while adding the rule.');
       } else {
-        await interaction.reply({ 
-          content: AdminFeedback.simple('An error occurred while adding the rule.', true), 
-          ephemeral: true 
+        await interaction.deferReply({ ephemeral: true });
+        await interaction.editReply({ 
+          content: AdminFeedback.simple('An error occurred while adding the rule.', true)
         });
       }
     }
@@ -113,6 +122,32 @@ export class AddRuleHandler {
         content: AdminFeedback.simple('Channel and role are required.', true)
       });
       return null;
+    }
+
+    // Validate slug exists in marketplace database (unless it's ALL)
+    if (slug !== 'ALL') {
+      try {
+        const availableSlugs = await this.dataSvc.getAllSlugs();
+        if (!availableSlugs.includes(slug)) {
+          await interaction.editReply({
+            embeds: [AdminFeedback.error(
+              'Invalid Slug',
+              `The slug "${slug}" does not exist in the marketplace database.`,
+              [
+                'Use the autocomplete feature to select a valid slug',
+                'Leave the slug field empty to allow ALL collections'
+              ]
+            )]
+          });
+          return null;
+        }
+      } catch (error) {
+        this.logger.error('Error validating slug:', error);
+        await interaction.editReply({
+          content: AdminFeedback.simple('Error validating slug. Please try again.', true)
+        });
+        return null;
+      }
     }
 
     return { channel, roleName, slug, attributeKey, attributeValue, minItems };
@@ -370,57 +405,36 @@ export class AddRuleHandler {
       ]
     );
 
-    const row = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId(`confirm_duplicate_${interaction.id}`)
-          .setLabel('Create Anyway')
-          .setStyle(ButtonStyle.Danger)
-          .setEmoji('✅'),
-        new ButtonBuilder()
-          .setCustomId(`cancel_duplicate_${interaction.id}`)
-          .setLabel('Cancel')
-          .setStyle(ButtonStyle.Secondary)
-          .setEmoji('❌')
-      );
+    // Generate a chain ID for this undo/redo chain
+    const chainId = this.generateChainId(interaction);
+
+    // Use the interaction handler for button management
+    const buttonRow = this.duplicateRuleConfirmationHandler.createDuplicateRuleButtons(chainId);
 
     await interaction.editReply({
       embeds: [embed],
-      components: [row]
+      components: [buttonRow]
     });
 
     // Store the new rule data for later use if confirmed
-    this.pendingRules.set(interaction.id, newRuleData);
-
-    // Set up button interaction handler
-    const filter = (i: any) => i.customId.endsWith(`_${interaction.id}`) && i.user.id === interaction.user.id;
-    const collector = interaction.channel?.createMessageComponentCollector({ filter, time: 60000 });
-
-    collector?.on('collect', async (i) => {
-      if (i.customId.startsWith('confirm_duplicate_')) {
-        await i.deferUpdate();
-        await this.createRuleDirectly(interaction, newRuleData, true);
-        this.pendingRules.delete(interaction.id);
-      } else if (i.customId.startsWith('cancel_duplicate_')) {
-        await i.deferUpdate();
-        
-        // TODO: Handle cancellation logic (will be moved to interaction handler)
-        
-        this.pendingRules.delete(interaction.id);
-      }
-      collector.stop();
+    this.duplicateRuleConfirmationHandler.storeRuleData(chainId, {
+      ...newRuleData,
+      serverId: interaction.guild.id
     });
 
-    collector?.on('end', (collected) => {
-      if (collected.size === 0) {
-        // Timeout - clean up
-        this.pendingRules.delete(interaction.id);
-        interaction.editReply({
-          embeds: [AdminFeedback.info('Request Timed Out', 'Rule creation was cancelled due to timeout.')],
-          components: []
-        }).catch(() => {}); // Ignore errors if interaction is no longer valid
+    // Set up button interaction handler with proper undo chain integration
+    this.duplicateRuleConfirmationHandler.setupDuplicateRuleButtonHandler(
+      interaction,
+      chainId,
+      async (ruleData: any) => {
+        // Create Anyway - proceed with rule creation and set up undo chain
+        await this.createRuleDirectly(interaction, ruleData, true, chainId);
+      },
+      async (ruleData: any) => {
+        // Cancel - show cancellation message with undo button
+        await this.showRuleCancellationMessage(interaction, ruleData, chainId);
       }
-    });
+    );
   }
 
   /**
@@ -438,19 +452,126 @@ export class AddRuleHandler {
       minItems: number;
     }
   ): Promise<void> {
-    // TODO: Implement duplicate role warning logic
-    // This will be similar to duplicate rule warning but with different messaging
-    await interaction.editReply({
-      embeds: [AdminFeedback.warning(
-        'Role Already Has Rules',
-        `The role <@&${newRuleData.role.id}> already has verification rules in this channel. Adding another rule will create multiple ways to earn the same role.`,
-        ['This is usually not desired', 'Consider editing the existing rule instead'],
-        [{
+    const newRuleFormatted = {
+      role_id: newRuleData.role.id,
+      slug: newRuleData.slug,
+      attribute_key: newRuleData.attributeKey,
+      attribute_value: newRuleData.attributeValue,
+      min_items: newRuleData.minItems
+    };
+
+    const embed = AdminFeedback.warning(
+      'Role Already Has Rules',
+      `The role <@&${newRuleData.role.id}> already has verification rules in this channel. Adding another rule will create multiple ways to earn the same role.`,
+      [
+        'Click "Create Anyway" to add another way to earn this role',
+        'Click "Cancel" to modify your criteria'
+      ],
+      [
+        {
           name: 'Existing Rule',
           value: AdminFeedback.formatRule(existingRule),
-          inline: false
-        }]
-      )]
+          inline: true
+        },
+        {
+          name: 'New Rule (Proposed)',
+          value: AdminFeedback.formatRule(newRuleFormatted, newRuleData.role.name),
+          inline: true
+        }
+      ]
+    );
+
+    const row = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(`confirm_duplicate_role_${interaction.id}`)
+          .setLabel('Create Anyway')
+          .setStyle(ButtonStyle.Danger)
+          .setEmoji('✅'),
+        new ButtonBuilder()
+          .setCustomId(`cancel_duplicate_role_${interaction.id}`)
+          .setLabel('Cancel')
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji('❌')
+      );
+
+    await interaction.editReply({
+      embeds: [embed],
+      components: [row]
+    });
+
+    // Store the new rule data for later use if confirmed
+    this.pendingRules.set(`confirm_duplicate_role_${interaction.id}`, {
+      interaction,
+      newRuleData,
+      isDuplicateRole: true
+    });
+
+    // Set up button collector to handle Create Anyway/Cancel buttons
+    this.setupDuplicateRoleButtonHandler(interaction, newRuleData);
+  }
+
+  /**
+   * Sets up button collector for duplicate role confirmation
+   */
+  private setupDuplicateRoleButtonHandler(
+    interaction: ChatInputCommandInteraction,
+    newRuleData: {
+      channel: TextChannel;
+      role: Role;
+      slug: string;
+      attributeKey: string;
+      attributeValue: string;
+      minItems: number;
+    }
+  ): void {
+    const filter = (i: any) => 
+      (i.customId.startsWith('confirm_duplicate_role_') || i.customId.startsWith('cancel_duplicate_role_')) && 
+      i.customId.endsWith(`_${interaction.id}`) && 
+      i.user.id === interaction.user.id;
+    
+    const collector = interaction.channel?.createMessageComponentCollector({ 
+      filter, 
+      time: 60000 // 1 minute
+    });
+
+    collector?.on('collect', async (i) => {
+      try {
+        if (i.customId.startsWith('confirm_duplicate_role_')) {
+          await i.deferUpdate();
+          // Create the rule anyway
+          await this.createRuleDirectly(interaction, newRuleData, true);
+          this.pendingRules.delete(`confirm_duplicate_role_${interaction.id}`);
+        } else if (i.customId.startsWith('cancel_duplicate_role_')) {
+          await i.deferUpdate();
+          await interaction.editReply({
+            embeds: [AdminFeedback.info('Rule Creation Cancelled', 'The rule was not created.')],
+            components: []
+          });
+          this.pendingRules.delete(`confirm_duplicate_role_${interaction.id}`);
+        }
+      } catch (error) {
+        this.logger.error('Error handling duplicate role button interaction:', error);
+        await interaction.editReply({
+          embeds: [AdminFeedback.error('Error', 'An error occurred while processing your request.')],
+          components: []
+        });
+      } finally {
+        collector.stop();
+      }
+    });
+
+    collector?.on('end', (collected) => {
+      if (collected.size === 0) {
+        // Timeout - clean up
+        this.pendingRules.delete(`confirm_duplicate_role_${interaction.id}`);
+        interaction.editReply({
+          embeds: [AdminFeedback.warning('Timeout', 'No response received. Rule creation cancelled.')],
+          components: []
+        }).catch(error => {
+          this.logger.error('Error updating interaction after timeout:', error);
+        });
+      }
     });
   }
 
@@ -468,12 +589,281 @@ export class AddRuleHandler {
       minItems: number;
       wasNewlyCreated?: boolean;
     },
-    isDuplicateConfirmed: boolean = false
+    isDuplicateConfirmed: boolean = false,
+    chainId?: string
   ): Promise<void> {
-    // TODO: Move this complex logic to a separate utility or keep in the service
-    // For now, this will delegate back to the main service until we complete the refactor
+    const { channel, role, slug, attributeKey, attributeValue, minItems, wasNewlyCreated = false } = ruleData;
+
+    // Check for existing verification setup
+    const existingRules = await this.dbSvc.getRulesByChannel(interaction.guild.id, channel.id) || [];
+    
+    let newRule;
+    try {
+      newRule = await this.dbSvc.addRoleMapping(
+        interaction.guild.id,
+        interaction.guild.name,
+        channel.id,
+        channel.name,
+        slug,
+        role.id,
+        role.name,
+        attributeKey,
+        attributeValue,
+        minItems
+      );
+    } catch (error) {
+      this.logger.error('Error creating rule:', error);
+      await interaction.editReply({
+        embeds: [AdminFeedback.error(
+          'Rule Creation Failed',
+          'Failed to create the rule. Please try again.',
+          ['Check that all criteria are valid', 'Try again with different settings']
+        )],
+        components: []
+      });
+      return;
+    }
+
+    if (existingRules.length > 0) {
+      // Check if there's already a verification message from our bot in this channel
+      const hasExistingMessage = await this.messageSvc.findExistingVerificationMessage(channel);
+
+      // Use existing verification message
+      const embed = AdminFeedback.success(
+        isDuplicateConfirmed ? 'Duplicate Rule Created' : 'Rule Added',
+        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> ${hasExistingMessage ? 'has been added using existing verification message' : 'created'}.`
+      );
+
+      // Add detailed rule info fields
+      const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields({
+        rule_id: newRule.id,
+        role_id: role.id,
+        role_name: role.name,
+        channel_name: channel.name,
+        slug: slug,
+        attribute_key: attributeKey,
+        attribute_value: attributeValue,
+        min_items: minItems
+      });
+      embed.addFields(ruleInfoFields);
+
+      if (isDuplicateConfirmed) {
+        embed.addFields({
+          name: '⚠️ Note',
+          value: 'This rule has the same criteria as an existing rule. Users meeting these criteria will receive multiple roles.',
+          inline: false
+        });
+      }
+
+      // Store confirmation data for Undo functionality
+      const confirmationId = chainId || interaction.id;
+      const confirmationInfo = {
+        ruleId: newRule.id,
+        serverId: interaction.guild.id,
+        channel,
+        role,
+        slug,
+        attributeKey,
+        attributeValue,
+        minItems,
+        wasNewlyCreated
+      };
+      this.ruleConfirmationHandler.storeConfirmationData(confirmationId, confirmationInfo);
+
+      // Create Undo button
+      const actionButtons = this.ruleConfirmationHandler.createConfirmationButtons(confirmationId);
+
+      await interaction.editReply({ 
+        embeds: [embed], 
+        components: [actionButtons]
+      });
+
+      // Set up button interaction handler with timeout
+      this.ruleConfirmationHandler.setupConfirmationButtonHandler(interaction);
+    } else {
+      // Create new verification message
+      await this.createNewVerificationSetup(interaction, channel, role, slug, attributeKey, attributeValue, minItems, isDuplicateConfirmed, newRule, wasNewlyCreated, chainId);
+    }
+  }
+
+  /**
+   * Creates new verification setup for the first rule in a channel
+   */
+  private async createNewVerificationSetup(
+    interaction: ChatInputCommandInteraction,
+    channel: TextChannel,
+    role: Role,
+    slug: string,
+    attributeKey: string,
+    attributeValue: string,
+    minItems: number,
+    isDuplicateConfirmed: boolean = false,
+    newRule: any,
+    wasNewlyCreated: boolean = false,
+    chainId?: string
+  ): Promise<void> {
+    try {
+      if (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement) {
+        await interaction.editReply({
+          content: AdminFeedback.simple('Selected channel is not a text or announcement channel.', true),
+          components: []
+        });
+        return;
+      }
+      
+      // Check if there's already a verification message in this channel
+      const hasExistingMessage = await this.messageSvc.findExistingVerificationMessage(channel);
+      
+      let messageCreated = false;
+      if (!hasExistingMessage) {
+        // Only create a new verification message if one doesn't exist
+        await this.messageSvc.createVerificationMessage(channel as GuildTextBasedChannel);
+        messageCreated = true;
+      }
+
+      const formatAttribute = (key: string, value: string) => {
+        if (key !== 'ALL' && value !== 'ALL') return `${key}=${value}`;
+        if (key !== 'ALL' && value === 'ALL') return `${key} (any value)`;
+        if (key === 'ALL' && value !== 'ALL') return `ALL=${value}`;
+        return 'ALL';
+      };
+
+      // Create success embed
+      const embed = AdminFeedback.success(
+        isDuplicateConfirmed ? 'Duplicate Rule Created' : 'Verification Rule Added',
+        `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> has been ${messageCreated ? 'created with a new verification message' : 'added to existing verification message'}.`
+      );
+
+      // Add detailed rule info fields
+      const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields({
+        rule_id: newRule.id,
+        role_id: role.id,
+        role_name: role.name,
+        channel_name: channel.name,
+        slug: slug,
+        attribute_key: attributeKey,
+        attribute_value: attributeValue,
+        min_items: minItems
+      });
+      embed.addFields(ruleInfoFields);
+
+      if (isDuplicateConfirmed) {
+        embed.addFields({
+          name: '⚠️ Note',
+          value: 'This rule has the same criteria as an existing rule. Users meeting these criteria will receive multiple roles.',
+          inline: false
+        });
+      }
+
+      if (wasNewlyCreated) {
+        embed.addFields({
+          name: '🆕 New Role Created',
+          value: `The role <@&${role.id}> was created for this verification rule.`,
+          inline: false
+        });
+      }
+
+      // Store confirmation data for Undo functionality
+      const confirmationId = chainId || interaction.id;
+      const confirmationInfo = {
+        ruleId: newRule.id,
+        serverId: interaction.guild.id,
+        channel,
+        role,
+        slug,
+        attributeKey,
+        attributeValue,
+        minItems,
+        wasNewlyCreated
+      };
+      this.ruleConfirmationHandler.storeConfirmationData(confirmationId, confirmationInfo);
+
+      // Create Undo button
+      const actionButtons = this.ruleConfirmationHandler.createConfirmationButtons(confirmationId);
+
+      await interaction.editReply({ 
+        embeds: [embed], 
+        components: [actionButtons]
+      });
+
+      // Set up button interaction handler with timeout
+      this.ruleConfirmationHandler.setupConfirmationButtonHandler(interaction);
+
+    } catch (error) {
+      this.logger.error('Error creating new verification setup:', error);
+      await interaction.editReply({
+        embeds: [AdminFeedback.error(
+          'Setup Failed', 
+          'Failed to set up verification. The rule was created but verification message setup failed.',
+          ['The rule exists in the database', 'Try running the recover-verification command']
+        )],
+        components: []
+      });
+    }
+  }
+
+  /**
+   * Shows rule cancellation message with undo functionality
+   */
+  private async showRuleCancellationMessage(
+    interaction: ChatInputCommandInteraction,
+    ruleData: any,
+    chainId: string
+  ): Promise<void> {
+    const embed = AdminFeedback.success(
+      'Rule Creation Cancelled',
+      'The rule creation has been cancelled. You can undo this action if it was a mistake.'
+    );
+
+    // Create undo button
+    const undoButton = this.duplicateRuleConfirmationHandler.createUndoRemovalButton(chainId, 'cancellation');
+
     await interaction.editReply({
-      content: AdminFeedback.simple('Rule creation logic will be completed in the next phase of refactoring.')
+      embeds: [embed],
+      components: [undoButton]
     });
+
+    // Set up undo functionality
+    this.duplicateRuleConfirmationHandler.setupCancellationButtonHandler(
+      interaction,
+      chainId,
+      async (undoRuleData: any) => {
+        // Undo cancellation - recreate the duplicate warning
+        await this.recreateDuplicateWarning(interaction, undoRuleData);
+      }
+    );
+  }
+
+  /**
+   * Recreates the duplicate warning after undoing cancellation
+   */
+  private async recreateDuplicateWarning(
+    interaction: ChatInputCommandInteraction,
+    ruleData: any
+  ): Promise<void> {
+    // Re-check for duplicate rules and show the warning again
+    const existingRule = await this.dbSvc.checkForDuplicateRule(
+      interaction.guild.id,
+      ruleData.channel.id,
+      ruleData.slug,
+      ruleData.attributeKey,
+      ruleData.attributeValue,
+      ruleData.minItems,
+      ruleData.role.id // Exclude the same role
+    );
+
+    if (existingRule) {
+      await this.showDuplicateRuleWarning(interaction, existingRule, ruleData);
+    } else {
+      // No duplicate found anymore, proceed with rule creation
+      await this.createRuleDirectly(interaction, ruleData, false);
+    }
+  }
+
+  /**
+   * Generates a consistent chain ID for undo/redo functionality
+   */
+  private generateChainId(interaction: ChatInputCommandInteraction): string {
+    return `${interaction.user.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 }
