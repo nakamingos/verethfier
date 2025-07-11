@@ -31,7 +31,7 @@ export class DynamicRoleService {
    * Main scheduled task - runs every 6 hours
    * Re-verifies all active role assignments
    */
-  @Cron(CronExpression.EVERY_6_HOURS)
+  @Cron(CronExpression.EVERY_MINUTE)
   async performScheduledReverification() {
     Logger.log('🔄 Starting scheduled role re-verification');
     
@@ -155,12 +155,30 @@ export class DynamicRoleService {
    */
   private async verifyUserStillQualifies(assignment: any): Promise<boolean> {
     try {
+      Logger.debug(`Checking assignment: user=${assignment.user_id}, role=${assignment.role_id}, rule_id=${assignment.rule_id}, address=${assignment.address}`);
+      
+      // If no rule_id, we can't verify ownership criteria, so be conservative and keep the role
+      if (!assignment.rule_id) {
+        Logger.log(`⚠️ Assignment ${assignment.id} has no rule_id, keeping role conservatively`);
+        return true;
+      }
+
       // Get the rule details
       const rule = await this.dbSvc.getRuleById(assignment.rule_id);
       if (!rule) {
         Logger.warn(`Rule ${assignment.rule_id} not found, revoking assignment`);
         return false;
       }
+
+      Logger.debug(`Rule found: slug=${rule.slug}, attr=${rule.attribute_key}=${rule.attribute_value}, min_items=${rule.min_items}`);
+
+      // Debug: log the exact parameters being checked
+      Logger.log(`🔍 Checking asset ownership for assignment ${assignment.id}:`);
+      Logger.log(`   - Address: ${assignment.address}`);
+      Logger.log(`   - Rule ID: ${assignment.rule_id}`);
+      Logger.log(`   - Collection (slug): ${rule.slug}`);
+      Logger.log(`   - Attribute: ${rule.attribute_key}=${rule.attribute_value}`);
+      Logger.log(`   - Min required: ${rule.min_items || 1}`);
 
       // Check current asset ownership
       const matchingAssets = await this.dataSvc.checkAssetOwnershipWithCriteria(
@@ -174,7 +192,7 @@ export class DynamicRoleService {
       const requiredMinItems = rule.min_items || 1;
       const stillQualifies = matchingAssets >= requiredMinItems;
 
-      Logger.debug(`User ${assignment.user_id} owns ${matchingAssets}/${requiredMinItems} assets for rule ${rule.id}: ${stillQualifies ? 'QUALIFIED' : 'NOT QUALIFIED'}`);
+      Logger.log(`🔍 User ${assignment.user_id} owns ${matchingAssets}/${requiredMinItems} assets for rule ${rule.id}: ${stillQualifies ? 'QUALIFIED ✅' : 'NOT QUALIFIED ❌'}`);
       
       return stillQualifies;
       
@@ -240,5 +258,29 @@ export class DynamicRoleService {
       expiringSoon: await this.dbSvc.countExpiringSoonAssignments(),
       lastReverificationRun: await this.dbSvc.getLastReverificationTime(),
     };
+  }
+
+  /**
+   * TEST METHOD: Manually test asset ownership checking
+   */
+  async testAssetOwnership(address: string, slug: string, attributeKey: string, attributeValue: string, minItems: number): Promise<void> {
+    Logger.log(`🧪 Testing asset ownership for address: ${address}`);
+    Logger.log(`🧪 Rule criteria: slug=${slug}, attributeKey=${attributeKey}, attributeValue=${attributeValue}, minItems=${minItems}`);
+    
+    try {
+      const matchingAssets = await this.dataSvc.checkAssetOwnershipWithCriteria(
+        address,
+        slug,
+        attributeKey,
+        attributeValue,
+        minItems
+      );
+      
+      Logger.log(`🧪 Result: ${matchingAssets} matching assets found`);
+      Logger.log(`🧪 Qualifies: ${matchingAssets >= minItems ? 'YES' : 'NO'}`);
+      
+    } catch (error) {
+      Logger.error(`🧪 Test failed:`, error.message);
+    }
   }
 }

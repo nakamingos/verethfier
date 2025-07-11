@@ -136,12 +136,15 @@ export class DataService {
     const normalizedAddress = address.toLowerCase();
     const marketAddress = '0xd3418772623be1a3cc6b6d45cb46420cedd9154a';
     
-    Logger.debug(`Checking ownership: ${normalizedAddress.slice(0,6)}...${normalizedAddress.slice(-4)}, slug=${slug}, attr=${attributeKey}=${attributeValue}, minItems=${minItems}`);
+    Logger.log(`🔍 DETAILED CHECK - Address: ${address} -> ${normalizedAddress}`);
+    Logger.log(`🎯 DETAILED CHECK - Criteria: slug=${slug}, attribute=${attributeKey}=${attributeValue}, minItems=${minItems}`);
 
     // Early return for simple ownership check (no attribute filtering)
-    const hasAttributeFilter = attributeKey && attributeKey !== 'ALL' && attributeValue && attributeValue !== 'ALL';
+    const hasAttributeFilter = attributeValue && attributeValue !== 'ALL';
+    Logger.log(`🔍 DETAILED CHECK - Has attribute filter: ${hasAttributeFilter} (attributeValue="${attributeValue}")`);
     
     if (!hasAttributeFilter) {
+      Logger.log(`🔍 DETAILED CHECK - Using simple ownership check (no attribute filter)`);
       let query = supabase
         .from('ethscriptions')
         .select('hashId, owner, prevOwner, slug')
@@ -157,9 +160,11 @@ export class DataService {
         throw new Error(error.message);
       }
       
+      Logger.log(`🔍 DETAILED CHECK - Simple query returned ${data.length} assets`);
       return data.length >= minItems ? data.length : 0;
     }
 
+    Logger.log(`🔍 DETAILED CHECK - Using attribute filtering query`);
     // For attribute filtering, use optimized JOIN query
     let joinQuery = supabase
       .from('ethscriptions')
