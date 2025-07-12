@@ -9,6 +9,7 @@ import { DiscordCommandsService } from '@/services/discord-commands.service';
 import { DataService } from '@/services/data.service';
 import { VerificationService } from '@/services/verification.service';
 import { CONSTANTS } from '@/constants';
+import { SETUP_HELP_CONTENT } from '@/content/setup-help.content';
 
 /**
  * Discord Bot Service
@@ -161,6 +162,7 @@ export class DiscordService implements OnModuleInit {
    * - remove-rule: Delete existing rules
    * - list-rules: Display all rules
    * - recover-verification: Recover verification messages
+   * - help: Show comprehensive setup help and usage guide
    * 
    * @returns Promise that resolves when slash commands are registered and handlers are set up
    */
@@ -210,6 +212,7 @@ export class DiscordService implements OnModuleInit {
    * - 'remove-rule': Deletes existing verification rules  
    * - 'list-rules': Displays all verification rules for the channel
    * - 'recover-verification': Recovers lost verification messages
+   * - 'help': Shows comprehensive help and usage information
    * 
    * Includes comprehensive error handling to ensure users receive feedback
    * even when operations fail, with appropriate ephemeral responses.
@@ -228,6 +231,8 @@ export class DiscordService implements OnModuleInit {
         await this.discordCommandsSvc.handleListRules(interaction);
       } else if (sub === 'recover-verification') {
         await this.discordCommandsSvc.handleRecoverVerification(interaction);
+      } else if (sub === 'help') {
+        await this.handleSetupHelp(interaction);
       }
     } catch (error) {
       Logger.error('Error in handleSetup:', error);
@@ -246,6 +251,46 @@ export class DiscordService implements OnModuleInit {
         }
       } catch (replyError) {
         Logger.error('Failed to send error message to user:', replyError);
+      }
+    }
+  }
+
+  /**
+   * Handles the '/setup help' subcommand.
+   * Provides comprehensive guidance on using all setup commands.
+   * 
+   * @param interaction - The chat input command interaction from Discord
+   */
+  async handleSetupHelp(interaction: ChatInputCommandInteraction): Promise<void> {
+    try {
+      await interaction.deferReply({ ephemeral: true });
+
+      const embed = new EmbedBuilder()
+        .setColor(SETUP_HELP_CONTENT.color)
+        .setTitle(SETUP_HELP_CONTENT.title)
+        .setDescription(SETUP_HELP_CONTENT.description)
+        .addFields(SETUP_HELP_CONTENT.fields)
+        .setFooter({ text: SETUP_HELP_CONTENT.footer })
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [embed] });
+
+    } catch (error) {
+      Logger.error('Error in handleSetupHelp:', error);
+      
+      try {
+        if (interaction.deferred) {
+          await interaction.editReply({
+            content: 'An error occurred while loading help information.'
+          });
+        } else if (!interaction.replied) {
+          await interaction.reply({
+            content: 'An error occurred while loading help information.',
+            flags: MessageFlags.Ephemeral
+          });
+        }
+      } catch (replyError) {
+        Logger.error('Failed to send help error message to user:', replyError);
       }
     }
   }
@@ -389,6 +434,10 @@ export class DiscordService implements OnModuleInit {
           sc.setName('recover-verification')
             .setDescription('Recover verification setup for a channel (creates new message, updates orphaned rules)')
             .addChannelOption(option => option.setName('channel').setDescription('Channel to recover verification for').setRequired(true))
+        )
+        .addSubcommand(sc =>
+          sc.setName('help')
+            .setDescription('Show help and information about setup commands')
         )
     ];
     Logger.debug('Reloading application /slash commands.', `${commands.length} commands`);
