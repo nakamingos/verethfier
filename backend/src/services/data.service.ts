@@ -24,6 +24,7 @@ const supabase = createClient(
  */
 @Injectable()
 export class DataService {
+  private readonly logger = new Logger(DataService.name);
   
   /**
    * Checks basic asset ownership for an address.
@@ -114,6 +115,182 @@ export class DataService {
     if (error) throw new Error(error.message);
     const slugs = Array.from(new Set((data || []).map(r => r.slug)));
     return ['all-collections', ...slugs];
+  }
+
+  /**
+   * Get all unique attribute keys for a specific collection slug
+   * @param slug - Collection slug to filter by (optional)
+   * @returns Array of unique attribute keys
+   */
+  async getAttributeKeys(slug?: string): Promise<string[]> {
+    try {
+      // If no slug specified or it's 'ALL', get a small sample of attributes
+      if (!slug || slug === 'ALL' || slug === 'all-collections') {
+        const { data, error } = await supabase
+          .from('attributes_new')
+          .select('values')
+          .limit(50);
+        
+        if (error) throw new Error(error.message);
+        
+        const allKeys = new Set<string>();
+        (data || []).forEach(item => {
+          if (item.values && typeof item.values === 'object') {
+            Object.keys(item.values).forEach(key => allKeys.add(key));
+          }
+        });
+        
+        return Array.from(allKeys).sort().slice(0, 25);
+      }
+
+      // For specific slug, get first 200 items (sufficient for ~12 attribute keys)
+      const { data, error } = await supabase
+        .from('attributes_new')
+        .select('values')
+        .eq('slug', slug)
+        .limit(200);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const allKeys = new Set<string>();
+      (data || []).forEach(item => {
+        if (item.values && typeof item.values === 'object') {
+          Object.keys(item.values).forEach(key => {
+            if (key && key.trim() !== '') {
+              allKeys.add(key);
+            }
+          });
+        }
+      });
+
+      const finalKeys = Array.from(allKeys).sort();
+      return Array.from(allKeys).sort().slice(0, 25); // Discord limit
+    } catch (error) {
+      this.logger.error('Error getting attribute keys:', error);
+      return ['ALL'];
+    }
+  }
+
+  /**
+   * Get all unique attribute values for a specific attribute key and collection slug
+   * Returns the rarest values first (lowest frequency) to prioritize rare traits
+   * @param attributeKey - Attribute key to get values for
+   * @param slug - Collection slug to filter by (optional)
+   * @returns Array of unique attribute values sorted by rarity (rarest first)
+   */
+  async getAttributeValues(attributeKey: string, slug?: string): Promise<string[]> {
+    try {
+      if (!attributeKey || attributeKey === 'ALL') {
+        return [];
+      }
+
+      let data;
+      
+      // If no slug specified or it's 'ALL', get a small sample
+      if (!slug || slug === 'ALL' || slug === 'all-collections') {
+        const { data: attributeData, error } = await supabase
+          .from('attributes_new')
+          .select('values')
+          .limit(50); // Limit to prevent large responses
+        
+        if (error) throw new Error(error.message);
+        data = attributeData;
+      } else {
+        // For specific slug, use pagination to get ALL records to ensure accurate counts
+        // This is important for correct rarity calculations and occurrence counts
+        const allData = [];
+        let page = 0;
+        const pageSize = 1000; // Balanced page size for performance
+        const maxPages = 10; // Allow up to 10k records to capture full collections
+
+        console.log(`📊 [DataService] Starting full pagination for slug: "${slug}"`);
+
+        while (page < maxPages) {
+          const offset = page * pageSize;
+          
+          console.log(`📄 [DataService] Fetching page ${page + 1}, offset: ${offset}`);
+          
+          const { data: pageData, error } = await supabase
+            .from('attributes_new')
+            .select('values')
+            .eq('slug', slug)
+            .range(offset, offset + pageSize - 1);
+
+          if (error) {
+            console.error(`❌ [DataService] Error on page ${page + 1}:`, error);
+            throw new Error(error.message);
+          }
+
+          console.log(`📄 [DataService] Page ${page + 1} returned ${pageData?.length || 0} records`);
+
+          if (!pageData || pageData.length === 0) {
+            console.log(`📄 [DataService] No more data, stopping at page ${page + 1}`);
+            break;
+          }
+
+          allData.push(...pageData);
+
+          // If we got less than pageSize records, we've reached the end
+          if (pageData.length < pageSize) {
+            console.log(`📄 [DataService] Reached end of data (got ${pageData.length} < ${pageSize})`);
+            break;
+          }
+
+          page++;
+        }
+
+        console.log(`📊 [DataService] Pagination complete: ${page + 1} pages, ${allData.length} total records`);
+        data = allData;
+      }
+
+      // Track frequency of each attribute value
+      const valueFrequency = new Map<string, number>();
+      
+      // Generate possible key variations for case-insensitive matching
+      // Use Set to deduplicate variations (e.g., "Background" might appear twice)
+      const keyVariations = Array.from(new Set([
+        attributeKey,
+        attributeKey.charAt(0).toUpperCase() + attributeKey.slice(1).toLowerCase(),
+        attributeKey.toLowerCase(),
+        attributeKey.toUpperCase()
+      ]));
+
+      (data || []).forEach(item => {
+        if (item.values && typeof item.values === 'object') {
+          // Track if we've already counted this item for this attribute to prevent double counting
+          let foundValue = false;
+          
+          keyVariations.forEach(keyVariation => {
+            if (!foundValue && item.values.hasOwnProperty(keyVariation)) {
+              const value = item.values[keyVariation];
+              if (value !== null && value !== undefined) {
+                const valueStr = value.toString();
+                valueFrequency.set(valueStr, (valueFrequency.get(valueStr) || 0) + 1);
+                foundValue = true; // Prevent counting the same item multiple times
+              }
+            }
+          });
+        }
+      });
+
+      // Convert to array and sort by frequency (ascending = rarest first)
+      // Return both value and frequency for display purposes
+      const sortedByRarity = Array.from(valueFrequency.entries())
+        .sort((a, b) => a[1] - b[1]) // Sort by frequency (ascending)
+        .slice(0, 25); // Take top 25 rarest
+
+      // Take the top 25 rarest values (no need to reserve slot for 'ALL')
+      if (sortedByRarity.length > 0) {
+        return sortedByRarity.map(([value, count]) => `${value} (${count}×)`);
+      } else {
+        return [];
+      }
+    } catch (error) {
+      this.logger.error('Error getting attribute values:', error);
+      return [];
+    }
   }
 
   /**

@@ -163,6 +163,10 @@ export class DiscordService {
             await this.handleRoleAutocomplete(interaction);
           } else if (focusedOption.name === 'slug') {
             await this.handleSlugAutocomplete(interaction);
+          } else if (focusedOption.name === 'attribute_key') {
+            await this.handleAttributeKeyAutocomplete(interaction);
+          } else if (focusedOption.name === 'attribute_value') {
+            await this.handleAttributeValueAutocomplete(interaction);
           }
         }
         return;
@@ -355,8 +359,8 @@ export class DiscordService {
             .addChannelOption(option => option.setName('channel').setDescription('Channel').setRequired(true))
             .addStringOption(option => option.setName('role').setDescription('Select existing role or type new role name to create').setRequired(true).setAutocomplete(true))
             .addStringOption(option => option.setName('slug').setDescription('Asset slug (leave empty for ALL collections)').setAutocomplete(true))
-            .addStringOption(option => option.setName('attribute_key').setDescription('Attribute key (leave empty for ALL attributes)'))
-            .addStringOption(option => option.setName('attribute_value').setDescription('Attribute value (leave empty for ALL values)'))
+            .addStringOption(option => option.setName('attribute_key').setDescription('Attribute key (leave empty for ALL attributes)').setAutocomplete(true))
+            .addStringOption(option => option.setName('attribute_value').setDescription('Attribute value (leave empty for ALL values)').setAutocomplete(true))
             .addIntegerOption(option => option.setName('min_items').setDescription('Minimum items (default: 1)'))
         )
         .addSubcommand(sc =>
@@ -559,6 +563,176 @@ export class DiscordService {
     } catch (error) {
       Logger.error('Error in handleSlugAutocomplete:', error);
       await interaction.respond([]);
+    }
+  }
+
+  /**
+   * Handles attribute key autocomplete for the add-rule command.
+   * Only shows attribute keys if a slug has been selected.
+   * @param interaction - The autocomplete interaction.
+   */
+  async handleAttributeKeyAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+    try {
+      const focusedValue = interaction.options.getFocused().toLowerCase();
+      const selectedSlug = interaction.options.getString('slug');
+      
+      // Only provide autocomplete if a slug has been specifically selected
+      if (!selectedSlug) {
+        await interaction.respond([
+          { name: 'Please select a collection first', value: 'ALL' }
+        ]);
+        return;
+      }
+      
+      // Add debug logging to track context
+      Logger.debug(`Autocomplete for attribute_key: slug="${selectedSlug}", search="${focusedValue}"`);
+      
+      // Get all available attribute keys for the selected slug
+      const allKeys = await this.dataSvc.getAttributeKeys(selectedSlug);
+      
+      // Improved filtering: show all options if user is editing "ALL" or field is empty
+      // Also show all options if focused value is very short (1-2 chars) to avoid over-filtering
+      let filteredKeys;
+      if (!focusedValue || focusedValue === 'all' || focusedValue.length <= 2) {
+        // Show all options when starting fresh or editing "ALL"
+        filteredKeys = allKeys.slice(0, 25);
+      } else {
+        // Only filter when user has typed something specific (3+ chars)
+        filteredKeys = allKeys
+          .filter(key => key.toLowerCase().includes(focusedValue))
+          .slice(0, 25);
+      }
+      
+      // Sort the results alphabetically (no need to handle 'ALL' since it's not included)
+      filteredKeys.sort((a, b) => a.localeCompare(b));
+
+      const choices = filteredKeys.map(key => ({
+        name: key,
+        value: key
+      }));
+
+      // Ensure we always have at least one option
+      if (choices.length === 0) {
+        choices.push({ name: 'No attributes found', value: 'ALL' });
+      }
+
+      await interaction.respond(choices);
+    } catch (error) {
+      Logger.error('Error in handleAttributeKeyAutocomplete:', error);
+      await interaction.respond([
+        { name: 'Error loading attributes', value: 'ALL' }
+      ]);
+    }
+  }
+
+  /**
+   * Handles attribute value autocomplete for the add-rule command.
+   * Only shows attribute values if both slug and attribute key have been selected.
+   * @param interaction - The autocomplete interaction.
+   */
+  async handleAttributeValueAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+    try {
+      const focusedValue = interaction.options.getFocused().toLowerCase();
+      const selectedSlug = interaction.options.getString('slug');
+      const selectedAttributeKey = interaction.options.getString('attribute_key');
+      
+      // Only provide autocomplete if both slug and attribute key have been specifically selected
+      if (!selectedSlug || !selectedAttributeKey) {
+        await interaction.respond([
+          { name: 'Please select collection and attribute key first', value: 'ALL' }
+        ]);
+        return;
+      }
+      
+      // Add debug logging to track cache issues
+      Logger.debug(`Autocomplete for attribute_value: slug="${selectedSlug}", key="${selectedAttributeKey}", search="${focusedValue}"`);
+      
+      // Add timeout to prevent Discord interaction timeout
+      // Increased timeout for full pagination to ensure accurate counts
+      const timeoutPromise = new Promise<string[]>((_, reject) => {
+        setTimeout(() => reject(new Error('Autocomplete timeout')), 3000); // 3 second timeout for full pagination
+      });
+      
+      let allValues: string[];
+      try {
+        // Race between data fetch and timeout
+        allValues = await Promise.race([
+          this.dataSvc.getAttributeValues(selectedAttributeKey, selectedSlug),
+          timeoutPromise
+        ]);
+      } catch (timeoutError) {
+        Logger.warn(`Autocomplete timeout for slug="${selectedSlug}", key="${selectedAttributeKey}"`);
+        await interaction.respond([
+          { name: 'Loading... (try typing to filter)', value: 'ALL' }
+        ]);
+        return;
+      }
+      
+      // Improved filtering: show all options if user is editing "ALL" or field is empty
+      // Also show all options if focused value is very short (1-2 chars) to avoid over-filtering
+      let filteredValues;
+      if (!focusedValue || focusedValue === 'all' || focusedValue.length <= 2) {
+        // Show all options when starting fresh or editing "ALL"
+        // Preserve the rarity-based order from getAttributeValues
+        filteredValues = allValues.slice(0, 25);
+      } else {
+        // Only filter when user has typed something specific (3+ chars)
+        // When filtering, we need to preserve the original order (rarity-based)
+        // Create a map of original positions to maintain order
+        const originalOrder = new Map(allValues.map((value, index) => [value, index]));
+        
+        filteredValues = allValues
+          .filter(value => {
+            // Extract the actual value name from "ValueName (5×)" format for filtering
+            const match = value.match(/^(.+?)\s+\((\d+)×\)$/);
+            const valueName = match ? match[1] : value;
+            return valueName.toLowerCase().includes(focusedValue);
+          })
+          .slice(0, 25)
+          .sort((a, b) => {
+            // Preserve original rarity-based order (no need to handle 'ALL' anymore)
+            return (originalOrder.get(a) || 0) - (originalOrder.get(b) || 0);
+          });
+      }
+      
+      // Don't re-sort here - preserve the rarity-based order from getAttributeValues
+      // No need to handle 'ALL' specially since it's not included in the results anymore
+
+      const choices = filteredValues.map(value => {
+        // Extract the actual value and count from the formatted string
+        // Format is "ValueName (5×)" - we want "ValueName" as value and full string as name
+        const match = value.match(/^(.+?)\s+\((\d+)×\)$/);
+        if (match) {
+          const [, actualValue, count] = match;
+          return {
+            name: value, // Display with count: "Diamond Background (3×)"
+            value: actualValue // Clean value for processing: "Diamond Background"
+          };
+        } else {
+          // Fallback for values without count format
+          return {
+            name: value,
+            value: value
+          };
+        }
+      });
+
+      // Ensure we always have at least one option
+      if (choices.length === 0) {
+        choices.push({ 
+          name: 'No values found', 
+          value: 'ALL' 
+        });
+      }
+
+      Logger.debug(`Responding with ${choices.length} choices for ${selectedAttributeKey}`);
+
+      await interaction.respond(choices);
+    } catch (error) {
+      Logger.error('Error in handleAttributeValueAutocomplete:', error);
+      await interaction.respond([
+        { name: 'Error loading values', value: 'ALL' }
+      ]);
     }
   }
 }
