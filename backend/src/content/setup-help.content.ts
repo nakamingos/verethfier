@@ -78,7 +78,18 @@ export const SETUP_HELP_CONTENT: SetupHelpContent = {
              '**"Verification not working"** → Use recover-verification\n' +
              '**"Duplicate role warning"** → Decide if intentional\n' +
              '**"Rule not found"** → Check with list-rules first\n' +
-             '**"Permission denied"** → Ensure admin permissions',
+             '**"Permission denied"** → Ensure admin permissions\n' +
+             '**"Invalid option combination"** → Discord autocomplete limitation (see below)',
+      inline: false
+    },
+    {
+      name: '🔄 **Discord Autocomplete Limitation**',
+      value: '**Issue**: Autocomplete may show outdated options when changing selections\n' +
+             '**Validation**: Bot checks all combinations when you submit the command\n' +
+             '**Solution**: If you get an "Invalid Option Combination" error:\n' +
+             '• Select options in order: Collection → Attribute Key → Attribute Value\n' +
+             '• Leave fields empty to allow ALL values for that criteria\n' +
+             '• The bot will guide you with specific error messages',
       inline: false
     },
     {
