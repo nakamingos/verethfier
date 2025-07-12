@@ -590,11 +590,21 @@ export class DiscordService {
       // Get all available attribute keys for the selected slug
       const allKeys = await this.dataSvc.getAttributeKeys(selectedSlug);
       
-      // Filter keys based on user input
-      const filteredKeys = allKeys
-        .filter(key => key.toLowerCase().includes(focusedValue))
-        .sort((a, b) => a.localeCompare(b))
-        .slice(0, 25); // Discord allows max 25 choices
+      // Improved filtering: show all options if user is editing "ALL" or field is empty
+      // Also show all options if focused value is very short (1-2 chars) to avoid over-filtering
+      let filteredKeys;
+      if (!focusedValue || focusedValue === 'all' || focusedValue.length <= 2) {
+        // Show all options when starting fresh or editing "ALL"
+        filteredKeys = allKeys.slice(0, 25);
+      } else {
+        // Only filter when user has typed something specific (3+ chars)
+        filteredKeys = allKeys
+          .filter(key => key.toLowerCase().includes(focusedValue))
+          .slice(0, 25);
+      }
+      
+      // Sort the results alphabetically (no need to handle 'ALL' since it's not included)
+      filteredKeys.sort((a, b) => a.localeCompare(b));
 
       const choices = filteredKeys.map(key => ({
         name: key,
@@ -603,7 +613,7 @@ export class DiscordService {
 
       // Ensure we always have at least one option
       if (choices.length === 0) {
-        choices.push({ name: 'ALL (no specific attributes)', value: 'ALL' });
+        choices.push({ name: 'No attributes found', value: 'ALL' });
       }
 
       await interaction.respond(choices);
@@ -637,24 +647,79 @@ export class DiscordService {
       // Add debug logging to track cache issues
       Logger.debug(`Autocomplete for attribute_value: slug="${selectedSlug}", key="${selectedAttributeKey}", search="${focusedValue}"`);
       
-      // Get all available attribute values for the selected slug and attribute key
-      const allValues = await this.dataSvc.getAttributeValues(selectedAttributeKey, selectedSlug);
+      // Add timeout to prevent Discord interaction timeout
+      const timeoutPromise = new Promise<string[]>((_, reject) => {
+        setTimeout(() => reject(new Error('Autocomplete timeout')), 2000); // 2 second timeout for faster response
+      });
       
-      // Filter values based on user input
-      const filteredValues = allValues
-        .filter(value => value.toLowerCase().includes(focusedValue))
-        .sort((a, b) => a.localeCompare(b))
-        .slice(0, 25);
+      let allValues: string[];
+      try {
+        // Race between data fetch and timeout
+        allValues = await Promise.race([
+          this.dataSvc.getAttributeValues(selectedAttributeKey, selectedSlug),
+          timeoutPromise
+        ]);
+      } catch (timeoutError) {
+        Logger.warn(`Autocomplete timeout for slug="${selectedSlug}", key="${selectedAttributeKey}"`);
+        await interaction.respond([
+          { name: 'Loading... (try typing to filter)', value: 'ALL' }
+        ]);
+        return;
+      }
+      
+      // Improved filtering: show all options if user is editing "ALL" or field is empty
+      // Also show all options if focused value is very short (1-2 chars) to avoid over-filtering
+      let filteredValues;
+      if (!focusedValue || focusedValue === 'all' || focusedValue.length <= 2) {
+        // Show all options when starting fresh or editing "ALL"
+        // Preserve the rarity-based order from getAttributeValues
+        filteredValues = allValues.slice(0, 25);
+      } else {
+        // Only filter when user has typed something specific (3+ chars)
+        // When filtering, we need to preserve the original order (rarity-based)
+        // Create a map of original positions to maintain order
+        const originalOrder = new Map(allValues.map((value, index) => [value, index]));
+        
+        filteredValues = allValues
+          .filter(value => {
+            // Extract the actual value name from "ValueName (5×)" format for filtering
+            const match = value.match(/^(.+?)\s+\((\d+)×\)$/);
+            const valueName = match ? match[1] : value;
+            return valueName.toLowerCase().includes(focusedValue);
+          })
+          .slice(0, 25)
+          .sort((a, b) => {
+            // Preserve original rarity-based order (no need to handle 'ALL' anymore)
+            return (originalOrder.get(a) || 0) - (originalOrder.get(b) || 0);
+          });
+      }
+      
+      // Don't re-sort here - preserve the rarity-based order from getAttributeValues
+      // No need to handle 'ALL' specially since it's not included in the results anymore
 
-      const choices = filteredValues.map(value => ({
-        name: value,
-        value: value
-      }));
+      const choices = filteredValues.map(value => {
+        // Extract the actual value and count from the formatted string
+        // Format is "ValueName (5×)" - we want "ValueName" as value and full string as name
+        const match = value.match(/^(.+?)\s+\((\d+)×\)$/);
+        if (match) {
+          const [, actualValue, count] = match;
+          return {
+            name: value, // Display with count: "Diamond Background (3×)"
+            value: actualValue // Clean value for processing: "Diamond Background"
+          };
+        } else {
+          // Fallback for values without count format
+          return {
+            name: value,
+            value: value
+          };
+        }
+      });
 
       // Ensure we always have at least one option
       if (choices.length === 0) {
         choices.push({ 
-          name: 'ALL (no specific values)', 
+          name: 'No values found', 
           value: 'ALL' 
         });
       }

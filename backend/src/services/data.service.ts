@@ -140,17 +140,14 @@ export class DataService {
           }
         });
         
-        return ['ALL', ...Array.from(allKeys).sort().slice(0, 24)];
+        return Array.from(allKeys).sort().slice(0, 25);
       }
 
       // For specific slug, get first 200 items (sufficient for ~12 attribute keys)
       const { data, error } = await supabase
         .from('attributes_new')
-        .select(`
-          values,
-          ethscriptions!inner(slug)
-        `)
-        .eq('ethscriptions.slug', slug)
+        .select('values')
+        .eq('slug', slug)
         .limit(200);
 
       if (error) {
@@ -169,7 +166,7 @@ export class DataService {
       });
 
       const finalKeys = Array.from(allKeys).sort();
-      return ['ALL', ...finalKeys.slice(0, 24)]; // Discord limit
+      return Array.from(allKeys).sort().slice(0, 25); // Discord limit
     } catch (error) {
       this.logger.error('Error getting attribute keys:', error);
       return ['ALL'];
@@ -178,9 +175,10 @@ export class DataService {
 
   /**
    * Get all unique attribute values for a specific attribute key and collection slug
+   * Returns the rarest values first (lowest frequency) to prioritize rare traits
    * @param attributeKey - Attribute key to get values for
    * @param slug - Collection slug to filter by (optional)
-   * @returns Array of unique attribute values
+   * @returns Array of unique attribute values sorted by rarity (rarest first)
    */
   async getAttributeValues(attributeKey: string, slug?: string): Promise<string[]> {
     try {
@@ -200,49 +198,27 @@ export class DataService {
         if (error) throw new Error(error.message);
         data = attributeData;
       } else {
-        // For specific slug, use pagination to get ALL records (not limited by Supabase's 2000 limit)
-        const allData = [];
-        let page = 0;
-        const pageSize = 2000; // Use 2000 record chunks for efficiency
-
-        while (true) {
-          const offset = page * pageSize;
-          
-          const { data: pageData, error } = await supabase
-            .from('attributes_new')
-            .select(`
-              values,
-              ethscriptions!inner(slug)
-            `)
-            .eq('ethscriptions.slug', slug)
-            .range(offset, offset + pageSize - 1);
-
-          if (error) throw new Error(error.message);
-
-          if (!pageData || pageData.length === 0) {
-            break;
-          }
-
-          allData.push(...pageData);
-
-          // If we got less than pageSize records, we've reached the end
-          if (pageData.length < pageSize) {
-            break;
-          }
-
-          page++;
-          
-          // Safety limit to prevent infinite loops
-          if (page > 50) {
-            break;
-          }
+        // For autocomplete, prioritize speed over completeness
+        // Most attribute values can be found in the first 2000-3000 records
+        console.log(`📊 [DataService] Fetching attributes for slug: "${slug}" (fast mode)`);
+        
+        const { data: attributeData, error } = await supabase
+          .from('attributes_new')
+          .select('values')
+          .eq('slug', slug)
+          .limit(2000); // Single query, no pagination for speed
+        
+        if (error) {
+          console.error(`❌ [DataService] Error fetching attributes:`, error);
+          throw new Error(error.message);
         }
-
-        data = allData;
+        
+        console.log(`� [DataService] Fetched ${attributeData?.length || 0} records for slug "${slug}"`);
+        data = attributeData;
       }
 
-      // Extract all unique values for the specified attribute key
-      const allValues = new Set<string>();
+      // Track frequency of each attribute value
+      const valueFrequency = new Map<string, number>();
       
       // Generate possible key variations for case-insensitive matching
       const keyVariations = [
@@ -258,14 +234,26 @@ export class DataService {
             if (item.values.hasOwnProperty(keyVariation)) {
               const value = item.values[keyVariation];
               if (value !== null && value !== undefined) {
-                allValues.add(value.toString());
+                const valueStr = value.toString();
+                valueFrequency.set(valueStr, (valueFrequency.get(valueStr) || 0) + 1);
               }
             }
           });
         }
       });
 
-      return Array.from(allValues).sort().slice(0, 25); // Discord limit
+      // Convert to array and sort by frequency (ascending = rarest first)
+      // Return both value and frequency for display purposes
+      const sortedByRarity = Array.from(valueFrequency.entries())
+        .sort((a, b) => a[1] - b[1]) // Sort by frequency (ascending)
+        .slice(0, 25); // Take top 25 rarest
+
+      // Take the top 25 rarest values (no need to reserve slot for 'ALL')
+      if (sortedByRarity.length > 0) {
+        return sortedByRarity.map(([value, count]) => `${value} (${count}×)`);
+      } else {
+        return [];
+      }
     } catch (error) {
       this.logger.error('Error getting attribute values:', error);
       return [];
