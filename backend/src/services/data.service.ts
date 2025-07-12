@@ -249,21 +249,26 @@ export class DataService {
       const valueFrequency = new Map<string, number>();
       
       // Generate possible key variations for case-insensitive matching
-      const keyVariations = [
+      // Use Set to deduplicate variations (e.g., "Background" might appear twice)
+      const keyVariations = Array.from(new Set([
         attributeKey,
         attributeKey.charAt(0).toUpperCase() + attributeKey.slice(1).toLowerCase(),
         attributeKey.toLowerCase(),
         attributeKey.toUpperCase()
-      ];
+      ]));
 
       (data || []).forEach(item => {
         if (item.values && typeof item.values === 'object') {
+          // Track if we've already counted this item for this attribute to prevent double counting
+          let foundValue = false;
+          
           keyVariations.forEach(keyVariation => {
-            if (item.values.hasOwnProperty(keyVariation)) {
+            if (!foundValue && item.values.hasOwnProperty(keyVariation)) {
               const value = item.values[keyVariation];
               if (value !== null && value !== undefined) {
                 const valueStr = value.toString();
                 valueFrequency.set(valueStr, (valueFrequency.get(valueStr) || 0) + 1);
+                foundValue = true; // Prevent counting the same item multiple times
               }
             }
           });
