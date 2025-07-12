@@ -751,9 +751,82 @@ export class DbService {
         expiresAt = expiration.toISOString();
       }
 
+      // First, check if there's an existing record for this user/server/role combination
+      const { data: existingRecord, error: selectError } = await this.supabase
+        .from('verifier_user_roles')
+        .select('id, status')
+        .eq('user_id', assignment.userId)
+        .eq('server_id', assignment.serverId)
+        .eq('role_id', assignment.roleId)
+        .maybeSingle(); // Use maybeSingle to avoid error if no record found
+
+      if (selectError) {
+        this.logger.error('Error checking existing role assignment:', selectError);
+        throw selectError;
+      }
+
+      if (existingRecord) {
+        // If record exists and is revoked/expired, reactivate it
+        if (existingRecord.status === 'revoked' || existingRecord.status === 'expired') {
+          const { data, error: updateError } = await this.supabase
+            .from('verifier_user_roles')
+            .update({
+              status: 'active',
+              verified_at: new Date().toISOString(),
+              last_checked: new Date().toISOString(),
+              expires_at: expiresAt,
+              rule_id: assignment.ruleId,
+              address: assignment.address,
+              user_name: assignment.userName || '',
+              server_name: assignment.serverName || '',
+              role_name: assignment.roleName || '',
+              verification_data: assignment.verificationData || {},
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingRecord.id)
+            .select()
+            .single();
+
+          if (updateError) {
+            this.logger.error('Error reactivating role assignment:', updateError);
+            throw updateError;
+          }
+
+          this.logger.debug(`Reactivated role assignment for user ${assignment.userId}, role ${assignment.roleId}`);
+          return data;
+        } else if (existingRecord.status === 'active') {
+          // Record exists and is active - update the metadata but keep it active
+          const { data, error: updateError } = await this.supabase
+            .from('verifier_user_roles')
+            .update({
+              last_checked: new Date().toISOString(),
+              expires_at: expiresAt,
+              rule_id: assignment.ruleId,
+              address: assignment.address,
+              user_name: assignment.userName || '',
+              server_name: assignment.serverName || '',
+              role_name: assignment.roleName || '',
+              verification_data: assignment.verificationData || {},
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingRecord.id)
+            .select()
+            .single();
+
+          if (updateError) {
+            this.logger.error('Error updating existing active role assignment:', updateError);
+            throw updateError;
+          }
+
+          this.logger.debug(`Updated existing active role assignment for user ${assignment.userId}, role ${assignment.roleId}`);
+          return data;
+        }
+      }
+
+      // No existing record, create new one
       const { data, error } = await this.supabase
         .from('verifier_user_roles')
-        .upsert({
+        .insert({
           user_id: assignment.userId,
           server_id: assignment.serverId,
           role_id: assignment.roleId,
@@ -773,11 +846,13 @@ export class DbService {
         .single();
 
       if (error) {
-        this.logger.error('Error tracking role assignment:', error);
+        this.logger.error('Error creating new role assignment:', error);
         throw error;
       }
 
+      this.logger.debug(`Created new role assignment for user ${assignment.userId}, role ${assignment.roleId}`);
       return data;
+
     } catch (error) {
       this.logger.error('Error tracking role assignment:', error);
       throw error;
