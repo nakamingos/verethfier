@@ -202,8 +202,8 @@ export class DataService {
         // This is important for correct rarity calculations and occurrence counts
         const allData = [];
         let page = 0;
-        const pageSize = 1000; // Balanced page size for performance
-        const maxPages = 10; // Allow up to 10k records to capture full collections
+        const pageSize = 2000; // Balanced page size for performance
+        const maxPages = 5; // Allow up to 10k records to capture full collections
 
         console.log(`📊 [DataService] Starting full pagination for slug: "${slug}"`);
 

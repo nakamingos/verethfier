@@ -153,7 +153,7 @@ export class DiscordCommandsService {
           min_items: ruleData.minItems
         };
         const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields(cancelledRuleFormatted);
-        const embed = AdminFeedback.info('Rule Creation Cancelled', `Proposed rule for ${ruleData.channel.name} and @${ruleData.role.name} was not created.`);
+        const embed = AdminFeedback.destructive('Rule Creation Cancelled', `Proposed rule for ${ruleData.channel.name} and @${ruleData.role.name} was not created.`);
         embed.addFields(ruleInfoFields);
         
         // Create Undo button
@@ -602,12 +602,6 @@ export class DiscordCommandsService {
         position: position,
         reason: `Auto-created for verification rule by ${interaction.user.tag}`
       });
-      
-      // Send a follow-up message about role creation
-      await interaction.followUp({
-        content: AdminFeedback.simple(`Created new role: **${role.name}**`),
-        ephemeral: true
-      });
 
       return { role, wasNewlyCreated: true };
     } catch (error) {
@@ -645,7 +639,7 @@ export class DiscordCommandsService {
     
     // Create detailed rule info fields
     const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields(removedRuleData);
-    const embed = AdminFeedback.success('Rule Removed', `Rule ${ruleId} for ${removedRuleData.channel_name} and @${removedRuleData.role_name} has been removed.`);
+    const embed = AdminFeedback.destructive('Rule Removed', `Rule ${ruleId} for ${removedRuleData.channel_name} and @${removedRuleData.role_name} has been removed.`);
     embed.addFields(ruleInfoFields);
 
     const messageContent = {
@@ -712,7 +706,7 @@ export class DiscordCommandsService {
       });
     }
 
-    const embed = AdminFeedback.success(
+    const embed = AdminFeedback.destructive(
       successful.length === 1 ? 'Rule Removed' : `${successful.length} Rules Removed`, 
       description.trim()
     );
@@ -1039,7 +1033,7 @@ export class DiscordCommandsService {
           min_items: ruleData.minItems
         };
         const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields(cancelledRuleFormatted);
-        const embed = AdminFeedback.info('Rule Creation Cancelled', `Proposed rule for ${ruleData.channel.name} and @${ruleData.role.name} was not created.`);
+        const embed = AdminFeedback.destructive('Rule Creation Cancelled', `Proposed rule for ${ruleData.channel.name} and @${ruleData.role.name} was not created.`);
         embed.addFields(ruleInfoFields);
         
         // Create Undo button using the same chain ID
@@ -1079,7 +1073,7 @@ export class DiscordCommandsService {
         // Timeout - clean up
         this.duplicateRuleConfirmationHandler.deletePendingRule(chainId);
         interaction.editReply({
-          embeds: [AdminFeedback.info('Request Timed Out', 'Rule creation was cancelled due to timeout.')],
+          embeds: [AdminFeedback.warning('Request Timed Out', 'Rule creation was cancelled due to timeout.')],
           components: []
         }).catch(() => {}); // Ignore errors if interaction is no longer valid
       }

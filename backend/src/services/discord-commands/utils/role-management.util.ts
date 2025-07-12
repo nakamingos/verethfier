@@ -77,12 +77,6 @@ export async function findOrCreateRole(
       position: position,
       reason: `Auto-created for verification rule by ${interaction.user.tag}`
     });
-    
-    // Send a follow-up message about role creation
-    await interaction.followUp({
-      content: AdminFeedback.simple(`Created new role: **${role.name}**`),
-      ephemeral: true
-    });
 
     return { role, wasNewlyCreated: true };
   } catch (error) {

@@ -236,12 +236,15 @@ export class RestoreUndoInteractionHandler {
     // Store the removed rule for potential undo (restore again) using chain ID
     this.removedRules.set(interactionId, {
       ...restoredRuleData,
-      wasNewlyCreated: restoredRuleData.wasNewlyCreated
+      wasNewlyCreated: restoredRuleData.wasNewlyCreated,
+      isDuplicateRule: restoredRuleData.isDuplicateRule,
+      duplicateType: restoredRuleData.duplicateType
     });
 
     // Create "Rule Removed" message with undo button
-    const embed = AdminFeedback.success(
-      'Rule Removed', 
+    const embedTitle = restoredRuleData.isDuplicateRule ? 'Duplicate Rule Removed' : 'Rule Removed';
+    const embed = AdminFeedback.destructive(
+      embedTitle, 
       `Rule ${restoredRuleData.id} for ${restoredRuleData.channel_name} and @${restoredRuleData.role_name} has been removed.`
     );
 
@@ -257,6 +260,18 @@ export class RestoreUndoInteractionHandler {
       min_items: restoredRuleData.min_items
     });
     embed.addFields(ruleInfoFields);
+    
+    // Add duplicate context note if applicable
+    if (restoredRuleData.isDuplicateRule && restoredRuleData.duplicateType) {
+      const noteText = restoredRuleData.duplicateType === 'role' 
+        ? 'This role no longer has multiple ways to be earned in this channel.'
+        : 'Users meeting these criteria will no longer receive multiple roles.';
+      embed.addFields({
+        name: '⚠️ Note',
+        value: noteText,
+        inline: false
+      });
+    }
 
     await interaction.editReply({
       embeds: [embed],
@@ -276,7 +291,9 @@ export class RestoreUndoInteractionHandler {
     const removedRulesMap = new Map();
     removedRulesMap.set(interactionId, {
       ...restoredRuleData,
-      wasNewlyCreated: restoredRuleData.wasNewlyCreated
+      wasNewlyCreated: restoredRuleData.wasNewlyCreated,
+      isDuplicateRule: restoredRuleData.isDuplicateRule,
+      duplicateType: restoredRuleData.duplicateType
     });
     this.removalUndoHandler.setupRemovalButtonHandler(interaction, removedRulesMap);
 
@@ -330,7 +347,7 @@ export class RestoreUndoInteractionHandler {
       });
     }
 
-    const embed = AdminFeedback.success(
+    const embed = AdminFeedback.destructive(
       successful.length === 1 ? 'Rule Removed' : `${successful.length} Rules Removed`, 
       description.trim()
     );

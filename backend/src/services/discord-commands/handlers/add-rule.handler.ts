@@ -228,27 +228,26 @@ export class AddRuleHandler {
     }
 
     // Check for duplicate roles (same role with different criteria)
-    const existingRoleRule = await this.dbSvc.checkForDuplicateRule(
+    const allChannelRules = await this.dbSvc.getRulesByChannel(
       interaction.guild.id,
-      channel.id,
-      slug,
-      attributeKey,
-      attributeValue,
-      minItems
+      channel.id
     );
+    
+    const existingRoleRules = allChannelRules.filter(rule => rule.role_id === role.id);
 
-    if (existingRoleRule) {
-      // Found a rule for this role with different criteria - warn the admin
+    if (existingRoleRules && existingRoleRules.length > 0) {
+      // Found existing rule(s) for this role - warn the admin
       await this.showDuplicateRoleWarning(
         interaction,
-        existingRoleRule,
+        existingRoleRules[0], // Show the first existing rule for this role
         {
           channel,
           role,
           slug,
           attributeKey,
           attributeValue,
-          minItems
+          minItems,
+          wasNewlyCreated
         }
       );
       return false;
@@ -326,12 +325,6 @@ export class AddRuleHandler {
         color: 'Blue', // Default color
         position: position,
         reason: `Auto-created for verification rule by ${interaction.user.tag}`
-      });
-      
-      // Send a follow-up message about role creation
-      await interaction.followUp({
-        content: AdminFeedback.simple(`Created new role: **${role.name}**`),
-        ephemeral: true
       });
 
       return { role, wasNewlyCreated: true };
@@ -418,7 +411,9 @@ export class AddRuleHandler {
     // Store the new rule data for later use if confirmed
     this.duplicateRuleConfirmationHandler.storeRuleData(chainId, {
       ...newRuleData,
-      serverId: interaction.guild.id
+      serverId: interaction.guild.id,
+      duplicateType: 'criteria', // Same criteria, different role
+      isDuplicateRule: true
     });
 
     // Set up button interaction handler with proper undo chain integration
@@ -449,6 +444,7 @@ export class AddRuleHandler {
       attributeKey: string;
       attributeValue: string;
       minItems: number;
+      wasNewlyCreated?: boolean;
     }
   ): Promise<void> {
     const newRuleFormatted = {
@@ -502,7 +498,11 @@ export class AddRuleHandler {
     // Store the new rule data for later use if confirmed
     this.pendingRules.set(`confirm_duplicate_role_${interaction.id}`, {
       interaction,
-      newRuleData,
+      newRuleData: {
+        ...newRuleData,
+        isDuplicateRule: true,
+        duplicateType: 'role' // Same role, different criteria
+      },
       isDuplicateRole: true
     });
 
@@ -522,6 +522,7 @@ export class AddRuleHandler {
       attributeKey: string;
       attributeValue: string;
       minItems: number;
+      wasNewlyCreated?: boolean;
     }
   ): void {
     const filter = (i: any) => 
@@ -543,8 +544,42 @@ export class AddRuleHandler {
           this.pendingRules.delete(`confirm_duplicate_role_${interaction.id}`);
         } else if (i.customId.startsWith('cancel_duplicate_role_')) {
           await i.deferUpdate();
+          
+          // If a new role was created, delete it since the rule creation was cancelled
+          if (newRuleData.wasNewlyCreated && newRuleData.role) {
+            try {
+              await newRuleData.role.delete('Rule creation was cancelled');
+              this.logger.log(`Deleted newly created role ${newRuleData.role.name} due to rule cancellation`);
+            } catch (error) {
+              this.logger.error(`Failed to delete newly created role ${newRuleData.role.name}:`, error);
+            }
+          }
+
+          // Create rule info fields for display
+          const cancelledRuleFormatted = {
+            role_id: newRuleData.role.id,
+            role_name: newRuleData.role.name,
+            channel_name: newRuleData.channel.name,
+            slug: newRuleData.slug,
+            attribute_key: newRuleData.attributeKey,
+            attribute_value: newRuleData.attributeValue,
+            min_items: newRuleData.minItems
+          };
+          const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields(cancelledRuleFormatted);
+
+          const embed = AdminFeedback.destructive(
+            'Duplicate Rule Creation Cancelled', 
+            `Duplicate rule creation for ${newRuleData.channel.name} and @${newRuleData.role.name} has been cancelled.${newRuleData.wasNewlyCreated ? ' The newly created role has been removed.' : ''}`
+          );
+          embed.addFields(ruleInfoFields);
+          embed.addFields({
+            name: '⚠️ Note',
+            value: 'This role already has verification rules in this channel. Users would have had multiple ways to earn the same role.',
+            inline: false
+          });
+
           await interaction.editReply({
-            embeds: [AdminFeedback.info('Rule Creation Cancelled', 'The rule was not created.')],
+            embeds: [embed],
             components: []
           });
           this.pendingRules.delete(`confirm_duplicate_role_${interaction.id}`);
@@ -560,12 +595,23 @@ export class AddRuleHandler {
       }
     });
 
-    collector?.on('end', (collected) => {
+    collector?.on('end', async (collected) => {
       if (collected.size === 0) {
         // Timeout - clean up
         this.pendingRules.delete(`confirm_duplicate_role_${interaction.id}`);
+        
+        // If a new role was created, delete it since the rule creation timed out
+        if (newRuleData.wasNewlyCreated && newRuleData.role) {
+          try {
+            await newRuleData.role.delete('Rule creation timed out');
+            this.logger.log(`Deleted newly created role ${newRuleData.role.name} due to timeout`);
+          } catch (error) {
+            this.logger.error(`Failed to delete newly created role ${newRuleData.role.name}:`, error);
+          }
+        }
+
         interaction.editReply({
-          embeds: [AdminFeedback.warning('Timeout', 'No response received. Rule creation cancelled.')],
+          embeds: [AdminFeedback.warning('Timeout', `No response received. Duplicate rule creation cancelled.${newRuleData.wasNewlyCreated ? ' The newly created role has been removed.' : ''}`)],
           components: []
         }).catch(error => {
           this.logger.error('Error updating interaction after timeout:', error);
@@ -647,15 +693,42 @@ export class AddRuleHandler {
       embed.addFields(ruleInfoFields);
 
       if (isDuplicateConfirmed) {
+        // Check if this is a duplicate role (same role, different criteria) or duplicate criteria (same criteria, different role)
+        const allChannelRules = await this.dbSvc.getRulesByChannel(interaction.guild.id, channel.id);
+        const existingRoleRules = allChannelRules.filter(rule => rule.role_id === role.id && rule.id !== newRule.id);
+        
+        if (existingRoleRules.length > 0) {
+          // This is a duplicate role (same role, different criteria)
+          embed.addFields({
+            name: '⚠️ Note',
+            value: 'This role already has verification rules in this channel. Users now have multiple ways to earn the same role.',
+            inline: false
+          });
+        } else {
+          // This is duplicate criteria (same criteria, different role)  
+          embed.addFields({
+            name: '⚠️ Note',
+            value: 'This rule has the same criteria as an existing rule. Users meeting these criteria will receive multiple roles.',
+            inline: false
+          });
+        }
+      }
+
+      if (wasNewlyCreated) {
         embed.addFields({
-          name: '⚠️ Note',
-          value: 'This rule has the same criteria as an existing rule. Users meeting these criteria will receive multiple roles.',
+          name: '🆕 New Role Created',
+          value: `The role <@&${role.id}> was created for this verification rule.`,
           inline: false
         });
       }
 
       // Store confirmation data for Undo functionality
       const confirmationId = chainId || interaction.id;
+      let duplicateType: 'criteria' | 'role' | undefined = undefined;
+      if (isDuplicateConfirmed) {
+        duplicateType = await this.determineDuplicateType(interaction.guild.id, channel.id, role.id, newRule.id);
+      }
+      
       const confirmationInfo = {
         ruleId: newRule.id,
         serverId: interaction.guild.id,
@@ -665,7 +738,9 @@ export class AddRuleHandler {
         attributeKey,
         attributeValue,
         minItems,
-        wasNewlyCreated
+        wasNewlyCreated,
+        isDuplicateRule: isDuplicateConfirmed,
+        duplicateType
       };
       this.ruleConfirmationHandler.storeConfirmationData(confirmationId, confirmationInfo);
 
@@ -764,6 +839,11 @@ export class AddRuleHandler {
 
       // Store confirmation data for Undo functionality
       const confirmationId = chainId || interaction.id;
+      let duplicateType: 'criteria' | 'role' | undefined = undefined;
+      if (isDuplicateConfirmed) {
+        duplicateType = await this.determineDuplicateType(interaction.guild.id, channel.id, role.id, newRule.id);
+      }
+      
       const confirmationInfo = {
         ruleId: newRule.id,
         serverId: interaction.guild.id,
@@ -773,7 +853,9 @@ export class AddRuleHandler {
         attributeKey,
         attributeValue,
         minItems,
-        wasNewlyCreated
+        wasNewlyCreated,
+        isDuplicateRule: isDuplicateConfirmed,
+        duplicateType
       };
       this.ruleConfirmationHandler.storeConfirmationData(confirmationId, confirmationInfo);
 
@@ -809,10 +891,43 @@ export class AddRuleHandler {
     ruleData: any,
     chainId: string
   ): Promise<void> {
-    const embed = AdminFeedback.success(
-      'Rule Creation Cancelled',
-      'The rule creation has been cancelled. You can undo this action if it was a mistake.'
+    // If a new role was created, delete it since the rule creation was cancelled
+    if (ruleData.wasNewlyCreated && ruleData.role) {
+      try {
+        await ruleData.role.delete('Rule creation was cancelled');
+        this.logger.log(`Deleted newly created role ${ruleData.role.name} due to rule cancellation`);
+      } catch (error) {
+        this.logger.error(`Failed to delete newly created role ${ruleData.role.name}:`, error);
+      }
+    }
+
+    // Create rule info fields for display
+    const cancelledRuleFormatted = {
+      role_id: ruleData.role.id,
+      role_name: ruleData.role.name,
+      channel_name: ruleData.channel.name,
+      slug: ruleData.slug,
+      attribute_key: ruleData.attributeKey,
+      attribute_value: ruleData.attributeValue,
+      min_items: ruleData.minItems
+    };
+    const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields(cancelledRuleFormatted);
+
+    const embed = AdminFeedback.destructive(
+      'Duplicate Rule Creation Cancelled',
+      `Duplicate rule creation for ${ruleData.channel.name} and @${ruleData.role.name} has been cancelled.${ruleData.wasNewlyCreated ? ' The newly created role has been removed.' : ''}`
     );
+    embed.addFields(ruleInfoFields);
+    
+    // Add duplicate context note
+    if (ruleData.duplicateType) {
+      const noteText = this.getDuplicateRuleNote(ruleData.duplicateType);
+      embed.addFields({
+        name: '⚠️ Note',
+        value: `This would have been a duplicate rule: ${noteText}`,
+        inline: false
+      });
+    }
 
     // Create undo button
     const undoButton = this.duplicateRuleConfirmationHandler.createUndoRemovalButton(chainId, 'cancellation');
@@ -864,5 +979,35 @@ export class AddRuleHandler {
    */
   private generateChainId(interaction: ChatInputCommandInteraction): string {
     return `${interaction.user.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Determines the type of duplication for a rule
+   */
+  private async determineDuplicateType(serverId: string, channelId: string, roleId: string, excludeRuleId?: number): Promise<'criteria' | 'role'> {
+    const allChannelRules = await this.dbSvc.getRulesByChannel(serverId, channelId);
+    const existingRoleRules = allChannelRules.filter(rule => 
+      rule.role_id === roleId && 
+      (excludeRuleId ? rule.id !== excludeRuleId : true)
+    );
+    
+    // If there are existing rules for the same role, it's a role duplicate
+    if (existingRoleRules.length > 0) {
+      return 'role';
+    }
+    
+    // Otherwise it's a criteria duplicate (same criteria, different rule)
+    return 'criteria';
+  }
+
+  /**
+   * Gets the appropriate warning note for duplicate rules
+   */
+  private getDuplicateRuleNote(duplicateType: 'criteria' | 'role'): string {
+    if (duplicateType === 'role') {
+      return 'This role already has verification rules in this channel. Users now have multiple ways to earn the same role.';
+    } else {
+      return 'This rule has the same criteria as an existing rule. Users meeting these criteria will receive multiple roles.';
+    }
   }
 }

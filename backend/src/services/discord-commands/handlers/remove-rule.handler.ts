@@ -242,7 +242,7 @@ export class RemoveRuleHandler {
       attribute_value: removedRuleData.attribute_value,
       min_items: removedRuleData.min_items
     });
-    const embed = AdminFeedback.success(
+    const embed = AdminFeedback.destructive(
       'Rule Removed', 
       `Rule ${ruleId} for ${removedRuleData.channel_name} and @${removedRuleData.role_name} has been removed.`
     );
@@ -301,7 +301,7 @@ export class RemoveRuleHandler {
       });
     }
 
-    const embed = AdminFeedback.success(
+    const embed = AdminFeedback.destructive(
       successful.length === 1 ? 'Rule Removed' : `${successful.length} Rules Removed`, 
       description.trim()
     );
