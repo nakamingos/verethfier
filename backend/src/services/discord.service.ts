@@ -270,8 +270,7 @@ export class DiscordService implements OnModuleInit {
         .setTitle(SETUP_HELP_CONTENT.title)
         .setDescription(SETUP_HELP_CONTENT.description)
         .addFields(SETUP_HELP_CONTENT.fields)
-        .setFooter({ text: SETUP_HELP_CONTENT.footer })
-        .setTimestamp();
+        .setFooter({ text: SETUP_HELP_CONTENT.footer });
 
       await interaction.editReply({ embeds: [embed] });
 

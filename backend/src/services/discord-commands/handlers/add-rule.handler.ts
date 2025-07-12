@@ -125,30 +125,29 @@ export class AddRuleHandler {
       return null;
     }
 
-    // Validate slug exists in marketplace database (unless it's ALL)
-    if (slug !== 'ALL') {
-      try {
-        const availableSlugs = await this.dataSvc.getAllSlugs();
-        if (!availableSlugs.includes(slug)) {
-          await interaction.editReply({
-            embeds: [AdminFeedback.error(
-              'Invalid Slug',
-              `The slug "${slug}" does not exist in the marketplace database.`,
-              [
-                'Use the autocomplete feature to select a valid slug',
-                'Leave the slug field empty to allow ALL collections'
-              ]
-            )]
-          });
-          return null;
-        }
-      } catch (error) {
-        this.logger.error('Error validating slug:', error);
+    // Validate input combinations against database
+    try {
+      const validationResult = await this.validateInputCombinations(slug, attributeKey, attributeValue);
+      if (!validationResult.isValid) {
         await interaction.editReply({
-          content: AdminFeedback.simple('Error validating slug. Please try again.', true)
+          embeds: [AdminFeedback.error(
+            '⚠️ Invalid Option Combination',
+            validationResult.message,
+            [
+              '**Discord Autocomplete Limitation**: Options may appear available even when they don\'t match',
+              '**Solution**: Select options in order (Collection → Attribute Key → Attribute Value)',
+              '**Tip**: Leave fields empty to allow ALL values for that criteria'
+            ]
+          )]
         });
         return null;
       }
+    } catch (error) {
+      this.logger.error('Error validating input combinations:', error);
+      await interaction.editReply({
+        content: AdminFeedback.simple('Error validating options. Please try again.', true)
+      });
+      return null;
     }
 
     return { channel, roleName, slug, attributeKey, attributeValue, minItems };
@@ -1027,6 +1026,99 @@ export class AddRuleHandler {
       return 'This role already has verification rules in this channel. Users now have multiple ways to earn the same role.';
     } else {
       return 'This rule has the same criteria as an existing rule. Users meeting these criteria will receive multiple roles.';
+    }
+  }
+
+  /**
+   * Validates that the selected options exist in the database and belong together
+   */
+  private async validateInputCombinations(
+    slug: string, 
+    attributeKey: string, 
+    attributeValue: string
+  ): Promise<{ isValid: boolean; message: string }> {
+    
+    // If all options are 'ALL', no validation needed
+    if (slug === 'ALL' && attributeKey === 'ALL' && attributeValue === 'ALL') {
+      return { isValid: true, message: '' };
+    }
+
+    try {
+      // Validate slug exists (unless ALL)
+      if (slug !== 'ALL') {
+        const availableSlugs = await this.dataSvc.getAllSlugs();
+        if (!availableSlugs.includes(slug)) {
+          return {
+            isValid: false,
+            message: `Collection "${slug}" does not exist in the marketplace database.`
+          };
+        }
+      }
+
+      // Validate attribute key exists for the selected collection
+      if (attributeKey !== 'ALL') {
+        if (slug === 'ALL') {
+          // If no specific collection, check if attribute key exists across all collections
+          const allKeys = await this.dataSvc.getAttributeKeys('ALL');
+          if (!allKeys.includes(attributeKey)) {
+            return {
+              isValid: false,
+              message: `Attribute key "${attributeKey}" does not exist in any collection.`
+            };
+          }
+        } else {
+          // Check if attribute key exists for the specific collection
+          const keysForCollection = await this.dataSvc.getAttributeKeys(slug);
+          if (!keysForCollection.includes(attributeKey)) {
+            return {
+              isValid: false,
+              message: `Attribute key "${attributeKey}" does not exist for collection "${slug}".`
+            };
+          }
+        }
+      }
+
+      // Validate attribute value exists for the selected key and collection
+      if (attributeValue !== 'ALL') {
+        if (attributeKey === 'ALL') {
+          return {
+            isValid: false,
+            message: 'Cannot specify an attribute value without specifying an attribute key first.'
+          };
+        }
+
+        let valuesForKey: string[];
+        if (slug === 'ALL') {
+          // Get values across all collections for this attribute key
+          valuesForKey = await this.dataSvc.getAttributeValues(attributeKey, 'ALL');
+        } else {
+          // Get values for specific collection and attribute key
+          valuesForKey = await this.dataSvc.getAttributeValues(attributeKey, slug);
+        }
+
+        // Clean the attribute value (remove count suffix if present)
+        const cleanValues = valuesForKey.map(value => {
+          const match = value.match(/^(.+?)\s+\((\d+)×\)$/);
+          return match ? match[1] : value;
+        });
+
+        if (!cleanValues.includes(attributeValue)) {
+          const keyLocation = slug === 'ALL' ? 'any collection' : `collection "${slug}"`;
+          return {
+            isValid: false,
+            message: `Attribute value "${attributeValue}" does not exist for attribute key "${attributeKey}" in ${keyLocation}.`
+          };
+        }
+      }
+
+      return { isValid: true, message: '' };
+      
+    } catch (error) {
+      this.logger.error('Error validating input combinations:', error);
+      return {
+        isValid: false,
+        message: 'Error validating options against database. Please try again.'
+      };
     }
   }
 }
