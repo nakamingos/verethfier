@@ -645,7 +645,7 @@ export class DiscordCommandsService {
     const messageContent = {
       embeds: [embed],
       components: [undoButton],
-      ...(ephemeral && { ephemeral: true })
+      ...(ephemeral && { flags: MessageFlags.Ephemeral })
     };
 
     if (isReply) {
@@ -721,7 +721,7 @@ export class DiscordCommandsService {
     const messageContent = {
       embeds: [embed],
       components,
-      ...(ephemeral && { ephemeral: true })
+      ...(ephemeral && { flags: MessageFlags.Ephemeral })
     };
 
     if (isReply) {
@@ -809,7 +809,7 @@ export class DiscordCommandsService {
     const messageContent = {
       embeds: [embed],
       components,
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     };
 
     await interaction.reply(messageContent);
@@ -859,7 +859,7 @@ export class DiscordCommandsService {
     if (!cancelledRule) {
       await interaction.reply({
         content: AdminFeedback.simple('Undo session expired. Rule cancellation cannot be undone.', true),
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -906,7 +906,7 @@ export class DiscordCommandsService {
       await interaction.reply({
         embeds: [embed],
         components: [undoButton],
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       
       // Set up button interaction handler for potential undo of this creation
@@ -918,7 +918,7 @@ export class DiscordCommandsService {
       Logger.error('Error undoing rule cancellation:', error);
       await interaction.reply({
         content: AdminFeedback.simple(`Error creating rule: ${error.message}`, true),
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
   }

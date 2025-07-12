@@ -1,5 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-import { ChatInputCommandInteraction, TextChannel, Role, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } from 'discord.js';
+import { ChatInputCommandInteraction, TextChannel, Role, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } from 'discord.js';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
 import { RuleConfirmationInteractionHandler } from './rule-confirmation.interaction';
 
@@ -120,12 +120,12 @@ export class DuplicateRuleConfirmationInteractionHandler {
           if (!i.replied && !i.deferred) {
             await i.reply({
               content: AdminFeedback.simple(`Error: ${error.message}`, true),
-              ephemeral: true
+              flags: MessageFlags.Ephemeral
             });
           } else if (i.replied) {
             await i.followUp({
               content: AdminFeedback.simple(`Error: ${error.message}`, true),
-              ephemeral: true
+              flags: MessageFlags.Ephemeral
             });
           }
         } catch (responseError) {
@@ -202,12 +202,12 @@ export class DuplicateRuleConfirmationInteractionHandler {
           if (!i.replied && !i.deferred) {
             await i.reply({
               content: AdminFeedback.simple(`Error: ${error.message}`, true),
-              ephemeral: true
+              flags: MessageFlags.Ephemeral
             });
           } else if (i.replied) {
             await i.followUp({
               content: AdminFeedback.simple(`Error: ${error.message}`, true),
-              ephemeral: true
+              flags: MessageFlags.Ephemeral
             });
           }
         } catch (responseError) {

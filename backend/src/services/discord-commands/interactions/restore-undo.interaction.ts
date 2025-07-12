@@ -1,5 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-import { ButtonInteraction, ChatInputCommandInteraction, ComponentType, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { ButtonInteraction, ChatInputCommandInteraction, ComponentType, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import { DbService } from '../../db.service';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
 import { RemovalUndoInteractionHandler } from './removal-undo.interaction';
@@ -94,7 +94,7 @@ export class RestoreUndoInteractionHandler {
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({
           content: AdminFeedback.simple('Undo session expired. Rule restoration cannot be undone.', true),
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
       return;
@@ -105,7 +105,7 @@ export class RestoreUndoInteractionHandler {
       // But first check if the interaction is still valid
       if (!interaction.replied && !interaction.deferred) {
         try {
-          await interaction.deferReply({ ephemeral: true });
+          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         } catch (deferError) {
           // If we can't defer, the interaction is likely expired
           this.logger.warn('Failed to defer interaction, likely expired:', deferError.message);
@@ -141,7 +141,7 @@ export class RestoreUndoInteractionHandler {
         if (!interaction.replied && !interaction.deferred) {
           await interaction.reply({
             content: AdminFeedback.simple(`Error removing rule(s): ${error.message}`, true),
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
           });
         } else if (interaction.deferred && !interaction.replied) {
           await interaction.editReply({
@@ -151,7 +151,7 @@ export class RestoreUndoInteractionHandler {
           // Use followUp if already replied
           await interaction.followUp({
             content: AdminFeedback.simple(`Error removing rule(s): ${error.message}`, true),
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
           });
         }
       } catch (responseError) {
