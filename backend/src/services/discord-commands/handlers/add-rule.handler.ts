@@ -9,7 +9,8 @@ import {
   ComponentType,
   ButtonInteraction,
   ChannelType,
-  GuildTextBasedChannel
+  GuildTextBasedChannel,
+  MessageFlags
 } from 'discord.js';
 import { DbService } from '../../db.service';
 import { DiscordMessageService } from '../../discord-message.service';
@@ -51,7 +52,7 @@ export class AddRuleHandler {
    */
   async handle(interaction: ChatInputCommandInteraction): Promise<void> {
     try {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       // Validate input parameters
       const params = await this.validateInputParams(interaction);
@@ -90,7 +91,7 @@ export class AddRuleHandler {
       if (interaction.deferred) {
         await interaction.editReply('An error occurred while adding the rule.');
       } else {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         await interaction.editReply({ 
           content: AdminFeedback.simple('An error occurred while adding the rule.', true)
         });

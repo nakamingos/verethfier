@@ -263,7 +263,7 @@ export class DiscordService implements OnModuleInit {
    */
   async handleSetupHelp(interaction: ChatInputCommandInteraction): Promise<void> {
     try {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       const embed = new EmbedBuilder()
         .setColor(SETUP_HELP_CONTENT.color)

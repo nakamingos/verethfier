@@ -75,7 +75,7 @@ export class RemoveRuleHandler {
           // Some valid rules, show warning but continue
           await interaction.followUp({
             content: AdminFeedback.simple(`⚠️ ${notFoundMessage}`, true),
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
           });
         }
       }

@@ -1,5 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-import { ButtonInteraction, ChatInputCommandInteraction, ComponentType, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { ButtonInteraction, ChatInputCommandInteraction, ComponentType, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import { DbService } from '../../db.service';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
 import { RemovalUndoInteractionHandler } from './removal-undo.interaction';
@@ -106,7 +106,7 @@ export class RuleConfirmationInteractionHandler {
     if (!confirmationInfo) {
       await interaction.reply({
         content: AdminFeedback.simple('Undo session expired. Use `/setup remove-rule` if needed.', true),
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -179,7 +179,7 @@ export class RuleConfirmationInteractionHandler {
                 .setEmoji('↩️')
             )
         ],
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
 
       // Set up removal undo handler for the "Rule Removed" message
@@ -200,13 +200,13 @@ export class RuleConfirmationInteractionHandler {
         if (!interaction.replied && !interaction.deferred) {
           await interaction.reply({
             content: AdminFeedback.simple(`Error undoing rule: ${error.message}`, true),
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
           });
         } else if (interaction.replied) {
           // Use followUp if already replied
           await interaction.followUp({
             content: AdminFeedback.simple(`Error undoing rule: ${error.message}`, true),
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
           });
         }
       } catch (responseError) {

@@ -50,7 +50,7 @@ export class ListRulesHandler {
       } else {
         await interaction.reply({
           content: AdminFeedback.simple(errorMessage, true),
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
     }
