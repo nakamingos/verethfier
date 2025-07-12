@@ -198,23 +198,51 @@ export class DataService {
         if (error) throw new Error(error.message);
         data = attributeData;
       } else {
-        // For autocomplete, prioritize speed over completeness
-        // Most attribute values can be found in the first 2000-3000 records
-        console.log(`📊 [DataService] Fetching attributes for slug: "${slug}" (fast mode)`);
-        
-        const { data: attributeData, error } = await supabase
-          .from('attributes_new')
-          .select('values')
-          .eq('slug', slug)
-          .limit(2000); // Single query, no pagination for speed
-        
-        if (error) {
-          console.error(`❌ [DataService] Error fetching attributes:`, error);
-          throw new Error(error.message);
+        // For specific slug, use pagination to get ALL records to ensure accurate counts
+        // This is important for correct rarity calculations and occurrence counts
+        const allData = [];
+        let page = 0;
+        const pageSize = 1000; // Balanced page size for performance
+        const maxPages = 10; // Allow up to 10k records to capture full collections
+
+        console.log(`📊 [DataService] Starting full pagination for slug: "${slug}"`);
+
+        while (page < maxPages) {
+          const offset = page * pageSize;
+          
+          console.log(`📄 [DataService] Fetching page ${page + 1}, offset: ${offset}`);
+          
+          const { data: pageData, error } = await supabase
+            .from('attributes_new')
+            .select('values')
+            .eq('slug', slug)
+            .range(offset, offset + pageSize - 1);
+
+          if (error) {
+            console.error(`❌ [DataService] Error on page ${page + 1}:`, error);
+            throw new Error(error.message);
+          }
+
+          console.log(`📄 [DataService] Page ${page + 1} returned ${pageData?.length || 0} records`);
+
+          if (!pageData || pageData.length === 0) {
+            console.log(`📄 [DataService] No more data, stopping at page ${page + 1}`);
+            break;
+          }
+
+          allData.push(...pageData);
+
+          // If we got less than pageSize records, we've reached the end
+          if (pageData.length < pageSize) {
+            console.log(`📄 [DataService] Reached end of data (got ${pageData.length} < ${pageSize})`);
+            break;
+          }
+
+          page++;
         }
-        
-        console.log(`� [DataService] Fetched ${attributeData?.length || 0} records for slug "${slug}"`);
-        data = attributeData;
+
+        console.log(`📊 [DataService] Pagination complete: ${page + 1} pages, ${allData.length} total records`);
+        data = allData;
       }
 
       // Track frequency of each attribute value

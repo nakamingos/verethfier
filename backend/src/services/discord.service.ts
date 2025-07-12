@@ -648,8 +648,9 @@ export class DiscordService {
       Logger.debug(`Autocomplete for attribute_value: slug="${selectedSlug}", key="${selectedAttributeKey}", search="${focusedValue}"`);
       
       // Add timeout to prevent Discord interaction timeout
+      // Increased timeout for full pagination to ensure accurate counts
       const timeoutPromise = new Promise<string[]>((_, reject) => {
-        setTimeout(() => reject(new Error('Autocomplete timeout')), 2000); // 2 second timeout for faster response
+        setTimeout(() => reject(new Error('Autocomplete timeout')), 3000); // 3 second timeout for full pagination
       });
       
       let allValues: string[];
