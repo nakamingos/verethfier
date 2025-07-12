@@ -110,6 +110,25 @@ export class AdminFeedback {
   }
 
   /**
+   * Destructive action message with consistent formatting (red color)
+   */
+  static destructive(title: string, description?: string, fields?: Array<{name: string, value: string, inline?: boolean}>): EmbedBuilder {
+    const embed = new EmbedBuilder()
+      .setColor(0xFF0000) // Red
+      .setTitle(`🗑️ ${title}`);
+    
+    if (description) {
+      embed.setDescription(description);
+    }
+    
+    if (fields) {
+      embed.addFields(fields);
+    }
+    
+    return embed;
+  }
+
+  /**
    * Simple text message for basic responses
    */
   static simple(message: string, isError: boolean = false): string {

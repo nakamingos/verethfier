@@ -288,17 +288,32 @@ export class RemovalUndoInteractionHandler {
     // Store the restored rule for potential undo using the chain ID
     const restoredRuleWithMetadata = {
       ...recreatedRule,
-      wasNewlyCreated: removedRule.wasNewlyCreated
+      wasNewlyCreated: removedRule.wasNewlyCreated,
+      isDuplicateRule: removedRule.isDuplicateRule,
+      duplicateType: removedRule.duplicateType
     };
     this.restoredRules.set(chainId, restoredRuleWithMetadata);
     
     // Create rule info fields for the restored rule
     const ruleInfoFields = this.createRuleInfoFields(removedRule);
+    const embedTitle = removedRule.isDuplicateRule ? 'Duplicate Rule Restored' : 'Rule Restored';
     const embed = AdminFeedback.success(
-      'Rule Restored', 
-      `Rule ${recreatedRule.id} for ${removedRule.channel_name} and @${removedRule.role_name} has been restored.`
+      embedTitle, 
+      `Rule ${recreatedRule.id} for <#${removedRule.channel_id}> and <@&${removedRule.role_id}> has been restored.`
     );
     embed.addFields(ruleInfoFields);
+    
+    // Add duplicate context note if applicable
+    if (removedRule.isDuplicateRule && removedRule.duplicateType) {
+      const noteText = removedRule.duplicateType === 'role' 
+        ? 'This role again has multiple ways to be earned in this channel.'
+        : 'Users meeting these criteria will again receive multiple roles.';
+      embed.addFields({
+        name: '⚠️ Note',
+        value: noteText,
+        inline: false
+      });
+    }
     
     // Create undo button for the restoration using the chain ID
     const components = [

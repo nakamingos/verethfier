@@ -136,10 +136,26 @@ export class DuplicateRuleConfirmationInteractionHandler {
 
     collector?.on('end', (collected) => {
       if (collected.size === 0) {
-        // Timeout - clean up
+        // Timeout - clean up pending rule and newly created role if needed
+        const ruleData = this.getPendingRule(chainId);
+        if (ruleData && ruleData.wasNewlyCreated && ruleData.role) {
+          try {
+            ruleData.role.delete('Rule creation timed out').catch((error: any) => {
+              this.logger.error(`Failed to delete newly created role ${ruleData.role.name} on timeout:`, error);
+            });
+            this.logger.log(`Deleted newly created role ${ruleData.role.name} due to timeout`);
+          } catch (error) {
+            this.logger.error(`Error deleting newly created role on timeout:`, error);
+          }
+        }
+        
         this.deletePendingRule(chainId);
+        const timeoutMessage = ruleData && ruleData.wasNewlyCreated 
+          ? 'Rule creation was cancelled due to timeout. The newly created role has been removed.'
+          : 'Rule creation was cancelled due to timeout.';
+        
         interaction.editReply({
-          embeds: [AdminFeedback.info('Request Timed Out', 'Rule creation was cancelled due to timeout.')],
+          embeds: [AdminFeedback.warning('Request Timed Out', timeoutMessage)],
           components: []
         }).catch((error) => {
           this.logger.warn('Failed to update interaction after timeout:', error);

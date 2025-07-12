@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
+import { Inject, Injectable, Logger, forwardRef, OnModuleInit } from '@nestjs/common';
 import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, CacheType, ChannelType, ChatInputCommandInteraction, Client, EmbedBuilder, Events, GatewayIntentBits, GuildTextBasedChannel, InteractionResponse, MessageFlags, PermissionFlagsBits, REST, Routes, SlashCommandBuilder, AutocompleteInteraction } from 'discord.js';
 import { EnvironmentConfig } from '@/config/environment.config';
 import { NonceService } from '@/services/nonce.service';
@@ -33,13 +33,16 @@ import { CONSTANTS } from '@/constants';
  * ```
  */
 @Injectable()
-export class DiscordService {
+export class DiscordService implements OnModuleInit {
 
   /** The Discord.js client instance, null until initialized */
   private client: Client | null = null;
   
   /** REST API instance for Discord API calls */
   private rest = new REST({ version: '10' }).setToken(EnvironmentConfig.DISCORD_BOT_TOKEN!);
+  
+  /** Flag to track if the service is fully initialized */
+  private isInitialized = false;
   
   /**
    * Creates an instance of DiscordService.
@@ -65,23 +68,33 @@ export class DiscordService {
     private readonly verificationSvc: VerificationService,
     private readonly dataSvc: DataService,
   ) {
-    // Don't initialize during tests or when Discord is disabled
+    // Don't initialize during tests when Discord is disabled
     const isTestEnvironment = EnvironmentConfig.IS_TEST;
     
-    // Initialize Discord bot asynchronously without blocking constructor
+    if (isTestEnvironment) {
+      Logger.debug('Discord initialization skipped in test environment');
+    } else if (!EnvironmentConfig.DISCORD_ENABLED || !EnvironmentConfig.DISCORD_BOT_TOKEN) {
+      Logger.warn('Discord integration disabled or bot token missing - continuing without Discord functionality');
+    }
+    // Initialization moved to onModuleInit for proper lifecycle management
+  }
+
+  /**
+   * NestJS lifecycle hook - called after all modules have been initialized.
+   * This ensures all dependencies are ready before Discord bot initialization.
+   */
+  async onModuleInit(): Promise<void> {
+    const isTestEnvironment = EnvironmentConfig.IS_TEST;
+    
+    // Initialize Discord bot only after all modules are ready
     if (EnvironmentConfig.DISCORD_ENABLED && EnvironmentConfig.DISCORD_BOT_TOKEN && !isTestEnvironment) {
-      setImmediate(() => {
-        this.initializeBot()
-          .then(() => this.createSlashCommands())
-          .catch((error) => {
-            Logger.error('Failed to initialize Discord bot - continuing without Discord functionality', error.message);
-          });
-      });
-    } else {
-      if (isTestEnvironment) {
-        Logger.debug('Discord initialization skipped in test environment');
-      } else {
-        Logger.warn('Discord integration disabled or bot token missing - continuing without Discord functionality');
+      try {
+        await this.initializeBot();
+        await this.createSlashCommands();
+        this.isInitialized = true;
+        Logger.log('Discord bot fully initialized and ready');
+      } catch (error) {
+        Logger.error('Failed to initialize Discord bot - continuing without Discord functionality', error.message);
       }
     }
   }
@@ -473,7 +486,15 @@ export class DiscordService {
    */
   async handleRoleAutocomplete(interaction: any): Promise<void> {
     try {
-      const focusedValue = interaction.options.getFocused().toLowerCase();
+      // Guard against handling interactions before full initialization
+      if (!this.isInitialized) {
+        Logger.debug('Ignoring autocomplete interaction - service not fully initialized yet');
+        await interaction.respond([]);
+        return;
+      }
+
+      const focusedValue = interaction.options.getFocused(); // Keep original casing
+      const focusedValueLower = focusedValue.toLowerCase(); // Use for filtering only
       const guild = interaction.guild;
       
       if (!guild) {
@@ -494,7 +515,7 @@ export class DiscordService {
       // Get all roles in the guild that the bot can assign
       const roles = guild.roles.cache
         .filter(role => role.name !== '@everyone')
-        .filter(role => role.name.toLowerCase().includes(focusedValue))
+        .filter(role => role.name.toLowerCase().includes(focusedValueLower))
         .filter(role => {
           // Bot can only assign roles that are lower in hierarchy than its highest role
           return role.position < botHighestRole.position;
@@ -516,22 +537,27 @@ export class DiscordService {
 
       // Check if any role (manageable or not) already exists with the focused value
       const existingRoleWithName = guild.roles.cache.find(role => 
-        role.name.toLowerCase() === focusedValue.toLowerCase()
+        role.name.toLowerCase() === focusedValueLower
       );
 
       // Add option to create new role if there's space, user has typed something, 
       // and no role with that name already exists
       if (choices.length < 25 && focusedValue.length > 0 && !existingRoleWithName) {
         choices.push({
-          name: `💡 Create new role: "${focusedValue}"`,
-          value: focusedValue
+          name: `💡 Create new role: "${focusedValue}"`, // Use original casing in display
+          value: focusedValue // Use original casing as value
         });
       }
 
       await interaction.respond(choices);
     } catch (error) {
       Logger.error('Error in handleRoleAutocomplete:', error);
-      await interaction.respond([]);
+      // Silently fail with empty response to avoid "Unknown interaction" errors
+      try {
+        await interaction.respond([]);
+      } catch (respondError) {
+        Logger.debug('Failed to respond to autocomplete interaction (likely expired):', respondError.message);
+      }
     }
   }
 
@@ -542,6 +568,13 @@ export class DiscordService {
    */
   async handleSlugAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
     try {
+      // Guard against handling interactions before full initialization
+      if (!this.isInitialized) {
+        Logger.debug('Ignoring autocomplete interaction - service not fully initialized yet');
+        await interaction.respond([]);
+        return;
+      }
+
       const focusedValue = interaction.options.getFocused().toLowerCase();
       
       // Get all available slugs from the marketplace database
@@ -562,7 +595,12 @@ export class DiscordService {
       await interaction.respond(choices);
     } catch (error) {
       Logger.error('Error in handleSlugAutocomplete:', error);
-      await interaction.respond([]);
+      // Silently fail with empty response to avoid "Unknown interaction" errors
+      try {
+        await interaction.respond([]);
+      } catch (respondError) {
+        Logger.debug('Failed to respond to autocomplete interaction (likely expired):', respondError.message);
+      }
     }
   }
 
@@ -573,6 +611,13 @@ export class DiscordService {
    */
   async handleAttributeKeyAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
     try {
+      // Guard against handling interactions before full initialization
+      if (!this.isInitialized) {
+        Logger.debug('Ignoring autocomplete interaction - service not fully initialized yet');
+        await interaction.respond([]);
+        return;
+      }
+
       const focusedValue = interaction.options.getFocused().toLowerCase();
       const selectedSlug = interaction.options.getString('slug');
       
@@ -619,9 +664,14 @@ export class DiscordService {
       await interaction.respond(choices);
     } catch (error) {
       Logger.error('Error in handleAttributeKeyAutocomplete:', error);
-      await interaction.respond([
-        { name: 'Error loading attributes', value: 'ALL' }
-      ]);
+      // Silently fail with empty response to avoid "Unknown interaction" errors
+      try {
+        await interaction.respond([
+          { name: 'Error loading attributes', value: 'ALL' }
+        ]);
+      } catch (respondError) {
+        Logger.debug('Failed to respond to autocomplete interaction (likely expired):', respondError.message);
+      }
     }
   }
 
@@ -632,6 +682,13 @@ export class DiscordService {
    */
   async handleAttributeValueAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
     try {
+      // Guard against handling interactions before full initialization
+      if (!this.isInitialized) {
+        Logger.debug('Ignoring autocomplete interaction - service not fully initialized yet');
+        await interaction.respond([]);
+        return;
+      }
+
       const focusedValue = interaction.options.getFocused().toLowerCase();
       const selectedSlug = interaction.options.getString('slug');
       const selectedAttributeKey = interaction.options.getString('attribute_key');
@@ -730,9 +787,14 @@ export class DiscordService {
       await interaction.respond(choices);
     } catch (error) {
       Logger.error('Error in handleAttributeValueAutocomplete:', error);
-      await interaction.respond([
-        { name: 'Error loading values', value: 'ALL' }
-      ]);
+      // Silently fail with empty response to avoid "Unknown interaction" errors
+      try {
+        await interaction.respond([
+          { name: 'Error loading values', value: 'ALL' }
+        ]);
+      } catch (respondError) {
+        Logger.debug('Failed to respond to autocomplete interaction (likely expired):', respondError.message);
+      }
     }
   }
 }

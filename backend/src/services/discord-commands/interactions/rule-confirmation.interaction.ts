@@ -117,14 +117,15 @@ export class RuleConfirmationInteractionHandler {
       const ruleToRemove = allRules?.find(rule => rule.id === confirmationInfo.ruleId);
       
       let removedRuleWithMetadata = null;
-      if (ruleToRemove) {
-        // Store for potential undo of this removal, including wasNewlyCreated flag
-        removedRuleWithMetadata = {
-          ...ruleToRemove,
-          wasNewlyCreated: confirmationInfo.wasNewlyCreated
-        };
-        // Use the original interaction ID to maintain the chain
-        this.removedRules.set(interactionId, removedRuleWithMetadata);
+      if (ruleToRemove) {      // Store for potential undo of this removal, including wasNewlyCreated flag
+      removedRuleWithMetadata = {
+        ...ruleToRemove,
+        wasNewlyCreated: confirmationInfo.wasNewlyCreated,
+        isDuplicateRule: confirmationInfo.isDuplicateRule,
+        duplicateType: confirmationInfo.duplicateType
+      };
+      // Use the original interaction ID to maintain the chain
+      this.removedRules.set(interactionId, removedRuleWithMetadata);
       }
 
       // Delete the rule from the database
@@ -146,8 +147,21 @@ export class RuleConfirmationInteractionHandler {
         attribute_value: ruleToRemove.attribute_value,
         min_items: ruleToRemove.min_items
       });
-      const embed = AdminFeedback.success('Rule Removed', `Rule ${ruleToRemove.id} for ${ruleToRemove.channel_name} and @${ruleToRemove.role_name} has been removed.`);
+      const embedTitle = confirmationInfo.isDuplicateRule ? 'Duplicate Rule Removed' : 'Rule Removed';
+      const embed = AdminFeedback.destructive(embedTitle, `Rule ${ruleToRemove.id} for ${ruleToRemove.channel_name} and @${ruleToRemove.role_name} has been removed.`);
       embed.addFields(ruleInfoFields);
+      
+      // Add duplicate context note if applicable
+      if (confirmationInfo.isDuplicateRule && confirmationInfo.duplicateType) {
+        const noteText = confirmationInfo.duplicateType === 'role' 
+          ? 'This role no longer has multiple ways to be earned in this channel.'
+          : 'Users meeting these criteria will no longer receive multiple roles.';
+        embed.addFields({
+          name: '⚠️ Note',
+          value: noteText,
+          inline: false
+        });
+      }
       
       await interaction.reply({
         embeds: [embed],
