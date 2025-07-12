@@ -147,7 +147,11 @@ export class RuleConfirmationInteractionHandler {
         attribute_value: ruleToRemove.attribute_value,
         min_items: ruleToRemove.min_items
       });
-      const embedTitle = confirmationInfo.isDuplicateRule ? 'Duplicate Rule Removed' : 'Rule Removed';
+      const embedTitle = confirmationInfo.isDuplicateRule 
+        ? (confirmationInfo.duplicateType === 'role' 
+            ? 'Rule Removed for Existing Role' 
+            : 'Additional Rule Removed')
+        : 'Rule Removed';
       const embed = AdminFeedback.destructive(embedTitle, `Rule ${ruleToRemove.id} for ${ruleToRemove.channel_name} and @${ruleToRemove.role_name} has been removed.`);
       embed.addFields(ruleInfoFields);
       

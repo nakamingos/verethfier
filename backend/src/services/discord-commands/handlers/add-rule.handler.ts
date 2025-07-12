@@ -568,8 +568,8 @@ export class AddRuleHandler {
           const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields(cancelledRuleFormatted);
 
           const embed = AdminFeedback.destructive(
-            'Duplicate Rule Creation Cancelled', 
-            `Duplicate rule creation for ${newRuleData.channel.name} and @${newRuleData.role.name} has been cancelled.${newRuleData.wasNewlyCreated ? ' The newly created role has been removed.' : ''}`
+            'Rule Creation Cancelled', 
+            `Rule creation for ${newRuleData.channel.name} and @${newRuleData.role.name} has been cancelled.${newRuleData.wasNewlyCreated ? ' The newly created role has been removed.' : ''}`
           );
           embed.addFields(ruleInfoFields);
           embed.addFields({
@@ -611,7 +611,7 @@ export class AddRuleHandler {
         }
 
         interaction.editReply({
-          embeds: [AdminFeedback.warning('Timeout', `No response received. Duplicate rule creation cancelled.${newRuleData.wasNewlyCreated ? ' The newly created role has been removed.' : ''}`)],
+          embeds: [AdminFeedback.warning('Timeout', `No response received. Rule creation cancelled.${newRuleData.wasNewlyCreated ? ' The newly created role has been removed.' : ''}`)],
           components: []
         }).catch(error => {
           this.logger.error('Error updating interaction after timeout:', error);
@@ -638,6 +638,9 @@ export class AddRuleHandler {
     chainId?: string
   ): Promise<void> {
     const { channel, role, slug, attributeKey, attributeValue, minItems, wasNewlyCreated = false } = ruleData;
+
+    // Declare duplicate type at function level to avoid redeclaration
+    let duplicateType: 'criteria' | 'role' | undefined = undefined;
 
     // Check for existing verification setup
     const existingRules = await this.dbSvc.getRulesByChannel(interaction.guild.id, channel.id) || [];
@@ -674,8 +677,27 @@ export class AddRuleHandler {
       const hasExistingMessage = await this.messageSvc.findExistingVerificationMessage(channel);
 
       // Use existing verification message
+      let headerTitle = 'Rule Added';
+      let existingRoleRules: any[] = [];
+      
+      if (isDuplicateConfirmed) {
+        // Determine duplicate type to use correct terminology
+        const allChannelRules = await this.dbSvc.getRulesByChannel(interaction.guild.id, channel.id);
+        existingRoleRules = allChannelRules.filter(rule => rule.role_id === role.id && rule.id !== newRule.id);
+        
+        if (existingRoleRules.length > 0) {
+          // This is a duplicate role (same role, different criteria)
+          duplicateType = 'role';
+          headerTitle = 'Rule Created for Existing Role';
+        } else {
+          // This is duplicate criteria (same criteria, different role)
+          duplicateType = 'criteria';
+          headerTitle = 'Additional Rule Created';
+        }
+      }
+      
       const embed = AdminFeedback.success(
-        isDuplicateConfirmed ? 'Duplicate Rule Created' : 'Rule Added',
+        headerTitle,
         `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> ${hasExistingMessage ? 'has been added using existing verification message' : 'created'}.`
       );
 
@@ -693,10 +715,6 @@ export class AddRuleHandler {
       embed.addFields(ruleInfoFields);
 
       if (isDuplicateConfirmed) {
-        // Check if this is a duplicate role (same role, different criteria) or duplicate criteria (same criteria, different role)
-        const allChannelRules = await this.dbSvc.getRulesByChannel(interaction.guild.id, channel.id);
-        const existingRoleRules = allChannelRules.filter(rule => rule.role_id === role.id && rule.id !== newRule.id);
-        
         if (existingRoleRules.length > 0) {
           // This is a duplicate role (same role, different criteria)
           embed.addFields({
@@ -724,10 +742,6 @@ export class AddRuleHandler {
 
       // Store confirmation data for Undo functionality
       const confirmationId = chainId || interaction.id;
-      let duplicateType: 'criteria' | 'role' | undefined = undefined;
-      if (isDuplicateConfirmed) {
-        duplicateType = await this.determineDuplicateType(interaction.guild.id, channel.id, role.id, newRule.id);
-      }
       
       const confirmationInfo = {
         ruleId: newRule.id,
@@ -803,8 +817,12 @@ export class AddRuleHandler {
       };
 
       // Create success embed
+      let headerTitle = isDuplicateConfirmed ? 'Additional Rule Created' : 'Verification Rule Added';
+      
+      // For new verification setups, duplicates are always criteria-based (different roles)
+      // since we wouldn't reach this method if there were existing rules in the channel
       const embed = AdminFeedback.success(
-        isDuplicateConfirmed ? 'Duplicate Rule Created' : 'Verification Rule Added',
+        headerTitle,
         `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> has been ${messageCreated ? 'created with a new verification message' : 'added to existing verification message'}.`
       );
 
@@ -839,10 +857,10 @@ export class AddRuleHandler {
 
       // Store confirmation data for Undo functionality
       const confirmationId = chainId || interaction.id;
-      let duplicateType: 'criteria' | 'role' | undefined = undefined;
-      if (isDuplicateConfirmed) {
-        duplicateType = await this.determineDuplicateType(interaction.guild.id, channel.id, role.id, newRule.id);
-      }
+      
+      // For new verification setups, duplicates are always criteria-based (different roles)
+      // since we wouldn't reach this method if there were existing rules in the channel
+      const duplicateType = isDuplicateConfirmed ? 'criteria' : undefined;
       
       const confirmationInfo = {
         ruleId: newRule.id,
@@ -914,8 +932,8 @@ export class AddRuleHandler {
     const ruleInfoFields = this.duplicateRuleConfirmationHandler.createRuleInfoFields(cancelledRuleFormatted);
 
     const embed = AdminFeedback.destructive(
-      'Duplicate Rule Creation Cancelled',
-      `Duplicate rule creation for ${ruleData.channel.name} and @${ruleData.role.name} has been cancelled.${ruleData.wasNewlyCreated ? ' The newly created role has been removed.' : ''}`
+      'Rule Creation Cancelled',
+      `Rule creation for ${ruleData.channel.name} and @${ruleData.role.name} has been cancelled.${ruleData.wasNewlyCreated ? ' The newly created role has been removed.' : ''}`
     );
     embed.addFields(ruleInfoFields);
     
