@@ -296,7 +296,11 @@ export class RemovalUndoInteractionHandler {
     
     // Create rule info fields for the restored rule
     const ruleInfoFields = this.createRuleInfoFields(removedRule);
-    const embedTitle = removedRule.isDuplicateRule ? 'Duplicate Rule Restored' : 'Rule Restored';
+    const embedTitle = removedRule.isDuplicateRule 
+      ? (removedRule.duplicateType === 'role' 
+          ? 'Rule Restored to Existing Role' 
+          : 'Additional Rule Restored')
+      : 'Rule Restored';
     const embed = AdminFeedback.success(
       embedTitle, 
       `Rule ${recreatedRule.id} for <#${removedRule.channel_id}> and <@&${removedRule.role_id}> has been restored.`

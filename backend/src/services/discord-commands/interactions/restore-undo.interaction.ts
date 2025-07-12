@@ -242,7 +242,11 @@ export class RestoreUndoInteractionHandler {
     });
 
     // Create "Rule Removed" message with undo button
-    const embedTitle = restoredRuleData.isDuplicateRule ? 'Duplicate Rule Removed' : 'Rule Removed';
+    const embedTitle = restoredRuleData.isDuplicateRule 
+      ? (restoredRuleData.duplicateType === 'role' 
+          ? 'Rule Removed for Existing Role' 
+          : 'Additional Rule Removed')
+      : 'Rule Removed';
     const embed = AdminFeedback.destructive(
       embedTitle, 
       `Rule ${restoredRuleData.id} for ${restoredRuleData.channel_name} and @${restoredRuleData.role_name} has been removed.`

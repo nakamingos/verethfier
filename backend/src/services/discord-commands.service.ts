@@ -234,7 +234,7 @@ export class DiscordCommandsService {
 
       // Use existing verification message
       const embed = AdminFeedback.success(
-        isDuplicateConfirmed ? 'Duplicate Rule Created' : 'Rule Added',
+        isDuplicateConfirmed ? 'Additional Rule Created' : 'Rule Added',
         `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> ${hasExistingMessage ? 'has been added using existing verification message' : 'created'}.`
       );
 
@@ -323,7 +323,7 @@ export class DiscordCommandsService {
       // No need to track message_id in database anymore
 
       const embed = AdminFeedback.success(
-        isDuplicateConfirmed ? 'Duplicate Rule Created' : 'Rule Added',
+        isDuplicateConfirmed ? 'Additional Rule Created' : 'Rule Added',
         `Rule ${newRule.id} for <#${channel.id}> and <@&${role.id}> ${messageCreated ? 'has been added with new verification message' : 'has been added using existing verification message'}.`
       );
 
