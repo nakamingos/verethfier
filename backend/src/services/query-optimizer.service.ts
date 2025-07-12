@@ -66,7 +66,7 @@ export class QueryOptimizer {
    */
   buildOptimizedQuery(baseQuery: any): any {
     return baseQuery
-      .limit(1000) // Prevent accidental large queries
+      .limit(9940) // Prevent accidental large queries
       .order('created_at', { ascending: false }); // Default ordering for consistent results
   }
 

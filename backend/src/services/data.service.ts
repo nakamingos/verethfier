@@ -24,6 +24,7 @@ const supabase = createClient(
  */
 @Injectable()
 export class DataService {
+  private readonly logger = new Logger(DataService.name);
   
   /**
    * Checks basic asset ownership for an address.
@@ -128,7 +129,7 @@ export class DataService {
         const { data, error } = await supabase
           .from('attributes_new')
           .select('values')
-          .limit(50); // Limit to prevent large responses
+          .limit(50);
         
         if (error) throw new Error(error.message);
         
@@ -139,42 +140,38 @@ export class DataService {
           }
         });
         
-        return ['ALL', ...Array.from(allKeys).sort().slice(0, 24)]; // Discord limit
+        return ['ALL', ...Array.from(allKeys).sort().slice(0, 24)];
       }
 
-      // For specific slug, first get a limited set of SHAs to avoid URL overflow
-      const { data: ethscriptions, error: ethError } = await supabase
-        .from('ethscriptions')
-        .select('sha')
-        .eq('slug', slug)
-        .limit(100); // Limit to prevent URL overflow
-      
-      if (ethError) throw new Error(ethError.message);
-      
-      if (!ethscriptions || ethscriptions.length === 0) {
-        return ['ALL'];
-      }
-
-      // Get attributes for this limited set of SHAs
-      const shas = ethscriptions.map(e => e.sha);
+      // For specific slug, get first 200 items (sufficient for ~12 attribute keys)
       const { data, error } = await supabase
         .from('attributes_new')
-        .select('values')
-        .in('sha', shas);
+        .select(`
+          values,
+          ethscriptions!inner(slug)
+        `)
+        .eq('ethscriptions.slug', slug)
+        .limit(200);
 
-      if (error) throw new Error(error.message);
+      if (error) {
+        throw new Error(error.message);
+      }
 
-      // Extract all unique attribute keys from the values JSONB
       const allKeys = new Set<string>();
       (data || []).forEach(item => {
         if (item.values && typeof item.values === 'object') {
-          Object.keys(item.values).forEach(key => allKeys.add(key));
+          Object.keys(item.values).forEach(key => {
+            if (key && key.trim() !== '') {
+              allKeys.add(key);
+            }
+          });
         }
       });
 
-      return ['ALL', ...Array.from(allKeys).sort().slice(0, 24)]; // Discord limit
+      const finalKeys = Array.from(allKeys).sort();
+      return ['ALL', ...finalKeys.slice(0, 24)]; // Discord limit
     } catch (error) {
-      Logger.error('Error getting attribute keys:', error);
+      this.logger.error('Error getting attribute keys:', error);
       return ['ALL'];
     }
   }
@@ -203,28 +200,45 @@ export class DataService {
         if (error) throw new Error(error.message);
         data = attributeData;
       } else {
-        // For specific slug, first get a limited set of SHAs to avoid URL overflow
-        const { data: ethscriptions, error: ethError } = await supabase
-          .from('ethscriptions')
-          .select('sha')
-          .eq('slug', slug)
-          .limit(100); // Limit to prevent URL overflow
-        
-        if (ethError) throw new Error(ethError.message);
-        
-        if (!ethscriptions || ethscriptions.length === 0) {
-          return [];
+        // For specific slug, use pagination to get ALL records (not limited by Supabase's 2000 limit)
+        const allData = [];
+        let page = 0;
+        const pageSize = 2000; // Use 2000 record chunks for efficiency
+
+        while (true) {
+          const offset = page * pageSize;
+          
+          const { data: pageData, error } = await supabase
+            .from('attributes_new')
+            .select(`
+              values,
+              ethscriptions!inner(slug)
+            `)
+            .eq('ethscriptions.slug', slug)
+            .range(offset, offset + pageSize - 1);
+
+          if (error) throw new Error(error.message);
+
+          if (!pageData || pageData.length === 0) {
+            break;
+          }
+
+          allData.push(...pageData);
+
+          // If we got less than pageSize records, we've reached the end
+          if (pageData.length < pageSize) {
+            break;
+          }
+
+          page++;
+          
+          // Safety limit to prevent infinite loops
+          if (page > 50) {
+            break;
+          }
         }
 
-        // Get attributes for this limited set of SHAs
-        const shas = ethscriptions.map(e => e.sha);
-        const { data: attributeData, error } = await supabase
-          .from('attributes_new')
-          .select('values')
-          .in('sha', shas);
-
-        if (error) throw new Error(error.message);
-        data = attributeData;
+        data = allData;
       }
 
       // Extract all unique values for the specified attribute key
@@ -253,7 +267,7 @@ export class DataService {
 
       return Array.from(allValues).sort().slice(0, 25); // Discord limit
     } catch (error) {
-      Logger.error('Error getting attribute values:', error);
+      this.logger.error('Error getting attribute values:', error);
       return [];
     }
   }

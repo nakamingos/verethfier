@@ -584,6 +584,9 @@ export class DiscordService {
         return;
       }
       
+      // Add debug logging to track context
+      Logger.debug(`Autocomplete for attribute_key: slug="${selectedSlug}", search="${focusedValue}"`);
+      
       // Get all available attribute keys for the selected slug
       const allKeys = await this.dataSvc.getAttributeKeys(selectedSlug);
       
@@ -631,6 +634,9 @@ export class DiscordService {
         return;
       }
       
+      // Add debug logging to track cache issues
+      Logger.debug(`Autocomplete for attribute_value: slug="${selectedSlug}", key="${selectedAttributeKey}", search="${focusedValue}"`);
+      
       // Get all available attribute values for the selected slug and attribute key
       const allValues = await this.dataSvc.getAttributeValues(selectedAttributeKey, selectedSlug);
       
@@ -638,17 +644,22 @@ export class DiscordService {
       const filteredValues = allValues
         .filter(value => value.toLowerCase().includes(focusedValue))
         .sort((a, b) => a.localeCompare(b))
-        .slice(0, 25); // Discord allows max 25 choices
+        .slice(0, 25);
 
       const choices = filteredValues.map(value => ({
-        name: value.length > 100 ? value.substring(0, 97) + '...' : value, // Truncate long values
+        name: value,
         value: value
       }));
 
       // Ensure we always have at least one option
       if (choices.length === 0) {
-        choices.push({ name: 'ALL (no specific values)', value: 'ALL' });
+        choices.push({ 
+          name: 'ALL (no specific values)', 
+          value: 'ALL' 
+        });
       }
+
+      Logger.debug(`Responding with ${choices.length} choices for ${selectedAttributeKey}`);
 
       await interaction.respond(choices);
     } catch (error) {
