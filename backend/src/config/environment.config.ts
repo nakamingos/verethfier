@@ -36,6 +36,7 @@ export class EnvironmentConfig {
       'EVERY_DAY_AT_MIDNIGHT': '0 0 * * *',
       'EVERY_4_HOURS': '0 */4 * * *',
       'EVERY_HOUR': '0 * * * *',
+      'EVERY_1_HOUR': '0 * * * *', // Same as EVERY_HOUR for consistency
     };
     
     return cronMap[cronValue] || cronValue; // Use mapping if exists, otherwise use as-is
