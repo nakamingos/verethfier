@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from './db.service';
 import { DataService } from './data.service';
+import { UserAddressService } from './user-address.service';
 import { VerifierRole } from '@/models/verifier-role.interface';
 
 /**
@@ -42,6 +43,7 @@ export class VerificationEngine {
   constructor(
     private readonly dbSvc: DbService,
     private readonly dataSvc: DataService,
+    private readonly userAddressService: UserAddressService,
   ) {}
 
   /**
@@ -205,6 +207,136 @@ export class VerificationEngine {
     const ruleIds = rules.map(rule => rule.id);
     
     return await this.verifyUserBulk(userId, ruleIds, address);
+  }
+
+  /**
+   * Multi-Wallet Verification - Check user against rule using ALL user addresses
+   * 
+   * This is the key feature of the multi-wallet system. Instead of checking just one address,
+   * it retrieves all addresses associated with the user and verifies against each one.
+   * If ANY address passes the verification, the user is considered verified.
+   * 
+   * @param userId - Discord user ID
+   * @param ruleId - Rule ID to verify against
+   * @returns Promise<VerificationResult> - Result showing if any address passed
+   */
+  async verifyUserMultiWallet(
+    userId: string, 
+    ruleId: string | number
+  ): Promise<VerificationResult> {
+    try {
+      Logger.debug(`VerificationEngine: Starting multi-wallet verification for user ${userId} with rule ${ruleId}`);
+      
+      // Get all addresses for this user
+      const userAddresses = await this.userAddressService.getUserAddresses(userId);
+      
+      if (userAddresses.length === 0) {
+        Logger.debug(`VerificationEngine: No addresses found for user ${userId}`);
+        return {
+          isValid: false,
+          ruleType: 'multi-wallet',
+          error: 'No verified addresses found for user',
+          userId,
+          ruleId,
+          address: 'none',
+          matchingAssetCount: 0
+        };
+      }
+
+      Logger.debug(`VerificationEngine: Found ${userAddresses.length} addresses for user ${userId}: ${userAddresses.join(', ')}`);
+
+      // Try verification with each address until one passes
+      for (const address of userAddresses) {
+        Logger.debug(`VerificationEngine: Checking address ${address} for user ${userId}`);
+        
+        const result = await this.verifyUser(userId, ruleId, address);
+        
+        if (result.isValid) {
+          Logger.debug(`VerificationEngine: Multi-wallet verification PASSED for user ${userId} with address ${address}`);
+          return {
+            ...result,
+            ruleType: 'multi-wallet',
+            verifiedAddress: address,
+            totalAddressesChecked: userAddresses.length
+          };
+        }
+      }
+
+      // No address passed verification
+      Logger.debug(`VerificationEngine: Multi-wallet verification FAILED for user ${userId} - no address passed`);
+      return {
+        isValid: false,
+        ruleType: 'multi-wallet',
+        error: `None of ${userAddresses.length} addresses passed verification`,
+        userId,
+        ruleId,
+        address: userAddresses[0], // Show first address for reference
+        matchingAssetCount: 0,
+        totalAddressesChecked: userAddresses.length
+      };
+
+    } catch (error) {
+      Logger.error(`VerificationEngine: Error in multi-wallet verification for user ${userId}:`, error);
+      return {
+        isValid: false,
+        ruleType: 'multi-wallet',
+        error: error.message || 'Multi-wallet verification error',
+        userId,
+        ruleId,
+        address: 'error'
+      };
+    }
+  }
+
+  /**
+   * Multi-Wallet Server Verification - Check user against ALL server rules using ALL addresses
+   * 
+   * This combines multi-wallet verification with server-wide rule checking.
+   * For each rule in the server, it checks all user addresses until one passes.
+   * 
+   * @param userId - Discord user ID
+   * @param serverId - Discord server ID
+   * @returns Promise<BulkVerificationResult> - Results for all server rules using all addresses
+   */
+  async verifyUserForServerMultiWallet(
+    userId: string,
+    serverId: string
+  ): Promise<BulkVerificationResult> {
+    Logger.debug(`VerificationEngine: Starting multi-wallet server verification for user ${userId} in server ${serverId}`);
+    
+    const rules = await this.dbSvc.getRoleMappings(serverId);
+    const ruleIds = rules.map(rule => rule.id);
+    
+    Logger.debug(`VerificationEngine: Checking ${ruleIds.length} rules with multi-wallet verification`);
+    
+    const results: VerificationResult[] = [];
+    const validRules: VerifierRole[] = [];
+    const invalidRules: VerifierRole[] = [];
+    const matchingAssetCounts = new Map<string, number>();
+
+    for (const ruleId of ruleIds) {
+      const result = await this.verifyUserMultiWallet(userId, ruleId);
+      results.push(result);
+
+      if (result.isValid && result.rule) {
+        validRules.push(result.rule);
+        if (result.matchingAssetCount) {
+          matchingAssetCounts.set(result.ruleId.toString(), result.matchingAssetCount);
+        }
+      } else if (result.rule) {
+        invalidRules.push(result.rule);
+      }
+    }
+
+    return {
+      userId,
+      address: 'multi-wallet', // Indicates multi-wallet verification
+      totalRules: ruleIds.length,
+      validRules,
+      invalidRules,
+      matchingAssetCounts,
+      results
+    };
   }
 
   /**
@@ -396,7 +528,7 @@ export class VerificationEngine {
  */
 export interface VerificationResult {
   isValid: boolean;
-  ruleType: 'legacy' | 'modern' | 'unknown' | 'error';
+  ruleType: 'legacy' | 'modern' | 'multi-wallet' | 'unknown' | 'error';
   userId: string;
   ruleId: string | number;
   address: string;
@@ -410,6 +542,9 @@ export interface VerificationResult {
     minItems: number;
     foundAssets: number;
   };
+  // Multi-wallet specific properties
+  verifiedAddress?: string; // The specific address that passed verification
+  totalAddressesChecked?: number; // Total number of addresses checked
 }
 
 /**

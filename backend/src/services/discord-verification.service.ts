@@ -171,7 +171,6 @@ export class DiscordVerificationService {
     userId: string, 
     roleId: string,
     guildId: string,
-    address: string,
     nonce: string,
     ruleId?: string
   ): Promise<{ roleId: string; roleName: string; wasAlreadyAssigned: boolean }> {
@@ -207,15 +206,18 @@ export class DiscordVerificationService {
           serverId: guildId,
           roleId,
           ruleId: ruleId || null,
-          address,
           userName: member.displayName || member.user.username,
           serverName: guild.name,
           roleName: role.name,
           expiresInHours: undefined // No expiration by default
         });
       } catch (error) {
-        // Log any unexpected errors - the trackRoleAssignment method now handles duplicates properly
-        Logger.error(`addUserRole: Error tracking role assignment for user ${userId}, role ${roleId}:`, error);
+        // Check if it's a unique constraint violation (role already tracked)
+        if (error.message && error.message.includes('duplicate key value violates unique constraint')) {
+          // This is expected during concurrent verifications - don't log as error
+        } else {
+          Logger.error(`addUserRole: Unexpected error tracking role assignment for user ${userId}, role ${roleId}:`, error);
+        }
         // Don't fail the entire process if tracking fails
       }
     }

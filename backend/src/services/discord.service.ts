@@ -394,10 +394,9 @@ export class DiscordService implements OnModuleInit {
     userId: string, 
     roleId: string,
     guildId: string,
-    address: string,
     nonce: string
   ): Promise<void> {
-    await this.discordVerificationSvc.addUserRole(userId, roleId, guildId, address, nonce);
+    await this.discordVerificationSvc.addUserRole(userId, roleId, guildId, nonce);
   }
 
   /**

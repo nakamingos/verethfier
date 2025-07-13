@@ -91,8 +91,7 @@ export class DbService {
   async addServerToUser(
     userId: string, 
     serverId: string, 
-    role: string,
-    address: string
+    role: string
   ) {
   
     // Step 1: Retrieve the current user data with the servers JSONB object
@@ -110,7 +109,6 @@ export class DbService {
       .from('verifier_users')
       .upsert({
         user_id: userId,
-        address: address?.toLowerCase(),
         servers: servers
       }, {
         onConflict: 'user_id'
@@ -247,8 +245,7 @@ export class DbService {
   async logUserRole(
     userId: string, 
     serverId: string, 
-    roleId: string, 
-    address: string,
+    roleId: string,
     userName?: string,
     serverName?: string,
     roleName?: string
@@ -259,7 +256,6 @@ export class DbService {
         user_id: userId,
         server_id: serverId,
         role_id: roleId,
-        address: address?.toLowerCase(),
         verified_at: new Date().toISOString(),
         user_name: userName || null,
         server_name: serverName || null,
@@ -734,7 +730,6 @@ export class DbService {
     userId: string;
     serverId: string;
     roleId: string;
-    address: string;
     ruleId?: string;
     userName?: string;
     serverName?: string;
@@ -776,7 +771,6 @@ export class DbService {
               last_checked: new Date().toISOString(),
               expires_at: expiresAt,
               rule_id: assignment.ruleId,
-              address: assignment.address,
               user_name: assignment.userName || '',
               server_name: assignment.serverName || '',
               role_name: assignment.roleName || '',
@@ -802,7 +796,6 @@ export class DbService {
               last_checked: new Date().toISOString(),
               expires_at: expiresAt,
               rule_id: assignment.ruleId,
-              address: assignment.address,
               user_name: assignment.userName || '',
               server_name: assignment.serverName || '',
               role_name: assignment.roleName || '',
@@ -830,7 +823,6 @@ export class DbService {
           user_id: assignment.userId,
           server_id: assignment.serverId,
           role_id: assignment.roleId,
-          address: assignment.address,
           rule_id: assignment.ruleId,
           user_name: assignment.userName || '',
           server_name: assignment.serverName || '',
@@ -908,30 +900,6 @@ export class DbService {
       return data;
     } catch (error) {
       this.logger.error(`Error updating role verification for assignment ${assignmentId}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get user's latest address from their most recent verification
-   */
-  async getUserLatestAddress(userId: string): Promise<string | null> {
-    try {
-      const { data, error } = await this.supabase
-        .from('verifier_user_roles')
-        .select('address')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      if (error) {
-        this.logger.error(`Error fetching latest address for user ${userId}:`, error);
-        throw error;
-      }
-
-      return data?.[0]?.address || null;
-    } catch (error) {
-      this.logger.error(`Error fetching latest address for user ${userId}:`, error);
       throw error;
     }
   }

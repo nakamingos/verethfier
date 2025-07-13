@@ -119,7 +119,6 @@ export class VerifyService {
             payload.userId,
             rule.role_id,
             payload.discordId,
-            address,
             payload.nonce,
             rule.id.toString() // Pass the rule ID for proper tracking
           );
@@ -203,7 +202,6 @@ export class VerifyService {
           payload.userId,
           rule.role_id,
           payload.discordId,
-          address,
           payload.nonce,
           rule.id.toString() // Pass the rule ID for proper tracking
         );
