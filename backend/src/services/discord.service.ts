@@ -761,8 +761,9 @@ export class DiscordService implements OnModuleInit {
       let allValues: string[];
       try {
         // Race between data fetch and timeout
+        // Use the new autocomplete-specific method that returns clean values
         allValues = await Promise.race([
-          this.dataSvc.getAttributeValues(selectedAttributeKey, selectedSlug),
+          this.dataSvc.getAttributeValuesForAutocomplete(selectedAttributeKey, selectedSlug),
           timeoutPromise
         ]);
       } catch (timeoutError) {
@@ -788,14 +789,12 @@ export class DiscordService implements OnModuleInit {
         
         filteredValues = allValues
           .filter(value => {
-            // Extract the actual value name from "ValueName (5×)" format for filtering
-            const match = value.match(/^(.+?)\s+\((\d+)×\)$/);
-            const valueName = match ? match[1] : value;
-            return valueName.toLowerCase().includes(focusedValue);
+            // Values are now clean, so we can filter directly
+            return value.toLowerCase().includes(focusedValue);
           })
           .slice(0, 25)
           .sort((a, b) => {
-            // Preserve original rarity-based order (no need to handle 'ALL' anymore)
+            // Preserve original rarity-based order
             return (originalOrder.get(a) || 0) - (originalOrder.get(b) || 0);
           });
       }
@@ -804,22 +803,12 @@ export class DiscordService implements OnModuleInit {
       // No need to handle 'ALL' specially since it's not included in the results anymore
 
       const choices = filteredValues.map(value => {
-        // Extract the actual value and count from the formatted string
-        // Format is "ValueName (5×)" - we want "ValueName" as value and full string as name
-        const match = value.match(/^(.+?)\s+\((\d+)×\)$/);
-        if (match) {
-          const [, actualValue, count] = match;
-          return {
-            name: value, // Display with count: "Diamond Background (3×)"
-            value: actualValue // Clean value for processing: "Diamond Background"
-          };
-        } else {
-          // Fallback for values without count format
-          return {
-            name: value,
-            value: value
-          };
-        }
+        // Values are now clean (no occurrence counts), so we can use them directly
+        Logger.debug(`Processing clean autocomplete value: "${value}"`);
+        return {
+          name: value, // Clean value for display
+          value: value // Same clean value for submission
+        };
       });
 
       // Ensure we always have at least one option
@@ -831,6 +820,7 @@ export class DiscordService implements OnModuleInit {
       }
 
       Logger.debug(`Responding with ${choices.length} choices for ${selectedAttributeKey}`);
+      Logger.debug('Full choices array:', JSON.stringify(choices.slice(0, 3), null, 2)); // Log first 3 choices
 
       await interaction.respond(choices);
     } catch (error) {

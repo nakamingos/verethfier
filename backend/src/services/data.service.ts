@@ -294,6 +294,39 @@ export class DataService {
   }
 
   /**
+   * Get attribute values for autocomplete without occurrence counts
+   * This method returns clean values for Discord autocomplete to avoid display issues
+   * 
+   * @param attributeKey - The attribute key to search for
+   * @param slug - Collection slug to filter by (optional)
+   * @returns Array of clean attribute values sorted by rarity (rarest first)
+   */
+  async getAttributeValuesForAutocomplete(attributeKey: string, slug?: string): Promise<string[]> {
+    try {
+      if (!attributeKey || attributeKey === 'ALL') {
+        return [];
+      }
+
+      // Get the full values with counts
+      const valuesWithCounts = await this.getAttributeValues(attributeKey, slug);
+      
+      // Extract clean values without occurrence counts
+      const cleanValues = valuesWithCounts.map(value => {
+        const match = value.match(/^(.+?)\s*\((\d+)×\)$/);
+        if (match) {
+          return match[1].trim(); // Return just the clean value
+        }
+        return value; // Fallback for values without count format
+      });
+
+      return cleanValues;
+    } catch (error) {
+      this.logger.error('Error getting attribute values for autocomplete:', error);
+      return [];
+    }
+  }
+
+  /**
    * Check asset ownership with specific criteria (slug, attributes, minimum count)
    * 
    * @param address - Wallet address to check
