@@ -157,17 +157,30 @@ const migrationStats = await dbService.getRoleAssignmentStats();
 
 ### Verification Frequency
 
-Change the cron schedule in `DynamicRoleService`:
+Configure the re-verification schedule using the `DYNAMIC_ROLE_CRON` environment variable:
 
-```typescript
-// Current: Every 6 hours
-@Cron(CronExpression.EVERY_6_HOURS)
+```bash
+# In your .env file
 
-// Options:
-@Cron(CronExpression.EVERY_12_HOURS)
-@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-@Cron('0 */4 * * *') // Every 4 hours
+# Every 6 hours (default)
+DYNAMIC_ROLE_CRON=0 */6 * * *
+
+# Every 12 hours
+DYNAMIC_ROLE_CRON=0 */12 * * *
+
+# Daily at midnight
+DYNAMIC_ROLE_CRON=0 0 * * *
+
+# Every 4 hours
+DYNAMIC_ROLE_CRON=0 */4 * * *
+
+# Every 30 minutes (for testing)
+DYNAMIC_ROLE_CRON=*/30 * * * *
 ```
+
+The CRON expression follows standard format:
+- `minute hour day-of-month month day-of-week`
+- Use [crontab.guru](https://crontab.guru/) for help creating expressions
 
 ### Batch Size
 

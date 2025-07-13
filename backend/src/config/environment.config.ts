@@ -24,6 +24,22 @@ export class EnvironmentConfig {
   public static readonly NODE_ENV = process.env.NODE_ENV;
   public static readonly NONCE_EXPIRY = Number(process.env.NONCE_EXPIRY) || 300000; // 5 minutes default
   
+  // Dynamic Role Management Configuration
+  public static readonly DYNAMIC_ROLE_CRON = (() => {
+    const cronValue = process.env.DYNAMIC_ROLE_CRON || 'EVERY_6_HOURS';
+    
+    // Map common values to CRON expressions for backward compatibility
+    const cronMap: Record<string, string> = {
+      'EVERY_6_HOURS': '0 */6 * * *',
+      'EVERY_12_HOURS': '0 */12 * * *',
+      'EVERY_DAY_AT_MIDNIGHT': '0 0 * * *',
+      'EVERY_4_HOURS': '0 */4 * * *',
+      'EVERY_HOUR': '0 * * * *',
+    };
+    
+    return cronMap[cronValue] || cronValue; // Use mapping if exists, otherwise use as-is
+  })();
+  
   // Runtime flags
   public static readonly IS_TEST = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
   
