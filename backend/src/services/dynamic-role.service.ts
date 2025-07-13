@@ -4,6 +4,7 @@ import { DbService } from './db.service';
 import { DataService } from './data.service';
 import { DiscordVerificationService } from './discord-verification.service';
 import { DiscordService } from './discord.service';
+import { EnvironmentConfig } from '@/config/environment.config';
 
 /**
  * DynamicRoleService
@@ -25,13 +26,15 @@ export class DynamicRoleService {
     private readonly dataSvc: DataService,
     private readonly discordVerificationSvc: DiscordVerificationService,
     private readonly discordSvc: DiscordService,
-  ) {}
+  ) {
+    Logger.log(`🔄 DynamicRoleService initialized with CRON schedule: ${EnvironmentConfig.DYNAMIC_ROLE_CRON}`);
+  }
 
   /**
-   * Main scheduled task - runs every 6 hours
+   * Main scheduled task - runs based on DYNAMIC_ROLE_CRON environment variable
    * Re-verifies all active role assignments
    */
-  @Cron(CronExpression.EVERY_6_HOURS)
+  @Cron(EnvironmentConfig.DYNAMIC_ROLE_CRON)
   async performScheduledReverification() {
     Logger.log('🔄 Starting scheduled role re-verification');
     
