@@ -4,6 +4,7 @@ import { DbService } from './db.service';
 import { DataService } from './data.service';
 import { DiscordVerificationService } from './discord-verification.service';
 import { DiscordService } from './discord.service';
+import { UserAddressService } from './user-address.service';
 import { EnvironmentConfig } from '@/config/environment.config';
 
 /**
@@ -26,6 +27,7 @@ export class DynamicRoleService {
     private readonly dataSvc: DataService,
     private readonly discordVerificationSvc: DiscordVerificationService,
     private readonly discordSvc: DiscordService,
+    private readonly userAddressService: UserAddressService,
   ) {
     Logger.log(`🔄 DynamicRoleService initialized with CRON schedule: ${EnvironmentConfig.DYNAMIC_ROLE_CRON}`);
   }
@@ -158,7 +160,7 @@ export class DynamicRoleService {
    */
   private async verifyUserStillQualifies(assignment: any): Promise<boolean> {
     try {
-      Logger.debug(`Checking assignment: user=${assignment.user_id}, role=${assignment.role_id}, rule_id=${assignment.rule_id}, address=${assignment.address}`);
+      Logger.debug(`Checking assignment: user=${assignment.user_id}, role=${assignment.role_id}, rule_id=${assignment.rule_id}`);
       
       // If no rule_id, we can't verify ownership criteria, so be conservative and keep the role
       if (!assignment.rule_id) {
@@ -175,27 +177,50 @@ export class DynamicRoleService {
 
       Logger.debug(`Rule found: slug=${rule.slug}, attr=${rule.attribute_key}=${rule.attribute_value}, min_items=${rule.min_items}`);
 
+      // Get all verified addresses for this user
+      const userAddresses = await this.userAddressService.getUserAddresses(assignment.user_id);
+      if (!userAddresses || userAddresses.length === 0) {
+        Logger.log(`⚠️ No verified addresses found for user ${assignment.user_id}, revoking role`);
+        return false;
+      }
+
       // Debug: log the exact parameters being checked
       Logger.log(`🔍 Checking asset ownership for assignment ${assignment.id}:`);
-      Logger.log(`   - Address: ${assignment.address}`);
+      Logger.log(`   - Addresses: ${userAddresses.join(', ')}`);
       Logger.log(`   - Rule ID: ${assignment.rule_id}`);
       Logger.log(`   - Collection (slug): ${rule.slug}`);
       Logger.log(`   - Attribute: ${rule.attribute_key}=${rule.attribute_value}`);
       Logger.log(`   - Min required: ${rule.min_items || 1}`);
 
-      // Check current asset ownership
-      const matchingAssets = await this.dataSvc.checkAssetOwnershipWithCriteria(
-        assignment.address,
-        rule.slug,
-        rule.attribute_key,
-        rule.attribute_value,
-        rule.min_items || 1
-      );
+      // Check asset ownership across ALL addresses (multi-wallet support)
+      // User qualifies if ANY of their addresses meets the criteria
+      let totalMatchingAssets = 0;
+      for (const address of userAddresses) {
+        try {
+          const matchingAssets = await this.dataSvc.checkAssetOwnershipWithCriteria(
+            address,
+            rule.slug,
+            rule.attribute_key,
+            rule.attribute_value,
+            rule.min_items || 1
+          );
+          totalMatchingAssets += matchingAssets;
+          
+          // If this address alone meets the requirement, user qualifies
+          if (matchingAssets >= (rule.min_items || 1)) {
+            Logger.log(`🔍 User ${assignment.user_id} qualifies with address ${address}: ${matchingAssets}/${rule.min_items || 1} assets ✅`);
+            return true;
+          }
+        } catch (error) {
+          Logger.error(`Error checking address ${address}:`, error.message);
+          // Continue checking other addresses
+        }
+      }
 
       const requiredMinItems = rule.min_items || 1;
-      const stillQualifies = matchingAssets >= requiredMinItems;
+      const stillQualifies = totalMatchingAssets >= requiredMinItems;
 
-      Logger.log(`🔍 User ${assignment.user_id} owns ${matchingAssets}/${requiredMinItems} assets for rule ${rule.id}: ${stillQualifies ? 'QUALIFIED ✅' : 'NOT QUALIFIED ❌'}`);
+      Logger.log(`🔍 User ${assignment.user_id} total assets across all addresses: ${totalMatchingAssets}/${requiredMinItems} - ${stillQualifies ? 'QUALIFIED ✅' : 'NOT QUALIFIED ❌'}`);
       
       return stillQualifies;
       

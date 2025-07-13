@@ -30,6 +30,7 @@ export class EnvironmentConfig {
     
     // Map common values to CRON expressions for backward compatibility
     const cronMap: Record<string, string> = {
+      'EVERY_1_MINUTE': '* * * * *',
       'EVERY_6_HOURS': '0 */6 * * *',
       'EVERY_12_HOURS': '0 */12 * * *',
       'EVERY_DAY_AT_MIDNIGHT': '0 0 * * *',

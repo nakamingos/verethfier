@@ -82,6 +82,23 @@ export class VerificationService {
   }
 
   /**
+   * Verify user for server using multi-wallet approach
+   * 
+   * This method checks ALL addresses associated with the user against ALL rules for the server.
+   * If ANY address passes ANY rule, the user is considered verified for that rule.
+   * 
+   * @param userId - Discord user ID
+   * @param serverId - Discord server ID 
+   * @returns Promise<BulkVerificationResult> with results using multi-wallet verification
+   */
+  async verifyUserForServerMultiWallet(
+    userId: string,
+    serverId: string
+  ): Promise<BulkVerificationResult> {
+    return await this.verificationEngine.verifyUserForServerMultiWallet(userId, serverId);
+  }
+
+  /**
    * Legacy method: Verify a user's assets against a specific verification rule
    * @deprecated Use verifyUser() instead for better performance and unified result format
    */
@@ -186,7 +203,6 @@ export class VerificationService {
       serverId,
       roleId,
       ruleId: ruleId || null, // Use null instead of 'unknown' for bigint field
-      address,
       userName: metadata?.userName,
       serverName: metadata?.serverName,
       roleName: metadata?.roleName,

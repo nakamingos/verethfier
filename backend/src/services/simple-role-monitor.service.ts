@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from './db.service';
 import { DataService } from './data.service';
 import { DiscordVerificationService } from './discord-verification.service';
+import { VerificationEngine } from './verification-engine.service';
+import { UserAddressService } from './user-address.service';
 
 /**
  * SimpleRoleMonitorService
@@ -38,6 +40,8 @@ export class SimpleRoleMonitorService {
     private readonly dbSvc: DbService,
     private readonly dataSvc: DataService,
     private readonly discordVerificationSvc: DiscordVerificationService,
+    private readonly verificationEngine: VerificationEngine,
+    private readonly userAddressService: UserAddressService,
   ) {}
 
   /**
@@ -196,12 +200,12 @@ export class SimpleRoleMonitorService {
   }
 
   /**
-   * Get the latest address for a user from role assignment logs
+   * Get user's most recent verified address from user_wallets table
    */
   private async getUserLatestAddress(userId: string): Promise<string | null> {
-    // Query the verifier_user_roles table for the most recent address
-    // You'll need to add this method to DbService
-    return this.dbSvc.getUserLatestAddress(userId);
+    // Get all addresses for the user, they're returned in order of last_verified_at DESC
+    const addresses = await this.userAddressService.getUserAddresses(userId);
+    return addresses.length > 0 ? addresses[0] : null;
   }
 
   /**
@@ -223,8 +227,8 @@ export class SimpleRoleMonitorService {
    */
   private async grantRole(userId: string, serverId: string, rule: any, address: string): Promise<void> {
     try {
-      const roleResult = await this.discordVerificationSvc.addUserRole(userId, rule.role_id, serverId, address, 'reverification', rule.id.toString());
-      await this.dbSvc.logUserRole(userId, serverId, rule.role_id, address, null, null, rule.role_name);
+      const roleResult = await this.discordVerificationSvc.addUserRole(userId, rule.role_id, serverId, 'reverification', rule.id.toString());
+      await this.dbSvc.logUserRole(userId, serverId, rule.role_id, null, null, rule.role_name);
       
       if (roleResult.wasAlreadyAssigned) {
         Logger.log(`✅ User ${userId} already had role ${rule.role_name || rule.role_id} (reverification)`);

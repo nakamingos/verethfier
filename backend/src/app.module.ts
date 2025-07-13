@@ -29,6 +29,7 @@ import { VerificationEngine } from './services/verification-engine.service';
 import { DynamicRoleService } from './services/dynamic-role.service';
 import { SimpleRoleMonitorService } from './services/simple-role-monitor.service';
 import { QueryOptimizer } from './services/query-optimizer.service';
+import { UserAddressService } from './services/user-address.service';
 import { CacheService } from './services/cache.service';
 import { CONSTANTS } from '@/constants';
 import { createClient } from '@supabase/supabase-js';
@@ -139,6 +140,7 @@ import { EnvironmentConfig } from '@/config/environment.config';
     // Data access layer
     DbService,                  // Database operations
     DataService,                // Ethscriptions marketplace queries
+    UserAddressService,         // Multi-wallet address management
 
     // Role management services
     DynamicRoleService,         // Automated role assignment/removal

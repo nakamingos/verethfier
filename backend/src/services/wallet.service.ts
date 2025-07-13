@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { recoverTypedDataAddress } from 'viem';
 
 import { NonceService } from '@/services/nonce.service';
+import { UserAddressService } from '@/services/user-address.service';
 import { DecodedData } from '@/models/app.interface';
 
 /**
@@ -21,7 +22,8 @@ import { DecodedData } from '@/models/app.interface';
 export class WalletService {
 
   constructor(
-    private nonceSvc: NonceService
+    private nonceSvc: NonceService,
+    private userAddressService: UserAddressService
   ) {}
   
   /**
@@ -105,6 +107,19 @@ export class WalletService {
     Logger.debug('Expected address:', data.address);
 
     if (address !== data.address) throw new Error('Invalid signature.');
+    
+    // Store the verified address in user_wallets table
+    try {
+      const result = await this.userAddressService.addUserAddress(data.userId, address);
+      if (result.success) {
+        Logger.debug(`Successfully ${result.isNewAddress ? 'added new' : 'updated existing'} address for user ${data.userId}`);
+      } else {
+        Logger.warn(`Failed to store address for user ${data.userId}: ${result.error}`);
+      }
+    } catch (error) {
+      Logger.error(`Exception storing address for user ${data.userId}:`, error);
+    }
+    
     return address;
   }
 }
