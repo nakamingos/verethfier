@@ -221,6 +221,16 @@ export class DiscordService implements OnModuleInit {
    */
   async handleSetup(interaction: ChatInputCommandInteraction): Promise<void> {
     try {
+      // 🔒 SECURITY: Check for Administrator permissions
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+        await interaction.reply({
+          content: '🚫 **Access Denied**\n\nThis command requires **Administrator** permissions to use.',
+          flags: MessageFlags.Ephemeral
+        });
+        Logger.warn(`Unauthorized setup command attempt by user ${interaction.user.id} (${interaction.user.tag}) in guild ${interaction.guildId}`);
+        return;
+      }
+
       const sub = interaction.options.getSubcommand();
       
       if (sub === 'add-rule') {
@@ -409,6 +419,7 @@ export class DiscordService implements OnModuleInit {
       new SlashCommandBuilder()
         .setName('setup')
         .setDescription('Setup the bot for the first time or manage rules')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) // 🔒 ADMIN ONLY
         .addSubcommand(sc =>
           sc.setName('add-rule')
             .setDescription('Add a new verification rule')
