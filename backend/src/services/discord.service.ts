@@ -948,7 +948,24 @@ export class DiscordService implements OnModuleInit {
               
               const userName = entry.user_name || 'Unknown User';
               const roleName = entry.role_name || entry.role_id || 'Unknown Role';
-              const actionText = entry.status === 'revoked' ? '🗑️' : '✅';
+              
+              // Determine action type based on status and timestamps
+              let actionText = '✅'; // Default for active roles
+              if (entry.status === 'revoked') {
+                actionText = '🗑️';
+              } else if (entry.status === 'active') {
+                // Check if this was a reactivation (re-verification)
+                const createdDate = new Date(entry.created_at);
+                const updatedDate = new Date(entry.updated_at);
+                const timeDiffHours = Math.abs(updatedDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60);
+                
+                // If updated more than 1 hour after creation, consider it a re-verification
+                if (timeDiffHours > 1) {
+                  actionText = '🔄'; // Re-verification
+                } else {
+                  actionText = '✅'; // Initial verification
+                }
+              }
               
               const entryLine = `${actionText}│${userName}│${roleName} (${walletDisplay}) ${formattedDate}\n`;
               
@@ -982,7 +999,7 @@ export class DiscordService implements OnModuleInit {
         if (auditEntries && auditEntries.length > 0) {
           embed.addFields({
             name: '​', // Zero-width space for invisible field name
-            value: '**Legend:**\u2003✅ = Added\u2003🗑️ = Removed',
+            value: '**Legend:**\u2003✅ = Initial\u2003🔄 = Re-verified\u2003🗑️ = Removed',
             inline: false
           });
         }

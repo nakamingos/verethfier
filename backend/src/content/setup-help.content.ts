@@ -66,7 +66,7 @@ export const SETUP_HELP_CONTENT: SetupHelpContent = {
     {
       name: '📊 `/setup audit-log`',
       value: '**View role assignment history**\n' +
-             '• Shows recent role additions (✅) and removals (🗑️)\n' +
+             '• Shows initial verifications (✅), re-verifications (🔄), and removals (🗑️)\n' +
              '• **Days**: Number of days to look back (1-30, default: 1)\n' +
              '• Compact format displays up to 375 entries per embed\n' +
              '• Clickable wallet links to Ethscriptions.com marketplace\n' +
