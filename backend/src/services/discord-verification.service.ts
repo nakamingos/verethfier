@@ -198,28 +198,27 @@ export class DiscordVerificationService {
     // Add the role - Discord will handle this gracefully if user already has it
     await member.roles.add(role);
 
-    // Only track role assignment if it's a new assignment
-    if (!wasAlreadyAssigned) {
-      try {
-        await this.dbSvc.trackRoleAssignment({
-          userId,
-          serverId: guildId,
-          roleId,
-          ruleId: ruleId || null,
-          userName: member.displayName || member.user.username,
-          serverName: guild.name,
-          roleName: role.name,
-          expiresInHours: undefined // No expiration by default
-        });
-      } catch (error) {
-        // Check if it's a unique constraint violation (role already tracked)
-        if (error.message && error.message.includes('duplicate key value violates unique constraint')) {
-          // This is expected during concurrent verifications - don't log as error
-        } else {
-          Logger.error(`addUserRole: Unexpected error tracking role assignment for user ${userId}, role ${roleId}:`, error);
-        }
-        // Don't fail the entire process if tracking fails
+    // Always track role assignment - the trackRoleAssignment method handles existing records properly
+    // This ensures that revoked roles get reactivated when users re-verify
+    try {
+      await this.dbSvc.trackRoleAssignment({
+        userId,
+        serverId: guildId,
+        roleId,
+        ruleId: ruleId || null,
+        userName: member.displayName || member.user.username,
+        serverName: guild.name,
+        roleName: role.name,
+        expiresInHours: undefined // No expiration by default
+      });
+    } catch (error) {
+      // Check if it's a unique constraint violation (role already tracked)
+      if (error.message && error.message.includes('duplicate key value violates unique constraint')) {
+        // This is expected during concurrent verifications - don't log as error
+      } else {
+        Logger.error(`addUserRole: Unexpected error tracking role assignment for user ${userId}, role ${roleId}:`, error);
       }
+      // Don't fail the entire process if tracking fails
     }
 
     return {

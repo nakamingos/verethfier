@@ -985,6 +985,7 @@ export class DbService {
       this.logger.debug(`Fetching audit log for server ${serverId}, looking back ${daysBack} days from ${cutoffDate.toISOString()}`);
       
       // Query role assignments within the specified time range
+      // Use updated_at OR created_at to catch both new assignments and status changes
       const { data, error } = await this.supabase
         .from('verifier_user_roles')
         .select(`
@@ -1002,8 +1003,8 @@ export class DbService {
           updated_at
         `)
         .eq('server_id', serverId)
-        .gte('created_at', cutoffDate.toISOString())
-        .order('created_at', { ascending: false });
+        .or(`created_at.gte.${cutoffDate.toISOString()},updated_at.gte.${cutoffDate.toISOString()}`)
+        .order('updated_at', { ascending: false });
 
       if (error) {
         this.logger.error(`Error fetching audit log for server ${serverId}:`, error);
