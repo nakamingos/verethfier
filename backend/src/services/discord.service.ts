@@ -947,9 +947,9 @@ export class DiscordService implements OnModuleInit {
               
               const userName = entry.user_name || 'Unknown User';
               const roleName = entry.role_name || entry.role_id || 'Unknown Role';
-              const actionText = entry.status === 'revoked' ? '**Removed:**' : '**Added:**';
+              const actionText = entry.status === 'revoked' ? '🗑️' : '✅';
               
-              const entryLine = `${actionText} ${userName}│${roleName} (${walletDisplay})│${formattedDate}\n`;
+              const entryLine = `${actionText}│${userName}│${roleName} (${walletDisplay}) ${formattedDate}\n`;
               
               fieldValue += entryLine;
               
@@ -977,10 +977,17 @@ export class DiscordService implements OnModuleInit {
           inline: false
         });
 
+        // Add emoji key field
+        embed.addFields({
+          name: '​', // Zero-width space for invisible field name
+          value: '✅=Added   🗑️=Removed',
+          inline: false
+        });
+
         // Add footer with entry count and period
         const entryCount = auditEntries ? auditEntries.length : 0;
         embed.setFooter({ 
-          text: `Showing ${entryCount} entries • Period: Last ${days} day${days > 1 ? 's' : ''}` 
+          text: `Showing ${entryCount} entries │ Period: Last ${days} day${days > 1 ? 's' : ''}` 
         });
 
         Logger.debug('Attempting to send embed...');
