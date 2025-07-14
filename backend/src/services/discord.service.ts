@@ -926,9 +926,10 @@ export class DiscordService implements OnModuleInit {
           for (let i = 0; i < auditEntries.length; i++) {
             const entry = auditEntries[i];
             try {
-              const date = new Date(entry.created_at);
+              // Use updated_at for more accurate activity timestamps (especially for reactivated roles)
+              const date = new Date(entry.updated_at || entry.created_at);
               if (isNaN(date.getTime())) {
-                Logger.warn(`Invalid date for entry ${i + 1}: ${entry.created_at}`);
+                Logger.warn(`Invalid date for entry ${i + 1}: ${entry.updated_at || entry.created_at}`);
                 continue;
               }
               
