@@ -59,3 +59,5 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 supabase/.branches/
 supabase/.temp/
 supabase/docker/
+
+package-lock.json

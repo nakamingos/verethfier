@@ -76,3 +76,5 @@ update_remote_*.sql
 # Backup files
 backup/
 *backup*
+
+package-lock.json
