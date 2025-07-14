@@ -1,13 +1,12 @@
 import { Logger } from '@nestjs/common';
-import { EnvironmentConfig } from '@/config/environment.config';
 
 /**
  * Centralized logging utility with performance optimizations
  * Provides conditional logging based on environment and log levels
  */
 export class AppLogger {
-  private static readonly isProduction = EnvironmentConfig.NODE_ENV === 'production';
-  private static readonly isTest = EnvironmentConfig.IS_TEST;
+  private static readonly isProduction = process.env.NODE_ENV === 'production';
+  private static readonly isTest = Number(process.env.IS_TEST) === 1;
 
   /**
    * Debug logging - only logs in non-production environments

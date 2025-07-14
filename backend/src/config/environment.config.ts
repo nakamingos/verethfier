@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { AppLogger } from '@/utils/app-logger.util';
 
 // Load environment variables once at startup
 dotenv.config();
@@ -64,7 +65,7 @@ export class EnvironmentConfig {
 
     // Warn about optional Discord variables if Discord is enabled
     if (this.DISCORD_ENABLED && (!this.DISCORD_BOT_TOKEN || !this.DISCORD_CLIENT_ID)) {
-      console.warn('Discord is enabled but DISCORD_BOT_TOKEN or DISCORD_CLIENT_ID is missing');
+      AppLogger.warn('Discord is enabled but DISCORD_BOT_TOKEN or DISCORD_CLIENT_ID is missing', 'EnvironmentConfig');
     }
   }
 }

@@ -1,5 +1,6 @@
 import { ChatInputCommandInteraction, Role } from 'discord.js';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
+import { AppLogger } from '@/utils/app-logger.util';
 
 /**
  * Role Management Utilities
@@ -105,9 +106,9 @@ export async function cleanupNewlyCreatedRole(
       // Check if role is used by other rules or has members
       // For now, we'll skip the cleanup to avoid accidental deletions
       // This could be enhanced to check for other rule usage
-      console.log(`Role cleanup skipped for safety: ${role.name}`);
+      AppLogger.debug(`Role cleanup skipped for safety: ${role.name}`, 'RoleManagement');
     }
   } catch (error) {
-    console.error('Error during role cleanup:', error);
+    AppLogger.error('Error during role cleanup:', error, 'RoleManagement');
   }
 }

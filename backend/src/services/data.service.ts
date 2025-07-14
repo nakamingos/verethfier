@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
 import { EnvironmentConfig } from '@/config/environment.config';
+import { AppLogger } from '@/utils/app-logger.util';
 
 // Validate environment on service load
 EnvironmentConfig.validate();
@@ -205,12 +206,12 @@ export class DataService {
         const pageSize = 2000; // Balanced page size for performance
         const maxPages = 5; // Allow up to 10k records to capture full collections
 
-        console.log(`📊 [DataService] Starting full pagination for slug: "${slug}"`);
+        AppLogger.debug(`📊 [DataService] Starting full pagination for slug: "${slug}"`, 'DataService');
 
         while (page < maxPages) {
           const offset = page * pageSize;
           
-          console.log(`📄 [DataService] Fetching page ${page + 1}, offset: ${offset}`);
+          AppLogger.debug(`📄 [DataService] Fetching page ${page + 1}, offset: ${offset}`, 'DataService');
           
           const { data: pageData, error } = await supabase
             .from('attributes_new')
@@ -219,14 +220,14 @@ export class DataService {
             .range(offset, offset + pageSize - 1);
 
           if (error) {
-            console.error(`❌ [DataService] Error on page ${page + 1}:`, error);
+            AppLogger.error(`❌ [DataService] Error on page ${page + 1}:`, error.message, 'DataService');
             throw new Error(error.message);
           }
 
-          console.log(`📄 [DataService] Page ${page + 1} returned ${pageData?.length || 0} records`);
+          AppLogger.debug(`📄 [DataService] Page ${page + 1} returned ${pageData?.length || 0} records`, 'DataService');
 
           if (!pageData || pageData.length === 0) {
-            console.log(`📄 [DataService] No more data, stopping at page ${page + 1}`);
+            AppLogger.debug(`📄 [DataService] No more data, stopping at page ${page + 1}`, 'DataService');
             break;
           }
 
@@ -234,14 +235,14 @@ export class DataService {
 
           // If we got less than pageSize records, we've reached the end
           if (pageData.length < pageSize) {
-            console.log(`📄 [DataService] Reached end of data (got ${pageData.length} < ${pageSize})`);
+            AppLogger.debug(`📄 [DataService] Reached end of data (got ${pageData.length} < ${pageSize})`, 'DataService');
             break;
           }
 
           page++;
         }
 
-        console.log(`📊 [DataService] Pagination complete: ${page + 1} pages, ${allData.length} total records`);
+        AppLogger.debug(`📊 [DataService] Pagination complete: ${page + 1} pages, ${allData.length} total records`, 'DataService');
         data = allData;
       }
 
