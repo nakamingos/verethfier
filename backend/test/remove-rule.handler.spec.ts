@@ -117,9 +117,9 @@ describe('RemoveRuleHandler', () => {
       
       // The embed is an EmbedBuilder object, let's check its data
       const embedData = editReplyCall.embeds[0].data || editReplyCall.embeds[0];
-      expect(embedData.title).toBe('✅ Rule Removed');
+      expect(embedData.title).toBe('🗑️ Rule Removed');
       expect(embedData.description).toBe('Rule 1 for test-channel and @test-role has been removed.');
-      expect(embedData.color).toBe(65280);
+      expect(embedData.color).toBe(0xFF0000);
       expect(embedData.fields).toHaveLength(3); // Updated to expect 3 compact fields (Collection, Attribute, Min Items)
       expect(editReplyCall).toHaveProperty('components');
     });

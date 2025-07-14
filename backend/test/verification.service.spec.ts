@@ -196,7 +196,6 @@ describe('VerificationService', () => {
         serverId: 'server-123',
         roleId: 'role-123',
         ruleId: 'rule-123',
-        address: '0xabc',
         userName: 'TestUser',
         serverName: 'TestServer',
         roleName: 'TestRole',

@@ -139,14 +139,13 @@ describe('DiscordVerificationService', () => {
       const nonce = 'test-nonce';
       service.tempMessages[nonce] = mockInteraction as any;
 
-      await service.addUserRole('user-id', 'role-id', 'guild-id', 'wallet-address', nonce);
+      await service.addUserRole('user-id', 'role-id', 'guild-id', nonce, 'rule-123');
 
       expect(mockDbService.trackRoleAssignment).toHaveBeenCalledWith({
         userId: 'user-id',
         serverId: 'guild-id',
         roleId: 'role-id',
-        ruleId: null,
-        address: 'wallet-address',
+        ruleId: 'rule-123',
         userName: 'Test User',
         serverName: 'Test Guild',
         roleName: 'Test Role',

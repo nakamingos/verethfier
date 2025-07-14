@@ -139,7 +139,7 @@ describe('AddRuleHandler', () => {
 
       await handler.handle(mockInteraction);
 
-      expect(mockInteraction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+      expect(mockInteraction.deferReply).toHaveBeenCalledWith({ flags: 64 });
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
         content: expect.stringContaining('Channel and role are required')
       });
@@ -185,7 +185,7 @@ describe('AddRuleHandler', () => {
 
       await handler.handle(mockInteraction);
 
-      expect(mockInteraction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+      expect(mockInteraction.deferReply).toHaveBeenCalledWith({ flags: 64 });
       // Should get to duplicate checking since validation passed
       expect(mockDbService.checkForExactDuplicateRule).toHaveBeenCalled();
     });
@@ -247,10 +247,22 @@ describe('AddRuleHandler', () => {
         position: 4, // Bot's highest position (5) - 1
         reason: 'Auto-created for verification rule by test-user#1234'
       });
-      expect(mockInteraction.followUp).toHaveBeenCalledWith({
-        content: expect.stringContaining('Created new role: **New Role**'),
-        ephemeral: true
-      });
+      expect(mockInteraction.editReply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          embeds: expect.arrayContaining([
+            expect.objectContaining({
+              data: expect.objectContaining({
+                fields: expect.arrayContaining([
+                  expect.objectContaining({
+                    name: '🆕 New Role Created',
+                    value: `The role <@&new-role-id> was created for this verification rule.`
+                  })
+                ])
+              })
+            })
+          ])
+        })
+      );
     });
 
     it('should detect exact duplicate rules', async () => {
