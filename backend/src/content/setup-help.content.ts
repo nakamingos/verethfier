@@ -64,6 +64,17 @@ export const SETUP_HELP_CONTENT: SetupHelpContent = {
       inline: false
     },
     {
+      name: '📊 `/setup audit-log`',
+      value: '**View role assignment history**\n' +
+             '• Shows recent role additions (✅) and removals (🗑️)\n' +
+             '• **Days**: Number of days to look back (1-30, default: 1)\n' +
+             '• Compact format displays up to 375 entries\n' +
+             '• Clickable wallet links to marketplace\n' +
+             '• Admin-only access for security\n' +
+             '**Example**: `/setup audit-log days:7`\n\n',
+      inline: false
+    },
+    {
       name: '💡 **Pro Tips**',
       value: '• **Autocomplete**: Type to see available options\n' +
              '• **Role Creation**: Type new role names to create them\n' +
