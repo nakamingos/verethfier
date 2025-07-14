@@ -932,14 +932,16 @@ export class DiscordService implements OnModuleInit {
                 continue;
               }
               
-              const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+              const formattedDate = `<t:${Math.floor(date.getTime() / 1000)}:R>`;
               
-              // Get the wallet address - simple truncation without links
+              // Get the wallet address and create clickable link
               let walletDisplay = 'Unknown';
               if (entry.user_wallets && Array.isArray(entry.user_wallets) && entry.user_wallets.length > 0) {
                 const fullAddress = entry.user_wallets[0].address;
                 if (fullAddress && typeof fullAddress === 'string' && fullAddress.length > 10) {
-                  walletDisplay = `${fullAddress.substring(0, 6)}...${fullAddress.substring(fullAddress.length - 4)}`;
+                  const truncatedAddress = `${fullAddress.substring(0, 5)}...${fullAddress.substring(fullAddress.length - 5)}`;
+                  const walletLink = `[${truncatedAddress}](https://ethscriptions.com/${fullAddress})`;
+                  walletDisplay = walletLink;
                 }
               }
               
@@ -947,7 +949,7 @@ export class DiscordService implements OnModuleInit {
               const roleName = entry.role_name || entry.role_id || 'Unknown Role';
               const actionText = entry.status === 'revoked' ? '**Removed:**' : '**Added:**';
               
-              const entryLine = `${actionText} ${userName} -> ${roleName} (${walletDisplay}) - ${dateStr}\n`;
+              const entryLine = `${actionText} ${userName}│${roleName} (${walletDisplay})│${formattedDate}\n`;
               
               fieldValue += entryLine;
               
