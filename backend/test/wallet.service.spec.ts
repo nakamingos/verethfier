@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WalletService } from '../src/services/wallet.service';
 import { NonceService } from '../src/services/nonce.service';
+import { UserAddressService } from '../src/services/user-address.service';
 import { DecodedData } from '../src/models/app.interface';
 import { recoverTypedDataAddress } from 'viem';
 
@@ -37,7 +38,7 @@ describe('WalletService', () => {
       providers: [
         WalletService,
         { provide: NonceService, useValue: mockNonceService },
-        { provide: 'UserAddressService', useValue: {} }
+        { provide: UserAddressService, useValue: { addUserAddress: jest.fn() } }
       ],
     }).compile();
 

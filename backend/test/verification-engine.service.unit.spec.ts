@@ -17,6 +17,7 @@ import { Logger } from '@nestjs/common';
 import { VerificationEngine, VerificationResult, BulkVerificationResult } from '../src/services/verification-engine.service';
 import { DbService } from '../src/services/db.service';
 import { DataService } from '../src/services/data.service';
+import { UserAddressService } from '../src/services/user-address.service';
 import { VerifierRole } from '../src/models/verifier-role.interface';
 
 describe('VerificationEngine', () => {
@@ -72,7 +73,7 @@ describe('VerificationEngine', () => {
         VerificationEngine,
         { provide: DbService, useValue: mockDbServiceValue },
         { provide: DataService, useValue: mockDataServiceValue },
-        { provide: 'UserAddressService', useValue: mockUserAddressServiceValue },
+        { provide: UserAddressService, useValue: mockUserAddressServiceValue },
       ],
     }).compile();
 

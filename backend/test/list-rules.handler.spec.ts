@@ -241,7 +241,7 @@ describe('ListRulesHandler', () => {
 
       expect(mockInteraction.reply).toHaveBeenCalledWith({
         content: AdminFeedback.simple('Error retrieving rules: Defer failed', true),
-        ephemeral: true,
+        flags: 64,
       });
     });
   });

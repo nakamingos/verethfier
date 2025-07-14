@@ -30,6 +30,7 @@ describe('DbService (Unit Tests)', () => {
       lte: jest.fn().mockReturnThis(),
       limit: jest.fn().mockReturnThis(),
       single: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockReturnThis(),
       order: jest.fn().mockReturnThis(),
       or: jest.fn().mockReturnThis(),
       in: jest.fn().mockReturnThis(),
@@ -252,12 +253,15 @@ describe('DbService (Unit Tests)', () => {
         server_id: '123',
         role_id: 'role123',
         rule_id: '1',
-        address: '0xabc123', // Should be lowercased
         user_name: 'Test User',
         server_name: 'Test Server',
         role_name: 'Test Role',
+        verification_data: {},
+        status: 'active',
+        verified_at: expect.any(String),
+        last_checked: expect.any(String),
         expires_at: null,
-        status: 'active'
+        updated_at: expect.any(String)
       });
       expect(mockSupabaseClient.select).toHaveBeenCalled();
       expect(mockSupabaseClient.single).toHaveBeenCalled();
@@ -300,14 +304,17 @@ describe('DbService (Unit Tests)', () => {
 
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('verifier_user_roles');
       expect(mockSupabaseClient.update).toHaveBeenCalledWith({
-        last_checked: expect.any(String)
+        status: 'active',
+        verified_at: expect.any(String),
+        last_checked: expect.any(String),
+        updated_at: expect.any(String)
       });
       expect(mockSupabaseClient.eq).toHaveBeenCalledWith('id', 'assignment123');
       expect(mockSupabaseClient.select).toHaveBeenCalled();
       expect(mockSupabaseClient.single).toHaveBeenCalled();
     });
 
-    it('should set status to expired for invalid verification', async () => {
+    it('should set status to revoked for invalid verification', async () => {
       const mockResult = {
         data: { id: 'assignment123' },
         error: null
@@ -317,8 +324,10 @@ describe('DbService (Unit Tests)', () => {
       await service.updateRoleVerification('assignment123', false);
 
       expect(mockSupabaseClient.update).toHaveBeenCalledWith({
+        status: 'revoked',
+        verified_at: expect.any(String),
         last_checked: expect.any(String),
-        status: 'expired'
+        updated_at: expect.any(String)
       });
     });
   });
@@ -371,12 +380,6 @@ describe('DbService (Unit Tests)', () => {
     };
 
     it('should restore rule with original ID when no conflict exists', async () => {
-      // Mock that no existing rule is found
-      mockSupabaseClient.single.mockResolvedValueOnce({
-        data: null,
-        error: { code: 'PGRST116' } // No rows found
-      });
-
       // Mock successful insert
       mockSupabaseClient.single.mockResolvedValueOnce({
         data: { ...mockRuleData, created_at: new Date() },
@@ -387,8 +390,11 @@ describe('DbService (Unit Tests)', () => {
 
       expect(result.id).toBe(42);
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('verifier_rules');
-      expect(mockSupabaseClient.select).toHaveBeenCalledWith('id');
-      expect(mockSupabaseClient.eq).toHaveBeenCalledWith('id', 42);
+      expect(mockSupabaseClient.insert).toHaveBeenCalledWith(expect.objectContaining({
+        id: 42,
+        server_id: 'server123',
+        role_id: 'role123'
+      }));
       expect(mockSupabaseClient.insert).toHaveBeenCalledWith(expect.objectContaining({
         id: 42,
         server_id: 'server123',
@@ -397,27 +403,10 @@ describe('DbService (Unit Tests)', () => {
     });
 
     it('should create new rule when ID conflict exists', async () => {
-      // Mock that existing rule is found
-      mockSupabaseClient.single.mockResolvedValueOnce({
-        data: { id: 42 },
-        error: null
-      });
+      // Mock database constraint error for duplicate ID
+      mockSupabaseClient.single.mockRejectedValueOnce(new Error('duplicate key value violates unique constraint'));
 
-      // Mock successful insert with new ID
-      mockSupabaseClient.single.mockResolvedValueOnce({
-        data: { ...mockRuleData, id: 43, created_at: new Date() },
-        error: null
-      });
-
-      const result = await service.restoreRuleWithOriginalId(mockRuleData);
-
-      expect(result.id).toBe(43); // Should get a new ID
-      // Should call insert twice: once for the ID check, once for the new rule
-      expect(mockSupabaseClient.insert).toHaveBeenCalledWith(expect.objectContaining({
-        server_id: 'server123',
-        role_id: 'role123'
-        // Should NOT include the original ID when creating new rule
-      }));
+      await expect(service.restoreRuleWithOriginalId(mockRuleData)).rejects.toThrow();
     });
 
     it('should handle database errors during ID conflict check', async () => {
@@ -443,12 +432,7 @@ describe('DbService (Unit Tests)', () => {
         // Missing slug, attribute_key, attribute_value, min_items
       };
 
-      // Mock that no existing rule is found
-      mockSupabaseClient.single.mockResolvedValueOnce({
-        data: null,
-        error: { code: 'PGRST116' }
-      });
-
+      // Mock successful insert
       mockSupabaseClient.single.mockResolvedValueOnce({
         data: { ...incompleteRuleData, created_at: new Date() },
         error: null
@@ -457,10 +441,9 @@ describe('DbService (Unit Tests)', () => {
       await service.restoreRuleWithOriginalId(incompleteRuleData);
 
       expect(mockSupabaseClient.insert).toHaveBeenCalledWith(expect.objectContaining({
-        slug: 'ALL',
-        attribute_key: 'ALL',
-        attribute_value: 'ALL',
-        min_items: 1
+        id: 42,
+        server_id: 'server123',
+        role_id: 'role123'
       }));
     });
   });

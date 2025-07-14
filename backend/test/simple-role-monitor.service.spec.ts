@@ -3,6 +3,8 @@ import { SimpleRoleMonitorService } from '../src/services/simple-role-monitor.se
 import { DbService } from '../src/services/db.service';
 import { DataService } from '../src/services/data.service';
 import { DiscordVerificationService } from '../src/services/discord-verification.service';
+import { VerificationEngine } from '../src/services/verification-engine.service';
+import { UserAddressService } from '../src/services/user-address.service';
 import { Logger } from '@nestjs/common';
 
 describe('SimpleRoleMonitorService', () => {
@@ -38,13 +40,19 @@ describe('SimpleRoleMonitorService', () => {
       getUserAddresses: jest.fn(),
     };
 
+    const mockVerificationEngine = {
+      verifyOwnership: jest.fn(),
+      verifyBulkOwnership: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SimpleRoleMonitorService,
         { provide: DbService, useValue: mockDbService },
         { provide: DataService, useValue: mockDataService },
         { provide: DiscordVerificationService, useValue: mockDiscordVerificationService },
-        { provide: 'UserAddressService', useValue: mockUserAddressService },
+        { provide: VerificationEngine, useValue: mockVerificationEngine },
+        { provide: UserAddressService, useValue: mockUserAddressService },
       ],
     }).compile();
 
@@ -52,7 +60,7 @@ describe('SimpleRoleMonitorService', () => {
     dbService = module.get(DbService);
     dataService = module.get(DataService);
     discordVerificationService = module.get(DiscordVerificationService);
-    userAddressService = module.get('UserAddressService');
+    userAddressService = module.get(UserAddressService);
 
     // Mock Logger to avoid console output during tests
     jest.spyOn(Logger, 'log').mockImplementation();
@@ -201,7 +209,7 @@ describe('SimpleRoleMonitorService', () => {
       expect(result.verified).toContain('role1');
       expect(result.revoked).toHaveLength(0);
       expect(result.errors).toHaveLength(0);
-      expect(discordVerificationService.addUserRole).toHaveBeenCalledWith('user1', 'role1', 'server1', '0x123', 'reverification');
+      expect(discordVerificationService.addUserRole).toHaveBeenCalledWith('user1', 'role1', 'server1', 'reverification', 'rule-1');
     });
   });
 

@@ -55,6 +55,7 @@ jest.mock('discord.js', () => {
     SlashCommandBuilder: jest.fn().mockImplementation(() => ({
       setName: jest.fn().mockReturnThis(),
       setDescription: jest.fn().mockReturnThis(),
+      setDefaultMemberPermissions: jest.fn().mockReturnThis(),
       addSubcommand: jest.fn().mockReturnThis(),
       addChannelOption: jest.fn().mockReturnThis(),
       addStringOption: jest.fn().mockReturnThis(),
@@ -372,8 +373,12 @@ describe('DiscordService - Enhanced Tests', () => {
       const mockInteraction = {
         options: { getSubcommand: () => 'add-rule' },
         guild: { id: 'g' },
+        guildId: 'g',
+        user: { id: 'user123', tag: 'TestUser#1234' },
         deferred: false,
-        replied: false
+        replied: false,
+        memberPermissions: { has: jest.fn().mockReturnValue(true) }, // Grant admin permissions
+        reply: jest.fn().mockResolvedValue(undefined)
       } as any;
       
       await service.handleSetup(mockInteraction);
@@ -384,8 +389,12 @@ describe('DiscordService - Enhanced Tests', () => {
       const mockInteraction = {
         options: { getSubcommand: () => 'remove-rule' },
         guild: { id: 'g' },
+        guildId: 'g',
+        user: { id: 'user123', tag: 'TestUser#1234' },
         deferred: false,
-        replied: false
+        replied: false,
+        memberPermissions: { has: jest.fn().mockReturnValue(true) }, // Grant admin permissions
+        reply: jest.fn().mockResolvedValue(undefined)
       } as any;
       
       await service.handleSetup(mockInteraction);
@@ -396,8 +405,12 @@ describe('DiscordService - Enhanced Tests', () => {
       const mockInteraction = {
         options: { getSubcommand: () => 'list-rules' },
         guild: { id: 'g' },
+        guildId: 'g',
+        user: { id: 'user123', tag: 'TestUser#1234' },
         deferred: false,
-        replied: false
+        replied: false,
+        memberPermissions: { has: jest.fn().mockReturnValue(true) }, // Grant admin permissions
+        reply: jest.fn().mockResolvedValue(undefined)
       } as any;
       
       await service.handleSetup(mockInteraction);
@@ -408,8 +421,12 @@ describe('DiscordService - Enhanced Tests', () => {
       const mockInteraction = {
         options: { getSubcommand: () => 'recover-verification' },
         guild: { id: 'g' },
+        guildId: 'g',
+        user: { id: 'user123', tag: 'TestUser#1234' },
         deferred: false,
-        replied: false
+        replied: false,
+        memberPermissions: { has: jest.fn().mockReturnValue(true) }, // Grant admin permissions
+        reply: jest.fn().mockResolvedValue(undefined)
       } as any;
       
       await service.handleSetup(mockInteraction);
@@ -509,19 +526,35 @@ describe('DiscordService - Enhanced Tests', () => {
   });
 
   describe('Role Autocomplete', () => {
+    beforeEach(() => {
+      // Ensure service is marked as initialized for autocomplete tests
+      (service as any).isInitialized = true;
+    });
+
     it('should filter roles by focused value and bot permissions', async () => {
       const role1 = { id: 'role1', name: 'admin', position: 5, editable: true, color: 0xFF0000 }; // Red color
       const role2 = { id: 'role2', name: 'moderator', position: 3, editable: true, color: 0x00FF00 }; // Green color
       
+      // Create a proper roles cache mock that returns the filtered results
+      const mockRolesCache = {
+        filter: jest.fn().mockReturnValue({
+          filter: jest.fn().mockReturnValue({
+            filter: jest.fn().mockReturnValue({
+              filter: jest.fn().mockReturnValue({
+                sort: jest.fn().mockReturnValue({
+                  first: jest.fn().mockReturnValue([role1, role2])
+                })
+              })
+            })
+          })
+        }),
+        find: jest.fn().mockReturnValue(undefined) // No existing role with focused name
+      };
+
       const mockGuildWithRoles = {
         members: { me: { roles: { highest: { position: 10 } } } },
         roles: {
-          cache: {
-            filter: jest.fn().mockReturnThis(),
-            sort: jest.fn().mockReturnThis(),
-            first: jest.fn().mockReturnValue([role1, role2]),
-            find: jest.fn().mockReturnValue(undefined)
-          }
+          cache: mockRolesCache
         }
       };
 
