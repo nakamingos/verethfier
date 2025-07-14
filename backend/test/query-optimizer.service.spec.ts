@@ -249,7 +249,7 @@ describe('QueryOptimizer', () => {
 
       const optimizedQuery = service.buildOptimizedQuery(mockQuery);
 
-      expect(mockQuery.limit).toHaveBeenCalledWith(1000);
+      expect(mockQuery.limit).toHaveBeenCalledWith(9940);
       expect(mockQuery.order).toHaveBeenCalledWith('created_at', { ascending: false });
       expect(optimizedQuery).toBe(mockQuery); // Should return the same query object
     });

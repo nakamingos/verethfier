@@ -37,6 +37,7 @@ describe('WalletService', () => {
       providers: [
         WalletService,
         { provide: NonceService, useValue: mockNonceService },
+        { provide: 'UserAddressService', useValue: {} }
       ],
     }).compile();
 

@@ -487,8 +487,8 @@ describe('DiscordService - Enhanced Tests', () => {
     });
 
     it('should delegate addUserRole to DiscordVerificationService', async () => {
-      await service.addUserRole('userId', 'roleId', 'guildId', 'address', 'nonce');
-      expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('userId', 'roleId', 'guildId', 'address', 'nonce');
+      await service.addUserRole('userId', 'roleId', 'guildId', 'nonce');
+      expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('userId', 'roleId', 'guildId', 'nonce');
     });
 
     it('should delegate throwError to DiscordVerificationService', async () => {

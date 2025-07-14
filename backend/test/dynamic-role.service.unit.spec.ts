@@ -118,7 +118,7 @@ describe('DynamicRoleService', () => {
       mockDbService.getActiveRoleAssignments.mockResolvedValue(mockAssignments);
       mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(3); // Qualifies
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -137,7 +137,7 @@ describe('DynamicRoleService', () => {
       mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(1); // Below required 2
       mockDiscordVerificationService.removeUserRole.mockResolvedValue(undefined);
-      mockDbService.updateRoleAssignmentStatus.mockResolvedValue({});
+      mockDbService.updateRoleAssignmentStatus.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -156,7 +156,7 @@ describe('DynamicRoleService', () => {
       mockDbService.getActiveRoleAssignments.mockResolvedValue(mockAssignments);
       mockDbService.getRuleById.mockResolvedValue(null);
       mockDiscordVerificationService.removeUserRole.mockResolvedValue(undefined);
-      mockDbService.updateRoleAssignmentStatus.mockResolvedValue({});
+      mockDbService.updateRoleAssignmentStatus.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -175,7 +175,7 @@ describe('DynamicRoleService', () => {
         .mockResolvedValueOnce(mockRule)
         .mockRejectedValueOnce(new Error('Database error'));
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(3);
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -213,7 +213,7 @@ describe('DynamicRoleService', () => {
       mockDbService.getActiveRoleAssignments.mockResolvedValue(mockAssignments);
       mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(3);
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -232,7 +232,7 @@ describe('DynamicRoleService', () => {
       mockDbService.getUserActiveAssignments.mockResolvedValue(userAssignments);
       mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(3);
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       const result = await service.reverifyUser('user123');
 
@@ -249,7 +249,7 @@ describe('DynamicRoleService', () => {
       mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(1); // Below required 2
       mockDiscordVerificationService.removeUserRole.mockResolvedValue(undefined);
-      mockDbService.updateRoleAssignmentStatus.mockResolvedValue({});
+      mockDbService.updateRoleAssignmentStatus.mockResolvedValue(undefined);
 
       const result = await service.reverifyUser('user123');
 
@@ -295,9 +295,9 @@ describe('DynamicRoleService', () => {
       mockDataService.checkAssetOwnershipWithCriteria
         .mockResolvedValueOnce(3) // First user qualifies
         .mockResolvedValueOnce(1); // Second user doesn't qualify
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
       mockDiscordVerificationService.removeUserRole.mockResolvedValue(undefined);
-      mockDbService.updateRoleAssignmentStatus.mockResolvedValue({});
+      mockDbService.updateRoleAssignmentStatus.mockResolvedValue(undefined);
 
       await service.reverifyRule('rule123');
 
@@ -336,7 +336,7 @@ describe('DynamicRoleService', () => {
 
       // Access private method through performScheduledReverification
       mockDbService.getActiveRoleAssignments.mockResolvedValue([mockActiveAssignment]);
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -356,7 +356,7 @@ describe('DynamicRoleService', () => {
 
       mockDbService.getActiveRoleAssignments.mockResolvedValue([mockActiveAssignment]);
       mockDiscordVerificationService.removeUserRole.mockResolvedValue(undefined);
-      mockDbService.updateRoleAssignmentStatus.mockResolvedValue({});
+      mockDbService.updateRoleAssignmentStatus.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -368,7 +368,7 @@ describe('DynamicRoleService', () => {
 
       mockDbService.getActiveRoleAssignments.mockResolvedValue([mockActiveAssignment]);
       mockDiscordVerificationService.removeUserRole.mockResolvedValue(undefined);
-      mockDbService.updateRoleAssignmentStatus.mockResolvedValue({});
+      mockDbService.updateRoleAssignmentStatus.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -383,7 +383,7 @@ describe('DynamicRoleService', () => {
       mockDataService.checkAssetOwnershipWithCriteria.mockRejectedValue(new Error('API timeout'));
 
       mockDbService.getActiveRoleAssignments.mockResolvedValue([mockActiveAssignment]);
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -398,7 +398,7 @@ describe('DynamicRoleService', () => {
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(1);
 
       mockDbService.getActiveRoleAssignments.mockResolvedValue([mockActiveAssignment]);
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -415,7 +415,7 @@ describe('DynamicRoleService', () => {
   describe('revokeRole', () => {
     it('should successfully revoke role from Discord and update database', async () => {
       mockDiscordVerificationService.removeUserRole.mockResolvedValue(undefined);
-      mockDbService.updateRoleAssignmentStatus.mockResolvedValue({});
+      mockDbService.updateRoleAssignmentStatus.mockResolvedValue(undefined);
 
       // Test through scheduled re-verification
       mockDbService.getActiveRoleAssignments.mockResolvedValue([mockActiveAssignment]);
@@ -437,7 +437,7 @@ describe('DynamicRoleService', () => {
 
     it('should mark as expired if Discord removal fails', async () => {
       mockDiscordVerificationService.removeUserRole.mockRejectedValue(new Error('Discord API error'));
-      mockDbService.updateRoleAssignmentStatus.mockResolvedValue({});
+      mockDbService.updateRoleAssignmentStatus.mockResolvedValue(undefined);
 
       mockDbService.getActiveRoleAssignments.mockResolvedValue([mockActiveAssignment]);
       mockDbService.getRuleById.mockResolvedValue(mockRule);
@@ -458,7 +458,7 @@ describe('DynamicRoleService', () => {
       mockDbService.countActiveAssignments.mockResolvedValue(100);
       mockDbService.countRevokedAssignments.mockResolvedValue(25);
       mockDbService.countExpiringSoonAssignments.mockResolvedValue(5);
-      mockDbService.getLastReverificationTime.mockResolvedValue(new Date('2024-01-01T12:00:00Z'));
+      mockDbService.getLastReverificationTime.mockResolvedValue('2024-01-01T12:00:00Z');
 
       const stats = await service.getRoleAssignmentStats();
 
@@ -501,7 +501,7 @@ describe('DynamicRoleService', () => {
       mockDbService.getActiveRoleAssignments.mockResolvedValue([mockActiveAssignment]);
       mockDbService.getRuleById.mockResolvedValue(incompleteRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(1);
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -520,7 +520,7 @@ describe('DynamicRoleService', () => {
       mockDbService.getActiveRoleAssignments.mockResolvedValue([assignmentWithEmptyAddress]);
       mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(0);
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -542,7 +542,7 @@ describe('DynamicRoleService', () => {
       mockDbService.getActiveRoleAssignments.mockResolvedValue(largeAssignmentList);
       mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(3);
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -554,7 +554,7 @@ describe('DynamicRoleService', () => {
       mockDbService.getUserActiveAssignments.mockResolvedValue([mockActiveAssignment]);
       mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(3);
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       // Run multiple verifications concurrently
       const promises = [
@@ -580,7 +580,7 @@ describe('DynamicRoleService', () => {
           setTimeout(() => reject(new Error('Network timeout')), 100)
         )
       );
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -603,7 +603,7 @@ describe('DynamicRoleService', () => {
       ]);
       mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(3);
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -618,7 +618,7 @@ describe('DynamicRoleService', () => {
       mockDbService.getActiveRoleAssignments.mockResolvedValue([mockActiveAssignment]);
       mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(3);
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -635,7 +635,7 @@ describe('DynamicRoleService', () => {
       mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(0);
       mockDiscordVerificationService.removeUserRole.mockResolvedValue(undefined);
-      mockDbService.updateRoleAssignmentStatus.mockResolvedValue({});
+      mockDbService.updateRoleAssignmentStatus.mockResolvedValue(undefined);
 
       await service.performScheduledReverification();
 
@@ -648,7 +648,7 @@ describe('DynamicRoleService', () => {
       mockDbService.getUserActiveAssignments.mockResolvedValue([mockActiveAssignment]);
       mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(3);
-      mockDbService.updateLastVerified.mockResolvedValue({});
+      mockDbService.updateLastVerified.mockResolvedValue(undefined);
 
       await service.reverifyUser('user123');
 
@@ -663,7 +663,7 @@ describe('DynamicRoleService', () => {
       mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(0);
       mockDiscordVerificationService.removeUserRole.mockResolvedValue(undefined);
-      mockDbService.updateRoleAssignmentStatus.mockResolvedValue({});
+      mockDbService.updateRoleAssignmentStatus.mockResolvedValue(undefined);
 
       await service.reverifyRule('rule123');
 

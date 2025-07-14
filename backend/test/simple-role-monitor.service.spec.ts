@@ -10,11 +10,11 @@ describe('SimpleRoleMonitorService', () => {
   let dbService: jest.Mocked<DbService>;
   let dataService: jest.Mocked<DataService>;
   let discordVerificationService: jest.Mocked<DiscordVerificationService>;
+  let userAddressService: any;
 
   beforeEach(async () => {
     const mockDbService = {
       getUserRoleHistory: jest.fn(),
-      getUserLatestAddress: jest.fn(),
       getServerUniqueUsers: jest.fn(),
       checkEnhancedTrackingExists: jest.fn(),
       getRoleAssignmentStats: jest.fn(),
@@ -34,12 +34,17 @@ describe('SimpleRoleMonitorService', () => {
       removeUserRole: jest.fn(),
     };
 
+    const mockUserAddressService = {
+      getUserAddresses: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SimpleRoleMonitorService,
         { provide: DbService, useValue: mockDbService },
         { provide: DataService, useValue: mockDataService },
         { provide: DiscordVerificationService, useValue: mockDiscordVerificationService },
+        { provide: 'UserAddressService', useValue: mockUserAddressService },
       ],
     }).compile();
 
@@ -47,6 +52,7 @@ describe('SimpleRoleMonitorService', () => {
     dbService = module.get(DbService);
     dataService = module.get(DataService);
     discordVerificationService = module.get(DiscordVerificationService);
+    userAddressService = module.get('UserAddressService');
 
     // Mock Logger to avoid console output during tests
     jest.spyOn(Logger, 'log').mockImplementation();
@@ -88,7 +94,7 @@ describe('SimpleRoleMonitorService', () => {
 
       dbService.getUserRoleHistory.mockResolvedValue(mockUserRoles);
       dbService.getRoleMappings.mockResolvedValue(mockRules);
-      dbService.getUserLatestAddress.mockResolvedValue('0x123');
+      userAddressService.getUserAddresses.mockResolvedValue(['0x123']);
       dataService.checkAssetOwnershipWithCriteria.mockResolvedValue(2); // User still qualifies
       discordVerificationService.getGuildMember.mockResolvedValue({
         roles: { cache: new Map([['role1', true]]) },
@@ -134,7 +140,7 @@ describe('SimpleRoleMonitorService', () => {
 
       dbService.getUserRoleHistory.mockResolvedValue(mockUserRoles);
       dbService.getRoleMappings.mockResolvedValue(mockRules);
-      dbService.getUserLatestAddress.mockResolvedValue('0x123');
+      userAddressService.getUserAddresses.mockResolvedValue(['0x123']);
       dataService.checkAssetOwnershipWithCriteria.mockResolvedValue(2); // Only 2, needs 5
       discordVerificationService.getGuildMember.mockResolvedValue({
         roles: { cache: new Map([['role1', true]]) },
@@ -152,7 +158,7 @@ describe('SimpleRoleMonitorService', () => {
     it('should handle user with no address', async () => {
       dbService.getUserRoleHistory.mockResolvedValue([]);
       dbService.getRoleMappings.mockResolvedValue([]);
-      dbService.getUserLatestAddress.mockResolvedValue(null);
+      userAddressService.getUserAddresses.mockResolvedValue([]);
 
       const result = await service.reverifyUser('user1', 'server1');
 
@@ -177,7 +183,7 @@ describe('SimpleRoleMonitorService', () => {
 
       dbService.getUserRoleHistory.mockResolvedValue(mockUserRoles);
       dbService.getRoleMappings.mockResolvedValue(mockRules);
-      dbService.getUserLatestAddress.mockResolvedValue('0x123');
+      userAddressService.getUserAddresses.mockResolvedValue(['0x123']);
       dataService.checkAssetOwnershipWithCriteria.mockResolvedValue(2); // User qualifies
       const mockRolesCache = new Map();
       discordVerificationService.getGuildMember.mockResolvedValue({
