@@ -972,17 +972,19 @@ export class DiscordService implements OnModuleInit {
 
         // Add the field to the embed
         embed.addFields({
-          name: 'Activity',
+          name: 'Activity:',
           value: fieldValue.trim() || 'No activity found',
           inline: false
         });
 
-        // Add emoji key field
-        embed.addFields({
-          name: '​', // Zero-width space for invisible field name
-          value: '✅=Added   🗑️=Removed',
-          inline: false
-        });
+        // Add emoji key field only if there are results
+        if (auditEntries && auditEntries.length > 0) {
+          embed.addFields({
+            name: '​', // Zero-width space for invisible field name
+            value: '**Legend:**\u2003✅ = Added\u2003🗑️ = Removed',
+            inline: false
+          });
+        }
 
         // Add footer with entry count and period
         const entryCount = auditEntries ? auditEntries.length : 0;
