@@ -965,4 +965,91 @@ export class DbService {
     }
   }
 
+  /**
+   * Get audit log of all role changes for a server within a date range
+   */
+  async getServerAuditLog(serverId: string, daysBack: number = 1): Promise<any[]> {
+    try {
+      // Validate inputs
+      if (!serverId) {
+        throw new Error('Server ID is required');
+      }
+      
+      if (daysBack < 1 || daysBack > 365) {
+        throw new Error('Days back must be between 1 and 365');
+      }
+
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysBack);
+      
+      this.logger.debug(`Fetching audit log for server ${serverId}, looking back ${daysBack} days from ${cutoffDate.toISOString()}`);
+      
+      // Query role assignments within the specified time range
+      const { data, error } = await this.supabase
+        .from('verifier_user_roles')
+        .select(`
+          id,
+          user_id,
+          server_id,
+          role_id,
+          rule_id,
+          user_name,
+          server_name,
+          role_name,
+          status,
+          verified_at,
+          created_at,
+          updated_at
+        `)
+        .eq('server_id', serverId)
+        .gte('created_at', cutoffDate.toISOString())
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        this.logger.error(`Error fetching audit log for server ${serverId}:`, error);
+        throw error;
+      }
+
+      this.logger.debug(`Found ${data?.length || 0} role assignments for server ${serverId} in the last ${daysBack} days`);
+
+      // For each role assignment, get the user's wallet addresses
+      const enrichedData = [];
+      if (data && data.length > 0) {
+        for (const roleEntry of data) {
+          try {
+            // Get user's wallet addresses
+            const { data: wallets, error: walletError } = await this.supabase
+              .from('user_wallets')
+              .select('address, last_verified_at')
+              .eq('user_id', roleEntry.user_id)
+              .order('last_verified_at', { ascending: false });
+
+            if (walletError) {
+              this.logger.warn(`Error fetching wallets for user ${roleEntry.user_id}:`, walletError);
+              // Continue with empty wallets array instead of failing completely
+            }
+
+            enrichedData.push({
+              ...roleEntry,
+              user_wallets: wallets || []
+            });
+          } catch (walletError) {
+            this.logger.warn(`Error processing wallets for user ${roleEntry.user_id}:`, walletError);
+            // Add entry without wallet data instead of failing
+            enrichedData.push({
+              ...roleEntry,
+              user_wallets: []
+            });
+          }
+        }
+      }
+
+      this.logger.debug(`Returning ${enrichedData.length} enriched audit entries`);
+      return enrichedData;
+    } catch (error) {
+      this.logger.error(`Error fetching audit log for server ${serverId}:`, error);
+      throw error;
+    }
+  }
+
 }

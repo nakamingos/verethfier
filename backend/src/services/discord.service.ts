@@ -241,6 +241,8 @@ export class DiscordService implements OnModuleInit {
         await this.discordCommandsSvc.handleListRules(interaction);
       } else if (sub === 'recover-verification') {
         await this.discordCommandsSvc.handleRecoverVerification(interaction);
+      } else if (sub === 'audit-log') {
+        await this.handleAuditLog(interaction);
       } else if (sub === 'help') {
         await this.handleSetupHelp(interaction);
       }
@@ -447,6 +449,16 @@ export class DiscordService implements OnModuleInit {
         .addSubcommand(sc =>
           sc.setName('help')
             .setDescription('Show help and information about setup commands')
+        )
+        .addSubcommand(sc =>
+          sc.setName('audit-log')
+            .setDescription('View role assignment audit log for this server')
+            .addIntegerOption(option => 
+              option.setName('days')
+                .setDescription('Number of days of history to show (default: 1, max: 30)')
+                .setMinValue(1)
+                .setMaxValue(30)
+            )
         )
     ];
     Logger.debug('Reloading application /slash commands.', `${commands.length} commands`);
@@ -816,8 +828,8 @@ export class DiscordService implements OnModuleInit {
         // Values are now clean (no occurrence counts), so we can use them directly
         Logger.debug(`Processing clean autocomplete value: "${value}"`);
         return {
-          name: value, // Clean value for display
-          value: value // Same clean value for submission
+          name: value // Clean value for display
+          , value: value // Same clean value for submission
         };
       });
 
@@ -842,6 +854,186 @@ export class DiscordService implements OnModuleInit {
         ]);
       } catch (respondError) {
         Logger.debug('Failed to respond to autocomplete interaction (likely expired):', respondError.message);
+      }
+    }
+  }
+
+  /**
+   * Handles the audit-log subcommand to show role assignment history
+   * 
+   * Displays a Discord embed with role assignment/removal history for the server.
+   * Shows username, role name, wallet address (truncated), and timestamp for each entry.
+   * Supports configurable time range (1-30 days, default 7).
+   * 
+   * Data is pulled from verifier_user_roles table joined with user_wallets table
+   * to support both legacy single-address and new multi-wallet users.
+   * 
+   * @param interaction - Discord slash command interaction
+   */
+  async handleAuditLog(interaction: ChatInputCommandInteraction): Promise<void> {
+    try {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      
+      const serverId = interaction.guildId;
+      if (!serverId) {
+        await interaction.editReply({
+          content: '❌ This command can only be used in a server.'
+        });
+        return;
+      }
+
+      const days = interaction.options.getInteger('days') || 1;
+      
+      // Validate days parameter
+      if (days < 1 || days > 30) {
+        await interaction.editReply({
+          content: '❌ Days parameter must be between 1 and 30.'
+        });
+        return;
+      }
+      
+      Logger.log(`Admin ${interaction.user.tag} requested ${days}-day audit log for server ${serverId}`);
+      
+      // Get audit data from database with error handling
+      let auditEntries;
+      try {
+        auditEntries = await this.dbSvc.getServerAuditLog(serverId, days);
+        Logger.debug(`Retrieved ${auditEntries?.length || 0} audit entries from database`);
+      } catch (dbError) {
+        Logger.error(`Database error fetching audit log:`, dbError);
+        await interaction.editReply({
+          content: `❌ **Database Error**\n\nFailed to retrieve audit log data. This may be due to:\n• No data available for the selected time period\n• Database connectivity issues\n\nPlease try again with a different time range or contact support if the issue persists.`
+        });
+        return;
+      }
+      
+      try {
+        // Create simple, bulletproof embed
+        const embed = new EmbedBuilder()
+          .setTitle(`Role Assignment Audit Log`)
+          .setDescription(`**Server:** ${interaction.guild?.name || 'Unknown'}`)
+          .setColor(0xc3ff00)
+          .setTimestamp();
+
+        Logger.debug(`Created base embed for ${auditEntries?.length || 0} entries`);
+
+        // Build simple field content without markdown links
+        let fieldValue = '';
+        
+        if (auditEntries && auditEntries.length > 0) {
+          Logger.debug(`Processing ${auditEntries.length} audit entries`);
+          
+          for (let i = 0; i < auditEntries.length; i++) {
+            const entry = auditEntries[i];
+            try {
+              const date = new Date(entry.created_at);
+              if (isNaN(date.getTime())) {
+                Logger.warn(`Invalid date for entry ${i + 1}: ${entry.created_at}`);
+                continue;
+              }
+              
+              const formattedDate = `<t:${Math.floor(date.getTime() / 1000)}:R>`;
+              
+              // Get the wallet address and create clickable link
+              let walletDisplay = 'Unknown';
+              if (entry.user_wallets && Array.isArray(entry.user_wallets) && entry.user_wallets.length > 0) {
+                const fullAddress = entry.user_wallets[0].address;
+                if (fullAddress && typeof fullAddress === 'string' && fullAddress.length > 10) {
+                  const truncatedAddress = `${fullAddress.substring(0, 5)}...${fullAddress.substring(fullAddress.length - 5)}`;
+                  const walletLink = `[${truncatedAddress}](https://ethscriptions.com/${fullAddress})`;
+                  walletDisplay = walletLink;
+                }
+              }
+              
+              const userName = entry.user_name || 'Unknown User';
+              const roleName = entry.role_name || entry.role_id || 'Unknown Role';
+              const actionText = entry.status === 'revoked' ? '🗑️' : '✅';
+              
+              const entryLine = `${actionText}│${userName}│${roleName} (${walletDisplay}) ${formattedDate}\n`;
+              
+              fieldValue += entryLine;
+              
+            } catch (entryError) {
+              Logger.error(`Error processing entry ${i + 1}:`, entryError);
+              // Continue with next entry
+            }
+          }
+        } else {
+          fieldValue = 'No activity found in the specified time period.';
+          Logger.debug('No entries found, using default message');
+        }
+
+        // Ensure field value isn't too long (Discord limit is 1024 chars per field)
+        if (fieldValue.length > 1000) {
+          fieldValue = fieldValue.substring(0, 900) + '\n... (truncated)';
+        }
+
+        Logger.debug(`Final field value length: ${fieldValue.length}`);
+
+        // Add the field to the embed
+        embed.addFields({
+          name: 'Activity:',
+          value: fieldValue.trim() || 'No activity found',
+          inline: false
+        });
+
+        // Add emoji key field only if there are results
+        if (auditEntries && auditEntries.length > 0) {
+          embed.addFields({
+            name: '​', // Zero-width space for invisible field name
+            value: '**Legend:**\u2003✅ = Added\u2003🗑️ = Removed',
+            inline: false
+          });
+        }
+
+        // Add footer with entry count and period
+        const entryCount = auditEntries ? auditEntries.length : 0;
+        embed.setFooter({ 
+          text: `Showing ${entryCount} entries │ Period: Last ${days} day${days > 1 ? 's' : ''}` 
+        });
+
+        Logger.debug('Attempting to send embed...');
+
+        await interaction.editReply({
+          embeds: [embed]
+        });
+        
+        Logger.debug('Successfully sent audit log embed');
+        
+      } catch (embedError) {
+        Logger.error('Error creating or sending embed:', embedError);
+        Logger.error('Embed error details:', {
+          message: embedError.message,
+          code: embedError.code,
+          stack: embedError.stack
+        });
+        
+        // Fallback to simple text response
+        const entryCount = auditEntries ? auditEntries.length : 0;
+        const fallbackContent = `📋 **Audit Log (Last ${days} day${days > 1 ? 's' : ''})**\n\n` +
+          `Found ${entryCount} role assignment${entryCount !== 1 ? 's' : ''} in the specified period.\n\n` +
+          `⚠️ **Display Issue**: Unable to format detailed view due to technical error.`;
+        
+        await interaction.editReply({
+          content: fallbackContent
+        });
+      }
+      
+    } catch (error) {
+      Logger.error('Error in handleAuditLog:', error);
+      Logger.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+        name: error.name
+      });
+      
+      try {
+        await interaction.editReply({
+          content: '❌ An error occurred while retrieving the audit log. Please try again later.'
+        });
+      } catch (editError) {
+        Logger.error('Failed to edit reply in handleAuditLog:', editError);
       }
     }
   }
