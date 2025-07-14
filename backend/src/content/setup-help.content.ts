@@ -68,39 +68,50 @@ export const SETUP_HELP_CONTENT: SetupHelpContent = {
       value: '**View role assignment history**\n' +
              '• Shows recent role additions (✅) and removals (🗑️)\n' +
              '• **Days**: Number of days to look back (1-30, default: 1)\n' +
-             '• Compact format displays up to 375 entries\n' +
-             '• Clickable wallet links to marketplace\n' +
-             '• Admin-only access for security\n' +
+             '• Compact format displays up to 375 entries per embed\n' +
+             '• Clickable wallet links to Ethscriptions.com marketplace\n' +
+             '• Admin-only access for security and privacy\n' +
+             '• Perfect for monitoring bot activity and user engagement\n' +
              '**Example**: `/setup audit-log days:7`\n\n',
       inline: false
     },
     {
       name: '💡 **Pro Tips**',
-      value: '• **Autocomplete**: Type to see available options\n' +
-             '• **Role Creation**: Type new role names to create them\n' +
-             '• **Duplicate Rules**: Bot warns about conflicts\n' +
-             '• **Undo System**: Most actions can be undone\n' +
-             '• **Case Sensitivity**: Role names preserve your casing',
+      value: '• **Autocomplete**: Shows only the 25 rarest options due to Discord limits\n' +
+             '• **Role Creation**: Type new role names to create them automatically\n' +
+             '• **Duplicate Rules**: Bot warns about conflicts before creating\n' +
+             '• **Undo System**: Most actions can be undone within a few minutes\n' +
+             '• **Case Sensitivity**: Role names preserve your exact casing\n' +
+             '• **Audit Trail**: Use audit-log to monitor all role changes',
       inline: false
     },
     {
       name: '⚠️ **Common Issues & Solutions**',
-      value: '**"Role hierarchy issue"** → Move bot role higher\n' +
-             '**"Verification not working"** → Use recover-verification\n' +
-             '**"Duplicate role warning"** → Decide if intentional\n' +
-             '**"Rule not found"** → Check with list-rules first\n' +
-             '**"Permission denied"** → Ensure admin permissions\n' +
-             '**"Invalid option combination"** → Discord autocomplete limitation (see below)',
+      value: '**"Role hierarchy issue"** → Move bot role higher in server settings\n' +
+             '**"Verification not working"** → Use recover-verification command\n' +
+             '**"Duplicate role warning"** → Decide if intentional, bot will prevent conflicts\n' +
+             '**"Rule not found"** → Check with list-rules first to confirm IDs\n' +
+             '**"Permission denied"** → Ensure admin permissions for the user\n' +
+             '**"Invalid option combination"** → See autocomplete caching issue above\n' +
+             '**"Attribute not showing"** → See 25-option limit above',
       inline: false
     },
     {
-      name: '🔄 **Discord Autocomplete Limitation**',
-      value: '**Issue**: Autocomplete may show outdated options when changing selections\n' +
-             '**Validation**: Bot checks all combinations when you submit the command\n' +
-             '**Solution**: If you get an "Invalid Option Combination" error:\n' +
-             '• Select options in order: Collection → Attribute Key → Attribute Value\n' +
-             '• Leave fields empty to allow ALL values for that criteria\n' +
-             '• The bot will guide you with specific error messages',
+      name: '🔢 **Discord 25-Option Limit**',
+      value: '**Technical Limitation**: Discord restricts autocomplete to 25 choices max\n' +
+             '**Smart Selection**: For attribute values, bot shows the 25 rarest options\n' +
+             '**Why Rarest?**: Helps you find unique traits more easily\n' +
+             '**Missing Options?**: If your desired value isn\'t listed, enter it manually\n' +
+             '**Empty Fields**: Allow ALL values for that criteria (broader matching)',
+      inline: false
+    },
+    {
+      name: '🔄 **Autocomplete Caching Issue**',
+      value: '**Discord Bug**: Options may appear outdated when changing selections\n' +
+             '**What Happens**: You select a collection, but attribute options don\'t update\n' +
+             '**Bot Protection**: Validates all combinations when you submit the command\n' +
+             '**Best Practice**: Select in order (Collection → Attribute Key → Attribute Value)\n' +
+             '**If Error Occurs**: Bot will guide you with specific error messages',
       inline: false
     },
     {
