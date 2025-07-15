@@ -118,62 +118,103 @@ export class VerifyComponent {
     const expired = expiry < Date.now();
     if (expired) return this.setState({ errorMessage: 'This verification link has expired.' });
 
-    // Create message to sign
-    const domain = {
-      name: 'verethfier',
-      version: '1',
-      chainId: 1,
-    };
+    try {
+      // Set signing state
+      this.setState({ messageSigning: true, errorMessage: null });
 
-    const types = {
-      Verification: [
-        { name: 'UserID', type: 'string' },
-        { name: 'UserTag', type: 'string' },
-        { name: 'ServerID', type: 'string' },
-        { name: 'ServerName', type: 'string' },
-        { name: 'Nonce', type: 'string' },
-        { name: 'Expiry', type: 'uint256' },
-      ]
-    };
+      // Create message to sign
+      const domain = {
+        name: 'verethfier',
+        version: '1',
+        chainId: 1,
+      };
 
-    const message = {
-      UserID: data.userId,
-      UserTag: data.userTag,
-      ServerID: data.discordId,
-      ServerName: data.discordName,
-      Nonce: data.nonce,
-      Expiry: data.expiry,
-    };
+      const types = {
+        Verification: [
+          { name: 'UserID', type: 'string' },
+          { name: 'UserTag', type: 'string' },
+          { name: 'ServerID', type: 'string' },
+          { name: 'ServerName', type: 'string' },
+          { name: 'Nonce', type: 'string' },
+          { name: 'Expiry', type: 'uint256' },
+        ]
+      };
 
-    const typedData = {
-      types,
-      domain,
-      message,
-      primaryType: 'Verification',
-    };
+      const message = {
+        UserID: data.userId,
+        UserTag: data.userTag,
+        ServerID: data.discordId,
+        ServerName: data.discordName,
+        Nonce: data.nonce,
+        Expiry: data.expiry,
+      };
 
-    const { signature, address } = await this.walletSvc.signTypedMessage(typedData);
-    if (!signature) return this.setState({ errorMessage: 'Failed to sign message' });
+      const typedData = {
+        types,
+        domain,
+        message,
+        primaryType: 'Verification',
+      };
 
-    return await firstValueFrom(
-      this.http.post(env.apiUrl + '/verify-signature', {
-        data: {
-          ...data,
-          address
-        },
-        signature
-      }).pipe(
-        map((res: any) => {
-          if (res.error) {
-            this.setState({ errorMessage: res.error });
+      const { signature, address } = await this.walletSvc.signTypedMessage(typedData);
+      
+      // Update state after signing
+      this.setState({ messageSigning: false, messageSigned: true });
+      
+      if (!signature) {
+        return this.setState({ errorMessage: 'Failed to sign message' });
+      }
+
+      await firstValueFrom(
+        this.http.post(env.apiUrl + '/verify-signature', {
+          data: {
+            ...data,
+            address
+          },
+          signature
+        }).pipe(
+          map((res: any) => {
+            if (res.error) {
+              this.setState({ errorMessage: res.error });
+              return;
+            }
+
+            this.setState({ messageVerified: true });
             return;
-          }
-
-          this.setState({ messageVerified: true });
-          return;
-        }),
-      )
-    );
+          }),
+          catchError((error) => {
+            // Handle HTTP errors (like when user doesn't have required assets)
+            let errorMessage = 'Verification failed. Please try again.';
+            
+            // Try different ways to extract the error message
+            if (error.error) {
+              if (typeof error.error === 'string') {
+                errorMessage = error.error;
+              } else if (error.error.message) {
+                errorMessage = error.error.message;
+              }
+            } else if (error.message) {
+              errorMessage = error.message;
+            }
+            
+            // If it's still the generic message, try to extract from statusText
+            if (errorMessage === 'Verification failed. Please try again.' && error.statusText) {
+              errorMessage = error.statusText;
+            }
+            
+            this.setState({ errorMessage });
+            return of(null);
+          })
+        )
+      );
+    } catch (error) {
+      // Handle wallet signing errors
+      const errorMessage = error instanceof Error ? error.message : 'Failed to sign message with wallet';
+      this.setState({ 
+        messageSigning: false,
+        errorMessage
+      });
+    }
   }
 
   /**

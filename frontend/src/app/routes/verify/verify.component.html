@@ -53,7 +53,8 @@
 
       <div
         class="step-2 step"
-        [class.active]="state.walletConnected && !state.messageVerified">
+        [class.active]="state.walletConnected && !state.messageVerified"
+        [class.disabled]="state.messageSigning">
 
         <div class="label">
           <span>2</span>
@@ -62,8 +63,16 @@
           <div class="title">Verify Ownership.</div>
           <div class="sub">Sign a message with your wallet to check your Ethscriptions collection for eligible roles in the <span class="pink">{{ data.discordName }}</span> Server.</div>
           <div class="actions">
-            <button (click)="verify(data)">
-              {{ state.messageVerified ? 'Verified' : 'Sign Message' }}
+            <button 
+              (click)="verify(data)"
+              [disabled]="state.messageSigning">
+              @if (state.messageSigning) {
+                Signing...
+              } @else if (state.messageVerified) {
+                Verified
+              } @else {
+                Sign Message
+              }
             </button>
           </div>
         </div>

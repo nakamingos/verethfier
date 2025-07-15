@@ -111,6 +111,28 @@ export class AppController {
         throw error;
       }
       
+      // Check if this is a user-friendly verification error that should be shown to the user
+      const userFriendlyErrors = [
+        'does not own the required assets',
+        'does not own any assets',
+        'No verification rules found',
+        'This verification link has expired',
+        'Invalid signature',
+        'Signature verification failed'
+      ];
+      
+      const isUserFriendlyError = userFriendlyErrors.some(pattern => 
+        errorMessage.includes(pattern)
+      );
+      
+      if (isUserFriendlyError) {
+        // Return user-friendly verification errors with BAD_REQUEST status
+        throw new HttpException(
+          errorMessage,
+          HttpStatus.BAD_REQUEST
+        );
+      }
+      
       // Convert unexpected errors to generic 500 responses to avoid information disclosure
       throw new HttpException(
         'Verification failed. Please try again.',
