@@ -1089,20 +1089,15 @@ export class AddRuleHandler {
 
         let valuesForKey: string[];
         if (slug === 'ALL') {
-          // Get values across all collections for this attribute key
-          valuesForKey = await this.dataSvc.getAttributeValues(attributeKey, 'ALL');
+          // Get ALL values across all collections for this attribute key (not just rarest 25)
+          valuesForKey = await this.dataSvc.getAllAttributeValues(attributeKey, 'ALL');
         } else {
-          // Get values for specific collection and attribute key
-          valuesForKey = await this.dataSvc.getAttributeValues(attributeKey, slug);
+          // Get ALL values for specific collection and attribute key (not just rarest 25)
+          valuesForKey = await this.dataSvc.getAllAttributeValues(attributeKey, slug);
         }
 
-        // Clean the attribute value (remove count suffix if present)
-        const cleanValues = valuesForKey.map(value => {
-          const match = value.match(/^(.+?)\s+\((\d+)×\)$/);
-          return match ? match[1] : value;
-        });
-
-        if (!cleanValues.includes(attributeValue)) {
+        // Values from getAllAttributeValues are already clean (no count suffix)
+        if (!valuesForKey.includes(attributeValue)) {
           const keyLocation = slug === 'ALL' ? 'any collection' : `collection "${slug}"`;
           return {
             isValid: false,
