@@ -77,7 +77,8 @@ export const SETUP_HELP_CONTENT: SetupHelpContent = {
     },
     {
       name: '💡 **Pro Tips**',
-      value: '• **Autocomplete**: Shows only the 25 rarest options due to Discord limits\n' +
+      value: '• **Autocomplete**: Shows 25 rarest options, but you can type any valid option\n' +
+             '• **Manual Entry**: Don\'t see your option? Just type it! Bot validates everything\n' +
              '• **Role Creation**: Type new role names to create them automatically\n' +
              '• **Duplicate Rules**: Bot warns about conflicts before creating\n' +
              '• **Undo System**: Most actions can be undone within a few minutes\n' +
@@ -92,26 +93,25 @@ export const SETUP_HELP_CONTENT: SetupHelpContent = {
              '**"Duplicate role warning"** → Decide if intentional, bot will prevent conflicts\n' +
              '**"Rule not found"** → Check with list-rules first to confirm IDs\n' +
              '**"Permission denied"** → Ensure admin permissions for the user\n' +
-             '**"Invalid option combination"** → See autocomplete caching issue above\n' +
-             '**"Attribute not showing"** → See 25-option limit above',
+             '**"Option not in autocomplete"** → Just type it manually! Bot supports all valid options',
       inline: false
     },
     {
-      name: '🔢 **Discord 25-Option Limit**',
-      value: '**Technical Limitation**: Discord restricts autocomplete to 25 choices max\n' +
-             '**Smart Selection**: For attribute values, bot shows the 25 rarest options\n' +
-             '**Why Rarest?**: Helps you find unique traits more easily\n' +
-             '**Missing Options?**: If your desired value isn\'t listed, enter it manually\n' +
+      name: '🔢 **Autocomplete System**',
+      value: '**Prioritization**: When you start typing, exact matches appear first\n' +
+             '**Rarest First**: For browsing, shows 25 rarest options to help find unique traits\n' +
+             '**Manual Entry**: Can\'t find your option? Type it anyway!\n' +
+             '**Validation**: Bot checks all entries when you submit\n' +
              '**Empty Fields**: Allow ALL values for that criteria (broader matching)',
       inline: false
     },
     {
-      name: '🔄 **Autocomplete Caching Issue**',
-      value: '**Discord Bug**: Options may appear outdated when changing selections\n' +
-             '**What Happens**: You select a collection, but attribute options don\'t update\n' +
-             '**Bot Protection**: Validates all combinations when you submit the command\n' +
-             '**Best Practice**: Select in order (Collection → Attribute Key → Attribute Value)\n' +
-             '**If Error Occurs**: Bot will guide you with specific error messages',
+      name: '🔄 **How It Works**',
+      value: '**Autocomplete**: Start typing to see exact matches prioritized first\n' +
+             '**Error Messages**: Clear, specific feedback when something goes wrong\n' +
+             '**Manual Entry**: Type any valid option, even if not in autocomplete\n' +
+             '**Performance**: Fast response times with daily data refresh\n' +
+             '**Validation**: Bot validates combinations using complete datasets',
       inline: false
     },
     {
