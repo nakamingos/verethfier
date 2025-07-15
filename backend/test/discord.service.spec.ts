@@ -7,6 +7,7 @@ import { VerificationService } from '../src/services/verification.service';
 import { DbService } from '../src/services/db.service';
 import { NonceService } from '../src/services/nonce.service';
 import { DataService } from '../src/services/data.service';
+import { CacheService } from '../src/services/cache.service';
 import { Logger } from '@nestjs/common';
 
 // Mock Discord.js client and related objects
@@ -116,6 +117,14 @@ const mockVerificationService = {
 
 const mockDataService = {
   getAllSlugs: jest.fn().mockResolvedValue(['crypto-punks', 'bored-apes', 'mutant-apes']),
+  getAttributeValues: jest.fn().mockResolvedValue([]),
+  getAllAttributeValues: jest.fn().mockResolvedValue([]),
+};
+
+const mockCacheService = {
+  getAttributeValues: jest.fn().mockResolvedValue([]),
+  getAllAttributeValues: jest.fn().mockResolvedValue([]),
+  cacheAllCollectionData: jest.fn().mockResolvedValue(undefined),
 };
 
 describe('DiscordService - Enhanced Tests', () => {
@@ -148,6 +157,7 @@ describe('DiscordService - Enhanced Tests', () => {
         { provide: DiscordCommandsService, useValue: mockDiscordCommandsService },
         { provide: VerificationService, useValue: mockVerificationService },
         { provide: DataService, useValue: mockDataService },
+        { provide: CacheService, useValue: mockCacheService },
       ],
     }).compile();
     service = module.get<DiscordService>(DiscordService);
