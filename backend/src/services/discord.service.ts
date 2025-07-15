@@ -8,6 +8,7 @@ import { DiscordVerificationService } from '@/services/discord-verification.serv
 import { DiscordCommandsService } from '@/services/discord-commands.service';
 import { DataService } from '@/services/data.service';
 import { VerificationService } from '@/services/verification.service';
+import { CacheService } from '@/services/cache.service';
 import { CONSTANTS } from '@/constants';
 import { SETUP_HELP_CONTENT } from '@/content/setup-help.content';
 
@@ -68,6 +69,7 @@ export class DiscordService implements OnModuleInit {
     private readonly discordCommandsSvc: DiscordCommandsService,
     private readonly verificationSvc: VerificationService,
     private readonly dataSvc: DataService,
+    private readonly cacheSvc: CacheService,
   ) {
     // Don't initialize during tests when Discord is disabled
     const isTestEnvironment = EnvironmentConfig.IS_TEST;
@@ -94,9 +96,33 @@ export class DiscordService implements OnModuleInit {
         await this.createSlashCommands();
         this.isInitialized = true;
         Logger.log('Discord bot fully initialized and ready');
+        
+        // Start cache warming in background
+        this.warmAutocompleteCache().catch(error => 
+          Logger.warn('Cache warming failed:', error.message)
+        );
       } catch (error) {
         Logger.error('Failed to initialize Discord bot - continuing without Discord functionality', error.message);
       }
+    }
+  }
+
+  /**
+   * Start autocomplete cache warming (non-blocking)
+   */
+  private async warmAutocompleteCache(): Promise<void> {
+    try {
+      const isFresh = await this.cacheSvc.isComprehensiveCacheFresh();
+      if (isFresh) {
+        Logger.log('📋 Autocomplete cache is already fresh, skipping warming');
+        return;
+      }
+
+      Logger.log('🔥 Starting autocomplete cache warming in background...');
+      await this.cacheSvc.cacheAllCollectionData(this.dataSvc);
+      
+    } catch (error) {
+      Logger.warn('Cache warming failed, will retry later:', error.message);
     }
   }
 
@@ -559,7 +585,7 @@ export class DiscordService implements OnModuleInit {
       // Guard against handling interactions before full initialization
       if (!this.isInitialized) {
         Logger.debug('Ignoring autocomplete interaction - service not fully initialized yet');
-        await interaction.respond([]);
+        await this.safeRespond(interaction, []);
         return;
       }
 
@@ -568,14 +594,14 @@ export class DiscordService implements OnModuleInit {
       const guild = interaction.guild;
       
       if (!guild) {
-        await interaction.respond([]);
+        await this.safeRespond(interaction, []);
         return;
       }
 
       // Get bot member to check role hierarchy
       const botMember = guild.members.me;
       if (!botMember) {
-        await interaction.respond([]);
+        await this.safeRespond(interaction, []);
         return;
       }
 
@@ -619,15 +645,11 @@ export class DiscordService implements OnModuleInit {
         });
       }
 
-      await interaction.respond(choices);
+      await this.safeRespond(interaction, choices);
     } catch (error) {
       Logger.error('Error in handleRoleAutocomplete:', error);
-      // Silently fail with empty response to avoid "Unknown interaction" errors
-      try {
-        await interaction.respond([]);
-      } catch (respondError) {
-        Logger.debug('Failed to respond to autocomplete interaction (likely expired):', respondError.message);
-      }
+      // Use safeRespond for graceful error handling
+      await this.safeRespond(interaction, []);
     }
   }
 
@@ -641,14 +663,17 @@ export class DiscordService implements OnModuleInit {
       // Guard against handling interactions before full initialization
       if (!this.isInitialized) {
         Logger.debug('Ignoring autocomplete interaction - service not fully initialized yet');
-        await interaction.respond([]);
+        await this.safeRespond(interaction, []);
         return;
       }
 
       const focusedValue = interaction.options.getFocused().toLowerCase();
       
-      // Get all available slugs from the marketplace database
-      const allSlugs = await this.dataSvc.getAllSlugs();
+      // Get all available slugs with cache and timeout protection
+      const allSlugs = await Promise.race([
+        this.dataSvc.getAllSlugs(),
+        this.timeoutPromise(2000, [])
+      ]);
       
       // Filter slugs based on user input and exclude 'all-collections' as it's handled by leaving slug empty
       const filteredSlugs = allSlugs
@@ -662,15 +687,11 @@ export class DiscordService implements OnModuleInit {
         value: slug
       }));
 
-      await interaction.respond(choices);
+      await this.safeRespond(interaction, choices);
     } catch (error) {
       Logger.error('Error in handleSlugAutocomplete:', error);
-      // Silently fail with empty response to avoid "Unknown interaction" errors
-      try {
-        await interaction.respond([]);
-      } catch (respondError) {
-        Logger.debug('Failed to respond to autocomplete interaction (likely expired):', respondError.message);
-      }
+      // Use safeRespond for graceful error handling
+      await this.safeRespond(interaction, []);
     }
   }
 
@@ -684,7 +705,7 @@ export class DiscordService implements OnModuleInit {
       // Guard against handling interactions before full initialization
       if (!this.isInitialized) {
         Logger.debug('Ignoring autocomplete interaction - service not fully initialized yet');
-        await interaction.respond([]);
+        await this.safeRespond(interaction, []);
         return;
       }
 
@@ -693,7 +714,7 @@ export class DiscordService implements OnModuleInit {
       
       // Only provide autocomplete if a slug has been specifically selected
       if (!selectedSlug) {
-        await interaction.respond([
+        await this.safeRespond(interaction, [
           { name: 'Please select a collection first', value: 'ALL' }
         ]);
         return;
@@ -702,8 +723,11 @@ export class DiscordService implements OnModuleInit {
       // Add debug logging to track context
       Logger.debug(`Autocomplete for attribute_key: slug="${selectedSlug}", search="${focusedValue}"`);
       
-      // Get all available attribute keys for the selected slug
-      const allKeys = await this.dataSvc.getAttributeKeys(selectedSlug);
+      // Get all available attribute keys for the selected slug with cache and timeout protection
+      const allKeys = await Promise.race([
+        this.cacheSvc.getAttributeKeys(selectedSlug, this.dataSvc),
+        this.timeoutPromise(2000, [])
+      ]);
       
       // Improved filtering: show all options if user is editing "ALL" or field is empty
       // Also show all options if focused value is very short (1-2 chars) to avoid over-filtering
@@ -731,22 +755,19 @@ export class DiscordService implements OnModuleInit {
         choices.push({ name: 'No attributes found', value: 'ALL' });
       }
 
-      await interaction.respond(choices);
+      await this.safeRespond(interaction, choices);
     } catch (error) {
       Logger.error('Error in handleAttributeKeyAutocomplete:', error);
-      // Silently fail with empty response to avoid "Unknown interaction" errors
-      try {
-        await interaction.respond([
-          { name: 'Error loading attributes', value: 'ALL' }
-        ]);
-      } catch (respondError) {
-        Logger.debug('Failed to respond to autocomplete interaction (likely expired):', respondError.message);
-      }
+      // Use safeRespond for graceful error handling
+      await this.safeRespond(interaction, [
+        { name: 'Error loading attributes', value: 'ALL' }
+      ]);
     }
   }
 
   /**
-   * Handles attribute value autocomplete for the add-rule command.
+   * Enhanced attribute value autocomplete that allows manual entry
+   * Prioritizes user input and includes typed values even if not in "rarest 25"
    * Only shows attribute values if both slug and attribute key have been selected.
    * @param interaction - The autocomplete interaction.
    */
@@ -755,106 +776,106 @@ export class DiscordService implements OnModuleInit {
       // Guard against handling interactions before full initialization
       if (!this.isInitialized) {
         Logger.debug('Ignoring autocomplete interaction - service not fully initialized yet');
-        await interaction.respond([]);
+        await this.safeRespond(interaction, []);
         return;
       }
 
-      const focusedValue = interaction.options.getFocused().toLowerCase();
+      const focusedValue = interaction.options.getFocused();
       const selectedSlug = interaction.options.getString('slug');
       const selectedAttributeKey = interaction.options.getString('attribute_key');
       
       // Only provide autocomplete if both slug and attribute key have been specifically selected
       if (!selectedSlug || !selectedAttributeKey) {
-        await interaction.respond([
+        await this.safeRespond(interaction, [
           { name: 'Please select collection and attribute key first', value: 'ALL' }
         ]);
         return;
       }
       
-      // Add debug logging to track cache issues
       Logger.debug(`Autocomplete for attribute_value: slug="${selectedSlug}", key="${selectedAttributeKey}", search="${focusedValue}"`);
-      
-      // Add timeout to prevent Discord interaction timeout
-      // Increased timeout for full pagination to ensure accurate counts
-      const timeoutPromise = new Promise<string[]>((_, reject) => {
-        setTimeout(() => reject(new Error('Autocomplete timeout')), 3000); // 3 second timeout for full pagination
-      });
-      
-      let allValues: string[];
-      try {
-        // Race between data fetch and timeout
-        // Use the new autocomplete-specific method that returns clean values
-        allValues = await Promise.race([
-          this.dataSvc.getAttributeValuesForAutocomplete(selectedAttributeKey, selectedSlug),
-          timeoutPromise
+
+      // Handle empty or very short input - show rarest 25
+      if (!focusedValue || focusedValue.length <= 2) {
+        const values = await Promise.race([
+          this.cacheSvc.getAttributeValues(selectedSlug, selectedAttributeKey, this.dataSvc),
+          this.timeoutPromise(2000, [])
         ]);
-      } catch (timeoutError) {
-        Logger.warn(`Autocomplete timeout for slug="${selectedSlug}", key="${selectedAttributeKey}"`);
-        await interaction.respond([
-          { name: 'Loading... (try typing to filter)', value: 'ALL' }
+
+        const choices = values.slice(0, 25).map(value => ({
+          name: value,
+          value: value
+        }));
+
+        await this.safeRespond(interaction, choices.length > 0 ? choices : [
+          { name: 'No values available', value: 'ALL' }
         ]);
         return;
       }
-      
-      // Improved filtering: show all options if user is editing "ALL" or field is empty
-      // Also show all options if focused value is very short (1-2 chars) to avoid over-filtering
-      let filteredValues;
-      if (!focusedValue || focusedValue === 'all' || focusedValue.length <= 2) {
-        // Show all options when starting fresh or editing "ALL"
-        // Preserve the rarity-based order from getAttributeValues
-        filteredValues = allValues.slice(0, 25);
-      } else {
-        // Only filter when user has typed something specific (3+ chars)
-        // When filtering, we need to preserve the original order (rarity-based)
-        // Create a map of original positions to maintain order
-        const originalOrder = new Map(allValues.map((value, index) => [value, index]));
-        
-        filteredValues = allValues
-          .filter(value => {
-            // Values are now clean, so we can filter directly
-            return value.toLowerCase().includes(focusedValue);
-          })
-          .slice(0, 25)
-          .sort((a, b) => {
-            // Preserve original rarity-based order
-            return (originalOrder.get(a) || 0) - (originalOrder.get(b) || 0);
-          });
-      }
-      
-      // Don't re-sort here - preserve the rarity-based order from getAttributeValues
-      // No need to handle 'ALL' specially since it's not included in the results anymore
 
-      const choices = filteredValues.map(value => {
-        // Values are now clean (no occurrence counts), so we can use them directly
-        Logger.debug(`Processing clean autocomplete value: "${value}"`);
-        return {
-          name: value // Clean value for display
-          , value: value // Same clean value for submission
-        };
+      // For longer input, get ALL values and prioritize user's input
+      const allValues = await Promise.race([
+        this.cacheSvc.getAllAttributeValues(selectedSlug, selectedAttributeKey, this.dataSvc),
+        this.timeoutPromise(2000, [])
+      ]);
+
+      if (allValues.length === 0) {
+        await this.safeRespond(interaction, [
+          { name: 'No values found', value: 'ALL' }
+        ]);
+        return;
+      }
+
+      // Smart filtering with user input priority
+      const userInput = focusedValue.toLowerCase();
+      const choices = [];
+
+      // 1. Exact match (highest priority)
+      const exactMatch = allValues.find(value => 
+        value.toLowerCase() === userInput
+      );
+      if (exactMatch) {
+        choices.push({ name: `✓ ${exactMatch}`, value: exactMatch });
+      }
+
+      // 2. Starts with user input
+      const startsWith = allValues.filter(value => 
+        value.toLowerCase().startsWith(userInput) && 
+        value.toLowerCase() !== userInput // Don't duplicate exact match
+      );
+      
+      // 3. Contains user input
+      const contains = allValues.filter(value => 
+        value.toLowerCase().includes(userInput) && 
+        !value.toLowerCase().startsWith(userInput) // Don't duplicate starts-with
+      );
+
+      // Combine results, limiting to 25 total
+      const combinedResults = [
+        ...startsWith.slice(0, 12), // Up to 12 "starts with" matches
+        ...contains.slice(0, 12)    // Up to 12 "contains" matches
+      ];
+
+      // Add to choices
+      combinedResults.forEach(value => {
+        choices.push({ name: value, value: value });
       });
 
-      // Ensure we always have at least one option
+      // If no matches found but user typed something, allow manual entry
       if (choices.length === 0) {
         choices.push({ 
-          name: 'No values found', 
-          value: 'ALL' 
+          name: `✏️ Use "${focusedValue}" (manual entry)`, 
+          value: focusedValue 
         });
       }
 
-      Logger.debug(`Responding with ${choices.length} choices for ${selectedAttributeKey}`);
-      Logger.debug('Full choices array:', JSON.stringify(choices.slice(0, 3), null, 2)); // Log first 3 choices
+      // Ensure we don't exceed Discord's 25 choice limit
+      await this.safeRespond(interaction, choices.slice(0, 25));
 
-      await interaction.respond(choices);
     } catch (error) {
       Logger.error('Error in handleAttributeValueAutocomplete:', error);
-      // Silently fail with empty response to avoid "Unknown interaction" errors
-      try {
-        await interaction.respond([
-          { name: 'Error loading values', value: 'ALL' }
-        ]);
-      } catch (respondError) {
-        Logger.debug('Failed to respond to autocomplete interaction (likely expired):', respondError.message);
-      }
+      await this.safeRespond(interaction, [
+        { name: 'Error loading values', value: 'ALL' }
+      ]);
     }
   }
 
@@ -1054,5 +1075,27 @@ export class DiscordService implements OnModuleInit {
         Logger.error('Failed to edit reply in handleAuditLog:', editError);
       }
     }
+  }
+
+  /**
+   * Safe response helper that handles expired interactions
+   */
+  private async safeRespond(interaction: AutocompleteInteraction, choices: any[]): Promise<void> {
+    try {
+      await interaction.respond(choices.slice(0, 25)); // Ensure max 25 choices
+    } catch (error) {
+      if (error.code === 10062) {
+        Logger.debug('Autocomplete interaction expired - ignoring');
+      } else {
+        Logger.warn('Failed to respond to autocomplete:', error.message);
+      }
+    }
+  }
+
+  /**
+   * Helper method to create timeout promises for autocomplete operations
+   */
+  private timeoutPromise<T>(timeoutMs: number, defaultValue: T): Promise<T> {
+    return new Promise<T>((resolve) => setTimeout(() => resolve(defaultValue), timeoutMs));
   }
 }

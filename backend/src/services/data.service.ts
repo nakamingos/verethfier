@@ -328,6 +328,103 @@ export class DataService {
   }
 
   /**
+   * Get ALL attribute values for a collection + attribute (not limited to rarest 25)
+   * Used for autocomplete filtering to allow manual entry of any valid value
+   * 
+   * @param attributeKey - The attribute key to search for
+   * @param slug - Collection slug to filter by
+   * @returns Array of ALL unique attribute values (no rarity filtering)
+   */
+  async getAllAttributeValues(attributeKey: string, slug: string): Promise<string[]> {
+    try {
+      AppLogger.debug(`Getting ALL attribute values for ${slug}:${attributeKey}`);
+      
+      if (!attributeKey || attributeKey === 'ALL') {
+        return [];
+      }
+
+      // Use the same table and pagination logic as getAttributeValues but without rarity filtering
+      const allData = [];
+      let page = 0;
+      const pageSize = 2000;
+      const maxPages = 5;
+
+      while (page < maxPages) {
+        const offset = page * pageSize;
+        
+        let query = supabase
+          .from('attributes_new')
+          .select('values');
+
+        // Handle specific slug vs all collections
+        if (slug && slug !== 'ALL' && slug !== 'all-collections') {
+          query = query.eq('slug', slug);
+        }
+        // For 'ALL' case, don't add slug filter to get data from all collections
+
+        const { data: pageData, error } = await query.range(offset, offset + pageSize - 1);
+
+        if (error) {
+          AppLogger.error(`Error fetching ALL attribute values for ${slug}:${attributeKey}:`, error.message);
+          return [];
+        }
+
+        if (!pageData || pageData.length === 0) {
+          break;
+        }
+
+        allData.push(...pageData);
+
+        if (pageData.length < pageSize) {
+          break;
+        }
+
+        page++;
+      }
+
+      // Extract all unique values without frequency counting
+      const allUniqueValues = new Set<string>();
+      
+      // Generate possible key variations for case-insensitive matching
+      const keyVariations = Array.from(new Set([
+        attributeKey,
+        attributeKey.charAt(0).toUpperCase() + attributeKey.slice(1).toLowerCase(),
+        attributeKey.toLowerCase(),
+        attributeKey.toUpperCase()
+      ]));
+
+      allData.forEach(item => {
+        if (item.values && typeof item.values === 'object') {
+          let foundValue = false;
+          
+          keyVariations.forEach(keyVariation => {
+            if (!foundValue && item.values.hasOwnProperty(keyVariation)) {
+              const value = item.values[keyVariation];
+              if (value !== null && value !== undefined) {
+                const valueStr = value.toString().trim();
+                if (valueStr.length > 0) {
+                  allUniqueValues.add(valueStr);
+                  foundValue = true;
+                }
+              }
+            }
+          });
+        }
+      });
+
+      // Convert to sorted array
+      const result = Array.from(allUniqueValues).sort();
+      
+      AppLogger.debug(`Found ${result.length} total unique values for ${slug}:${attributeKey}`);
+      return result;
+
+    } catch (error) {
+      AppLogger.error(`Failed to get ALL attribute values for ${slug}:${attributeKey}:`, error);
+      return [];
+    }
+  }
+
+  /**
    * Check asset ownership with specific criteria (slug, attributes, minimum count)
    * 
    * @param address - Wallet address to check

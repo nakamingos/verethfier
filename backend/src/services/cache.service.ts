@@ -20,6 +20,10 @@ export class CacheService {
     GUILD_ROLES: 600,  // 10 minutes - Discord roles are relatively stable
     SLUGS: 3600,       // 1 hour - Collection slugs rarely change
     NONCES: 300,       // 5 minutes - Nonce expiry time
+    // Autocomplete cache TTLs (24-hour refresh cycle)
+    ATTRIBUTE_KEYS: 86400,      // 24 hours - Attribute keys are stable
+    ATTRIBUTE_VALUES: 86400,    // 24 hours - Values change infrequently
+    AUTOCOMPLETE_DATA: 86400,   // 24 hours - Full autocomplete dataset
   } as const;
 
   /**
@@ -158,5 +162,192 @@ export class CacheService {
    */
   static getTTL() {
     return CacheService.TTL;
+  }
+
+  /**
+   * Cache all attribute keys for all collections
+   * This creates a comprehensive cache for instant autocomplete
+   */
+  async cacheAllCollectionData(dataSvc: any): Promise<void> {
+    AppLogger.log('🔥 Starting comprehensive autocomplete cache warming...');
+    const startTime = Date.now();
+
+    try {
+      // Step 1: Get and cache all slugs
+      const allSlugs = await this.getOrSet(
+        'slugs:all',
+        () => dataSvc.getAllSlugs(),
+        CacheService.TTL.SLUGS
+      ) as string[];
+
+      AppLogger.debug(`Caching data for ${allSlugs.length} collections`);
+
+      // Step 2: Cache attribute keys for ALL collections
+      const keyPromises = allSlugs
+        .filter(slug => slug !== 'all-collections')
+        .map(async (slug, index) => {
+          try {
+            // Add small delay to avoid overwhelming the API
+            if (index > 0 && index % 10 === 0) {
+              await this.delay(100); // 100ms delay every 10 requests
+            }
+
+            const keys = await this.getOrSet(
+              `attributes:keys:${slug}`,
+              () => dataSvc.getAttributeKeys(slug),
+              CacheService.TTL.ATTRIBUTE_KEYS
+            ) as string[];
+
+            AppLogger.debug(`✅ Cached ${keys.length} attribute keys for ${slug}`);
+            return { slug, success: true, keyCount: keys.length };
+            
+          } catch (error) {
+            AppLogger.warn(`❌ Failed to cache keys for ${slug}:`, error.message);
+            return { slug, success: false, error: error.message };
+          }
+        });
+
+      const keyResults = await Promise.allSettled(keyPromises);
+      const successfulKeys = keyResults.filter(r => 
+        r.status === 'fulfilled' && r.value.success
+      ).length;
+
+      AppLogger.log(`✅ Cached attribute keys for ${successfulKeys}/${allSlugs.length} collections`);
+
+      // Step 3: Cache the most common attribute values
+      // We'll only cache values for attributes that appear frequently across collections
+      await this.cacheCommonAttributeValues(allSlugs, dataSvc);
+
+      AppLogger.logWithTiming('Comprehensive autocomplete cache warming completed', startTime);
+      
+      // Store cache completion timestamp
+      await this.set('cache:last_full_update', new Date(), CacheService.TTL.AUTOCOMPLETE_DATA);
+      
+    } catch (error) {
+      AppLogger.error('Comprehensive cache warming failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Cache attribute values for the most common attributes across collections
+   */
+  private async cacheCommonAttributeValues(allSlugs: string[], dataSvc: any): Promise<void> {
+    AppLogger.debug('Caching common attribute values...');
+    
+    // Common attribute names that appear in most NFT collections
+    const commonAttributes = [
+      'Background', 'Eyes', 'Clothes', 'Hat', 'Mouth', 'Trait', 'Type', 
+      'Body', 'Skin', 'Hair', 'Accessories', 'Earring', 'Face'
+    ];
+
+    const valuePromises = [];
+    let totalValueCaches = 0;
+
+    for (const slug of allSlugs.slice(0, 50)) { // Limit to first 50 collections for values
+      // Get the cached keys for this collection
+      const cachedKeys = await this.get<string[]>(`attributes:keys:${slug}`);
+      if (!cachedKeys) continue;
+
+      // Find which common attributes this collection has
+      const matchingAttributes = cachedKeys.filter(key => 
+        commonAttributes.some(common => 
+          key.toLowerCase().includes(common.toLowerCase())
+        )
+      );
+
+      // Cache values for matching attributes
+      for (const attributeKey of matchingAttributes.slice(0, 5)) { // Max 5 per collection
+        valuePromises.push(
+          this.cacheAttributeValuesForKey(slug, attributeKey, dataSvc)
+            .then(() => totalValueCaches++)
+            .catch(error => 
+              AppLogger.warn(`Failed to cache values for ${slug}:${attributeKey}:`, error.message)
+            )
+        );
+      }
+    }
+
+    await Promise.allSettled(valuePromises);
+    AppLogger.debug(`✅ Cached attribute values for ${totalValueCaches} attribute combinations`);
+  }
+
+  /**
+   * Cache attribute values for a specific collection + attribute
+   */
+  private async cacheAttributeValuesForKey(slug: string, attributeKey: string, dataSvc: any): Promise<void> {
+    const cacheKey = `attributes:values:${slug}:${attributeKey}`;
+    await this.getOrSet(
+      cacheKey,
+      () => dataSvc.getAttributeValuesForAutocomplete(attributeKey, slug),
+      CacheService.TTL.ATTRIBUTE_VALUES
+    );
+  }
+
+  /**
+   * Get cached attribute keys with fallback
+   */
+  async getAttributeKeys(slug: string, dataSvc: any): Promise<string[]> {
+    return this.getOrSet(
+      `attributes:keys:${slug}`,
+      () => dataSvc.getAttributeKeys(slug),
+      CacheService.TTL.ATTRIBUTE_KEYS
+    ) as Promise<string[]>;
+  }
+
+  /**
+   * Get cached attribute values with fallback
+   */
+  async getAttributeValues(slug: string, attributeKey: string, dataSvc: any): Promise<string[]> {
+    return this.getOrSet(
+      `attributes:values:${slug}:${attributeKey}`,
+      () => dataSvc.getAttributeValuesForAutocomplete(attributeKey, slug),
+      CacheService.TTL.ATTRIBUTE_VALUES
+    ) as Promise<string[]>;
+  }
+
+  /**
+   * Get ALL cached attribute values (not limited to rarest 25) for manual entry support
+   * This allows users to type any valid attribute value, even if it's not in the top autocomplete results
+   */
+  async getAllAttributeValues(slug: string, attributeKey: string, dataSvc: any): Promise<string[]> {
+    return this.getOrSet(
+      `attributes:all_values:${slug}:${attributeKey}`,
+      () => dataSvc.getAllAttributeValues(attributeKey, slug),
+      CacheService.TTL.ATTRIBUTE_VALUES
+    ) as Promise<string[]>;
+  }
+
+  /**
+   * Check if comprehensive cache is available and fresh
+   */
+  async isComprehensiveCacheFresh(): Promise<boolean> {
+    const lastUpdate = await this.get<Date>('cache:last_full_update');
+    if (!lastUpdate) return false;
+    
+    const age = Date.now() - new Date(lastUpdate).getTime();
+    return age < (CacheService.TTL.AUTOCOMPLETE_DATA * 1000);
+  }
+
+  /**
+   * Get cache statistics for monitoring
+   */
+  async getCacheStats(): Promise<any> {
+    const slugs = await this.getCachedSlugs();
+    const lastUpdate = await this.get<Date>('cache:last_full_update');
+    
+    return {
+      totalCollections: slugs?.length || 0,
+      lastFullUpdate: lastUpdate,
+      isFresh: await this.isComprehensiveCacheFresh(),
+      cacheAge: lastUpdate ? Date.now() - new Date(lastUpdate).getTime() : null
+    };
+  }
+
+  /**
+   * Small delay helper for rate limiting
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
