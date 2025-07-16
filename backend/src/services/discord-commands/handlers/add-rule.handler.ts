@@ -18,6 +18,8 @@ import { DiscordService } from '../../discord.service';
 import { DataService } from '../../data.service';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
 import { RuleConfirmationInteractionHandler } from '../interactions/rule-confirmation.interaction';
+import { validateRuleInputParams, formatAttribute } from '../utils/rule-validation.util';
+import { findOrCreateRole } from '../utils/role-management.util';
 import { DuplicateRuleConfirmationInteractionHandler } from '../interactions/duplicate-rule-confirmation.interaction';
 
 /**
@@ -63,7 +65,7 @@ export class AddRuleHandler {
       const { channel, roleName, slug, attributeKey, attributeValue, minItems } = params;
 
       // Find or create the role
-      const roleResult = await this.findOrCreateRole(interaction, roleName);
+      const roleResult = await findOrCreateRole(interaction, roleName);
       if (!roleResult) {
         return; // Error already handled in findOrCreateRole
       }
@@ -254,90 +256,6 @@ export class AddRuleHandler {
     }
 
     return true; // No duplicates found
-  }
-
-  /**
-   * Finds an existing role or creates a new one
-   * @returns Role if successful, null if there was an error (error already sent to user)
-   */
-  private async findOrCreateRole(
-    interaction: ChatInputCommandInteraction, 
-    roleName: string
-  ): Promise<{ role: Role; wasNewlyCreated: boolean } | null> {
-    // Strip @ prefix if present (users can enter @RoleName or RoleName)
-    const cleanRoleName = roleName.startsWith('@') ? roleName.slice(1) : roleName;
-    
-    // Try to find existing role (including ones we can't manage)
-    let role = interaction.guild.roles.cache.find(r => 
-      r.name.toLowerCase() === cleanRoleName.toLowerCase()
-    );
-
-    // If role exists, check if we can manage it or provide appropriate error
-    if (role) {
-      if (!role.editable) {
-        await interaction.editReply({
-          embeds: [AdminFeedback.error(
-            'Role Hierarchy Issue',
-            `A role named "${cleanRoleName}" already exists but is positioned higher than the bot's role. The bot cannot manage this role.`,
-            [
-              'Use a different role name',
-              'Move the bot\'s role higher in the server settings',
-              `Ask an admin to move the "${cleanRoleName}" role below the bot's role`
-            ]
-          )]
-        });
-        return null;
-      }
-      // Role exists and is manageable - we'll use it
-      return { role, wasNewlyCreated: false };
-    }
-
-    // If role doesn't exist, create it
-    // Double-check that no role with this name exists anywhere in the server
-    const existingRoleWithName = interaction.guild.roles.cache.find(r => 
-      r.name.toLowerCase() === cleanRoleName.toLowerCase()
-    );
-    
-    if (existingRoleWithName) {
-      await interaction.editReply({
-        embeds: [AdminFeedback.error(
-          'Duplicate Role Name',
-          `A role named "${cleanRoleName}" already exists in this server.`,
-          ['Choose a different name for the new role']
-        )]
-      });
-      return null;
-    }
-
-    try {
-      // Get bot member to determine role position
-      const botMember = interaction.guild.members.me;
-      let position = undefined;
-      
-      if (botMember) {
-        // Create role below bot's highest role
-        const botHighestPosition = botMember.roles.highest.position;
-        position = Math.max(1, botHighestPosition - 1);
-      }
-
-      role = await interaction.guild.roles.create({
-        name: cleanRoleName,
-        color: 'Blue', // Default color
-        position: position,
-        reason: `Auto-created for verification rule by ${interaction.user.tag}`
-      });
-
-      return { role, wasNewlyCreated: true };
-    } catch (error) {
-      await interaction.editReply({
-        embeds: [AdminFeedback.error(
-          'Role Creation Failed',
-          `Failed to create role "${cleanRoleName}": ${error.message}`,
-          ['Try again with a different role name']
-        )]
-      });
-      return null;
-    }
   }
 
   /**

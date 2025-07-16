@@ -288,27 +288,5 @@ export class DynamicRoleService {
     };
   }
 
-  /**
-   * TEST METHOD: Manually test asset ownership checking
-   */
-  async testAssetOwnership(address: string, slug: string, attributeKey: string, attributeValue: string, minItems: number): Promise<void> {
-    Logger.log(`🧪 Testing asset ownership for address: ${address}`);
-    Logger.log(`🧪 Rule criteria: slug=${slug}, attributeKey=${attributeKey}, attributeValue=${attributeValue}, minItems=${minItems}`);
-    
-    try {
-      const matchingAssets = await this.dataSvc.checkAssetOwnershipWithCriteria(
-        address,
-        slug,
-        attributeKey,
-        attributeValue,
-        minItems
-      );
-      
-      Logger.log(`🧪 Result: ${matchingAssets} matching assets found`);
-      Logger.log(`🧪 Qualifies: ${matchingAssets >= minItems ? 'YES' : 'NO'}`);
-      
-    } catch (error) {
-      Logger.error(`🧪 Test failed:`, error.message);
-    }
-  }
+
 }

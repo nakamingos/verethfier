@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ChatInputCommandInteraction, MessageFlags } from 'discord.js';
 import { DbService } from '../../db.service';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
+import { formatAttribute } from '../utils/rule-validation.util';
 
 /**
  * List Rules Command Handler
@@ -80,26 +81,10 @@ export class ListRulesHandler {
    * Formats a single rule for display
    */
   private formatSingleRule(rule: any): string {
-    const attribute = this.formatAttribute(rule.attribute_key, rule.attribute_value);
+    const attribute = formatAttribute(rule.attribute_key, rule.attribute_value);
     const slug = rule.slug || 'ALL';
     const minItems = rule.min_items || 1;
 
     return `ID: ${rule.id} | Channel: <#${rule.channel_id}> | Role: <@&${rule.role_id}> | Slug: ${slug} | Attr: ${attribute} | Min: ${minItems}`;
-  }
-
-  /**
-   * Formats attribute key/value pairs for display
-   */
-  private formatAttribute(key: string, value: string): string {
-    if (key && key !== 'ALL' && value && value !== 'ALL') {
-      return `${key}=${value}`;
-    }
-    if (key && key !== 'ALL' && (!value || value === 'ALL')) {
-      return `${key} (any value)`;
-    }
-    if ((!key || key === 'ALL') && value && value !== 'ALL') {
-      return `ALL=${value}`;
-    }
-    return 'ALL';
   }
 }

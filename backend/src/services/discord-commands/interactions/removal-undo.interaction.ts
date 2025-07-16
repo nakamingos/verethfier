@@ -3,6 +3,7 @@ import { ButtonInteraction, ChatInputCommandInteraction, ComponentType, ActionRo
 import { DbService } from '../../db.service';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
 import { RestoreUndoInteractionHandler } from './restore-undo.interaction';
+import { formatAttribute } from '../utils/rule-validation.util';
 
 /**
  * Removal Undo Interaction Handler
@@ -375,7 +376,7 @@ export class RemovalUndoInteractionHandler {
       // Add clean rule info for each restored rule using list format
       successful.forEach(s => {
         const rule = s.rule || s.originalData;
-        const attribute = this.formatAttribute(rule.attribute_key, rule.attribute_value);
+        const attribute = formatAttribute(rule.attribute_key, rule.attribute_value);
         const slug = rule.slug || 'ALL';
         const minItems = rule.min_items || 1;
         
@@ -424,22 +425,6 @@ export class RemovalUndoInteractionHandler {
   }
 
   /**
-   * Formats attribute key/value pairs for display
-   */
-  private formatAttribute(key: string, value: string): string {
-    if (key && key !== 'ALL' && value && value !== 'ALL') {
-      return `${key}=${value}`;
-    }
-    if (key && key !== 'ALL' && (!value || value === 'ALL')) {
-      return `${key} (any value)`;
-    }
-    if ((!key || key === 'ALL') && value && value !== 'ALL') {
-      return `ALL=${value}`;
-    }
-    return 'ALL';
-  }
-
-  /**
    * Creates detailed rule information fields for consistent display
    */
   private createRuleInfoFields(ruleData: any): any[] {
@@ -451,7 +436,7 @@ export class RemovalUndoInteractionHandler {
       },
       {
         name: '**Attribute**',
-        value: this.formatAttribute(ruleData.attribute_key || 'ALL', ruleData.attribute_value || 'ALL'),
+        value: formatAttribute(ruleData.attribute_key || 'ALL', ruleData.attribute_value || 'ALL'),
         inline: true
       },
       {

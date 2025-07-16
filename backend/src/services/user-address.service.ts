@@ -241,34 +241,5 @@ export class UserAddressService {
     }
   }
 
-  /**
-   * Clean up old verification records (optional maintenance)
-   */
-  async cleanupOldVerifications(daysOld: number = 90): Promise<number> {
-    try {
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-      
-      this.logger.debug(`Cleaning up verifications older than ${cutoffDate.toISOString()}`);
 
-      const { data, error } = await this.supabase
-        .from('user_wallets')
-        .delete()
-        .lt('last_verified_at', cutoffDate.toISOString())
-        .select('id');
-
-      if (error) {
-        this.logger.error(`Error during cleanup:`, error);
-        return 0;
-      }
-
-      const deletedCount = data?.length || 0;
-      this.logger.log(`Cleaned up ${deletedCount} old verification records`);
-      
-      return deletedCount;
-    } catch (error) {
-      this.logger.error(`Exception during cleanup:`, error);
-      return 0;
-    }
-  }
 }

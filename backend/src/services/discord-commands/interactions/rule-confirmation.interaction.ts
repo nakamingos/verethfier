@@ -4,6 +4,7 @@ import { DbService } from '../../db.service';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
 import { RemovalUndoInteractionHandler } from './removal-undo.interaction';
 import { DuplicateRuleConfirmationInteractionHandler } from './duplicate-rule-confirmation.interaction';
+import { cleanupNewlyCreatedRole } from '../utils/role-management.util';
 
 /**
  * Rule Confirmation Interaction Handler
@@ -133,7 +134,7 @@ export class RuleConfirmationInteractionHandler {
       
       // If this rule involved creating a new role, try to clean it up
       if (confirmationInfo.wasNewlyCreated && ruleToRemove) {
-        await this.cleanupNewlyCreatedRole(interaction, ruleToRemove.role_id, confirmationInfo.serverId);
+        await cleanupNewlyCreatedRole(interaction, ruleToRemove.role_id, confirmationInfo.serverId);
       }
       
       // Create rule info fields for the removed rule
@@ -216,27 +217,4 @@ export class RuleConfirmationInteractionHandler {
     }
   }
 
-  /**
-   * Attempts to clean up a newly created role if it's no longer being used
-   * Only deletes the role if no other rules are using it
-   */
-  private async cleanupNewlyCreatedRole(interaction: any, roleId: string, serverId: string): Promise<void> {
-    try {
-      // Check if any other rules are using this role
-      const allRules = await this.dbSvc.getRoleMappings(serverId);
-      const rulesUsingRole = allRules?.filter(rule => rule.role_id === roleId) || [];
-      
-      // If no other rules use this role, delete it
-      if (rulesUsingRole.length === 0) {
-        const role = interaction.guild.roles.cache.get(roleId);
-        if (role && role.editable) {
-          await role.delete('Cleaning up unused role after rule undo');
-          this.logger.log(`Cleaned up newly created role: ${role.name} (${roleId})`);
-        }
-      }
-    } catch (error) {
-      // Don't fail the undo operation if role cleanup fails
-      this.logger.warn(`Failed to cleanup role ${roleId}:`, error);
-    }
-  }
 }
