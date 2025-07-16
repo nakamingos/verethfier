@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
 import { EnvironmentConfig } from '@/config/environment.config';
 import { AppLogger } from '@/utils/app-logger.util';
+import { CONSTANTS } from '@/constants';
 
 // Validate environment on service load
 EnvironmentConfig.validate();
@@ -144,7 +145,7 @@ export class DataService {
         const { data, error } = await supabase
           .from('attributes_new')
           .select('values')
-          .limit(50);
+          .limit(CONSTANTS.LIMITS.ATTRIBUTE_SAMPLE_SIZE);
         
         if (error) throw new Error(error.message);
         
@@ -155,7 +156,7 @@ export class DataService {
           }
         });
         
-        return Array.from(allKeys).sort().slice(0, 25);
+        return Array.from(allKeys).sort().slice(0, CONSTANTS.LIMITS.AUTOCOMPLETE_RESULTS);
       }
 
       // For specific slug, get first 200 items (sufficient for ~12 attribute keys)
@@ -163,7 +164,7 @@ export class DataService {
         .from('attributes_new')
         .select('values')
         .eq('slug', slug)
-        .limit(200);
+        .limit(CONSTANTS.LIMITS.ATTRIBUTE_PAGINATION);
 
       if (error) {
         throw new Error(error.message);
@@ -181,7 +182,7 @@ export class DataService {
       });
 
       const finalKeys = Array.from(allKeys).sort();
-      return Array.from(allKeys).sort().slice(0, 25); // Discord limit
+      return Array.from(allKeys).sort().slice(0, CONSTANTS.LIMITS.AUTOCOMPLETE_RESULTS); // Discord limit
     } catch (error) {
       this.logger.error('Error getting attribute keys:', error);
       return ['ALL'];
