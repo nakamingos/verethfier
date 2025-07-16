@@ -94,7 +94,7 @@ export class WalletService {
     try {
       await this.modal.open();
     } catch (error) {
-      console.log(error);
+      // Error logging handled by the component
       this.disconnectWeb3();
     }
   }

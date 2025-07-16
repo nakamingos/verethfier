@@ -2,6 +2,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { AppLogger } from '@/utils/app-logger.util';
+import { CacheableRule, CacheableAsset } from '@/types/common.types';
 
 /**
  * Caching service for frequently accessed data
@@ -103,7 +104,7 @@ export class CacheService {
   /**
    * Cache verification rules for a server
    */
-  async cacheServerRules(serverId: string, rules: any[]): Promise<void> {
+  async cacheServerRules(serverId: string, rules: CacheableRule[]): Promise<void> {
     const key = `rules:server:${serverId}`;
     await this.set(key, rules, CacheService.TTL.RULES);
   }
@@ -111,15 +112,15 @@ export class CacheService {
   /**
    * Get cached verification rules for a server
    */
-  async getCachedServerRules(serverId: string): Promise<any[] | null> {
+  async getCachedServerRules(serverId: string): Promise<CacheableRule[] | null> {
     const key = `rules:server:${serverId}`;
-    return this.get<any[]>(key);
+    return this.get<CacheableRule[]>(key);
   }
 
   /**
    * Cache user assets
    */
-  async cacheUserAssets(address: string, assets: any[]): Promise<void> {
+  async cacheUserAssets(address: string, assets: CacheableAsset[]): Promise<void> {
     const key = `assets:${address.toLowerCase()}`;
     await this.set(key, assets, CacheService.TTL.USER_ASSETS);
   }
@@ -127,9 +128,9 @@ export class CacheService {
   /**
    * Get cached user assets
    */
-  async getCachedUserAssets(address: string): Promise<any[] | null> {
+  async getCachedUserAssets(address: string): Promise<CacheableAsset[] | null> {
     const key = `assets:${address.toLowerCase()}`;
-    return this.get<any[]>(key);
+    return this.get<CacheableAsset[]>(key);
   }
 
   /**

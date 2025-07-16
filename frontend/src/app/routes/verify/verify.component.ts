@@ -60,7 +60,7 @@ export class VerifyComponent {
       catchError((err) => {
         // Only log detailed errors in development (check for localhost)
         if (window.location.hostname === 'localhost') {
-          console.error(err);
+          // Error already handled by UI feedback
         }
         this.setState({ errorMessage: 'Failed to decode data' });
         return of(null);

@@ -9,9 +9,9 @@ export class SecurityUtil {
    * @param isProduction Whether we're in production mode
    * @returns Sanitized error message
    */
-  static sanitizeErrorMessage(error: any, isProduction = process.env.NODE_ENV === 'production'): string {
+  static sanitizeErrorMessage(error: unknown, isProduction = process.env.NODE_ENV === 'production'): string {
     if (!isProduction) {
-      return error?.message || 'Unknown error occurred';
+      return error instanceof Error ? error.message : 'Unknown error occurred';
     }
 
     // In production, return generic error messages for most cases
@@ -26,7 +26,7 @@ export class SecurityUtil {
       'Validation failed'
     ];
 
-    const errorMessage = error?.message || '';
+    const errorMessage = error instanceof Error ? error.message : '';
     const isUserFriendly = userFriendlyErrors.some(pattern => 
       errorMessage.includes(pattern)
     );
@@ -40,7 +40,7 @@ export class SecurityUtil {
    * @param fieldsToMask Fields that should be masked
    * @returns Data with sensitive fields masked
    */
-  static maskSensitiveData(data: any, fieldsToMask: string[] = ['token', 'key', 'secret', 'password']): any {
+  static maskSensitiveData(data: Record<string, unknown>, fieldsToMask: string[] = ['token', 'key', 'secret', 'password']): Record<string, unknown> {
     if (typeof data !== 'object' || data === null) {
       return data;
     }
@@ -97,7 +97,7 @@ export class SecurityUtil {
    * @param defaultMessage Default message to show if error is not user-friendly
    * @returns Safe error response
    */
-  static createSafeErrorResponse(error: any, defaultMessage = 'An error occurred'): { message: string } {
+  static createSafeErrorResponse(error: unknown, defaultMessage = 'An error occurred'): { message: string } {
     return {
       message: this.sanitizeErrorMessage(error, process.env.NODE_ENV === 'production') || defaultMessage
     };

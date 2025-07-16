@@ -159,7 +159,18 @@ describe('CacheService', () => {
 
   describe('Server Rules Caching', () => {
     it('should cache server rules with appropriate TTL', async () => {
-      const rules = [{ id: '1', name: 'test-rule' }];
+      const rules = [{ 
+        id: '1', 
+        server_id: 'server-123',
+        channel_id: 'channel-123', 
+        role_id: 'role-123',
+        slug: 'test-collection',
+        attribute_key: 'trait',
+        attribute_value: 'rare',
+        min_items: 1,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z'
+      }];
       mockCacheManager.set.mockResolvedValue(undefined);
 
       await service.cacheServerRules('server-123', rules);
@@ -193,7 +204,13 @@ describe('CacheService', () => {
 
   describe('User Assets Caching', () => {
     it('should cache user assets with appropriate TTL', async () => {
-      const assets = [{ tokenId: '1', collection: 'test' }];
+      const assets = [{ 
+        hashId: 'hash-1', 
+        slug: 'test-collection', 
+        owner: '0x123ABC',
+        prevOwner: '0x456DEF',
+        attributes: { trait: 'rare' }
+      }];
       mockCacheManager.set.mockResolvedValue(undefined);
 
       await service.cacheUserAssets('0x123ABC', assets);
@@ -216,7 +233,11 @@ describe('CacheService', () => {
     });
 
     it('should handle address case insensitivity', async () => {
-      const assets = [{ tokenId: '1' }];
+      const assets = [{ 
+        hashId: 'hash-1', 
+        slug: 'test-collection', 
+        owner: '0x123ABC'
+      }];
       mockCacheManager.set.mockResolvedValue(undefined);
 
       await service.cacheUserAssets('0x123ABC', assets);
@@ -315,8 +336,20 @@ describe('CacheService', () => {
       // Simulate a typical verification flow
       const serverId = 'server-123';
       const userAddress = '0xuser123';
-      const rules = [{ id: '1', collection: 'test' }];
-      const assets = [{ tokenId: '1', collection: 'test' }];
+      const rules = [{ 
+        id: '1', 
+        server_id: serverId,
+        channel_id: 'channel-123', 
+        role_id: 'role-123',
+        slug: 'test-collection',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z'
+      }];
+      const assets = [{ 
+        hashId: 'hash-1', 
+        slug: 'test-collection', 
+        owner: userAddress
+      }];
 
       // Cache server rules
       await service.cacheServerRules(serverId, rules);
