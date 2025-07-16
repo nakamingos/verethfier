@@ -91,9 +91,11 @@ export class SimpleRoleMonitorService {
     };
 
     try {
-      // Get user's current role assignments from the log table
-      const userRoles = await this.dbSvc.getUserRoleHistory(userId, serverId);
-      const rules = await this.dbSvc.getRoleMappings(serverId);
+      // Get user's current role assignments and rules in parallel for better performance
+      const [userRoles, rules] = await Promise.all([
+        this.dbSvc.getUserRoleHistory(userId, serverId),
+        this.dbSvc.getRoleMappings(serverId)
+      ]);
       
       // Get user's current address (you might need to add this method)
       const userAddress = await this.getUserLatestAddress(userId);

@@ -120,6 +120,7 @@ export class VerificationEngine {
 
   /**
    * Verify multiple rules for a user (bulk verification)
+   * Optimized with parallel processing for better performance
    * 
    * @param userId - Discord user ID
    * @param ruleIds - Array of rule IDs to verify against
@@ -133,15 +134,18 @@ export class VerificationEngine {
   ): Promise<BulkVerificationResult> {
     Logger.debug(`VerificationEngine: Starting bulk verification for user ${userId} with ${ruleIds.length} rules`);
     
-    const results: VerificationResult[] = [];
+    // Process all verifications in parallel for better performance
+    const verificationPromises = ruleIds.map(ruleId => 
+      this.verifyUser(userId, ruleId, address)
+    );
+    
+    const results = await Promise.all(verificationPromises);
+    
     const validRules: VerifierRole[] = [];
     const invalidRules: VerifierRole[] = [];
     const matchingAssetCounts = new Map<string, number>();
 
-    for (const ruleId of ruleIds) {
-      const result = await this.verifyUser(userId, ruleId, address);
-      results.push(result);
-
+    results.forEach(result => {
       if (result.isValid && result.rule) {
         validRules.push(result.rule);
         if (result.matchingAssetCount) {
@@ -150,7 +154,7 @@ export class VerificationEngine {
       } else if (result.rule) {
         invalidRules.push(result.rule);
       }
-    }
+    });
 
     return {
       userId,
@@ -261,6 +265,7 @@ export class VerificationEngine {
 
   /**
    * Multi-Wallet Server Verification - Check user against ALL server rules using ALL addresses
+   * Optimized with parallel processing for better performance
    * 
    * This combines multi-wallet verification with server-wide rule checking.
    * For each rule in the server, it checks all user addresses until one passes.
@@ -280,15 +285,18 @@ export class VerificationEngine {
     
     Logger.debug(`VerificationEngine: Checking ${ruleIds.length} rules with multi-wallet verification`);
     
-    const results: VerificationResult[] = [];
+    // Process all multi-wallet verifications in parallel for better performance
+    const verificationPromises = ruleIds.map(ruleId => 
+      this.verifyUserMultiWallet(userId, ruleId)
+    );
+    
+    const results = await Promise.all(verificationPromises);
+    
     const validRules: VerifierRole[] = [];
     const invalidRules: VerifierRole[] = [];
     const matchingAssetCounts = new Map<string, number>();
 
-    for (const ruleId of ruleIds) {
-      const result = await this.verifyUserMultiWallet(userId, ruleId);
-      results.push(result);
-
+    results.forEach(result => {
       if (result.isValid && result.rule) {
         validRules.push(result.rule);
         if (result.matchingAssetCount) {
@@ -297,7 +305,7 @@ export class VerificationEngine {
       } else if (result.rule) {
         invalidRules.push(result.rule);
       }
-    }
+    });
 
     return {
       userId,

@@ -356,4 +356,92 @@ export class CacheService {
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
+
+  /**
+   * Batch get multiple cache keys in parallel for better performance
+   * @param keys - Array of cache keys to retrieve
+   * @returns Map of keys to cached values (undefined for cache misses)
+   */
+  async batchGet<T>(keys: string[]): Promise<Map<string, T | undefined>> {
+    if (keys.length === 0) {
+      return new Map();
+    }
+
+    const batchPromises = keys.map(async key => {
+      try {
+        const value = await this.get<T>(key);
+        return { key, value };
+      } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+          AppLogger.debug(`Cache batch get error for key ${key}:`, error);
+        }
+        return { key, value: undefined };
+      }
+    });
+
+    const results = await Promise.all(batchPromises);
+    const resultMap = new Map<string, T | undefined>();
+    
+    results.forEach(({ key, value }) => {
+      resultMap.set(key, value);
+    });
+
+    return resultMap;
+  }
+
+  /**
+   * Batch set multiple cache entries in parallel for better performance
+   * @param entries - Array of objects with key, value, and optional ttl
+   */
+  async batchSet<T>(entries: Array<{ key: string; value: T; ttl?: number }>): Promise<void> {
+    if (entries.length === 0) {
+      return;
+    }
+
+    const setPromises = entries.map(async ({ key, value, ttl }) => {
+      try {
+        await this.set(key, value, ttl);
+      } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+          AppLogger.debug(`Cache batch set error for key ${key}:`, error);
+        }
+      }
+    });
+
+    await Promise.all(setPromises);
+  }
+
+  /**
+   * Warm up cache with frequently accessed data in parallel
+   * @param warmupEntries - Array of functions that return cache entries
+   */
+  async warmupCache(warmupEntries: Array<() => Promise<{ key: string; value: any; ttl?: number }>>): Promise<void> {
+    if (warmupEntries.length === 0) {
+      return;
+    }
+
+    if (process.env.NODE_ENV === 'development') {
+      AppLogger.debug(`🔥 Warming up cache with ${warmupEntries.length} entries`);
+    }
+
+    const warmupPromises = warmupEntries.map(async entryFn => {
+      try {
+        const { key, value, ttl } = await entryFn();
+        await this.set(key, value, ttl);
+        return true;
+      } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+          AppLogger.debug('Cache warmup error:', error);
+        }
+        return false;
+      }
+    });
+
+    const results = await Promise.all(warmupPromises);
+    const successCount = results.filter(success => success).length;
+    
+    if (process.env.NODE_ENV === 'development') {
+      AppLogger.debug(`🔥 Cache warmup completed: ${successCount}/${warmupEntries.length} entries cached`);
+    }
+  }
 }
