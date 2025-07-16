@@ -137,7 +137,10 @@ export class VerificationService {
    */
   async verifyWallet(data: DecodedData): Promise<BulkVerificationResult> {
     try {
-      Logger.debug(`VerificationService: Starting wallet verification for user ${data.userId}`);
+      // Log verification start only in development
+      if (process.env.NODE_ENV === 'development') {
+        Logger.debug(`VerificationService: Starting wallet verification for user ${data.userId}`);
+      }
       
       const address = data.address;
       if (!address) {
@@ -203,7 +206,10 @@ export class VerificationService {
       expiresInHours: undefined // No expiration by default
     });
 
-    Logger.debug(`Role ${roleId} assigned to user ${userId} in server ${serverId} via unified tracking`);
+    // Log role assignment only in development
+    if (process.env.NODE_ENV === 'development') {
+      Logger.debug(`Role ${roleId} assigned to user ${userId} in server ${serverId} via unified tracking`);
+    }
   }
 
   /**

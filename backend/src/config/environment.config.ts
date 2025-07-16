@@ -63,9 +63,39 @@ export class EnvironmentConfig {
       throw new Error(`Missing required environment variables: ${missing.map(v => v.name).join(', ')}`);
     }
 
-    // Warn about optional Discord variables if Discord is enabled
+    // Warn about optional Discord variables if Discord is enabled (only in development)
     if (this.DISCORD_ENABLED && (!this.DISCORD_BOT_TOKEN || !this.DISCORD_CLIENT_ID)) {
-      AppLogger.warn('Discord is enabled but DISCORD_BOT_TOKEN or DISCORD_CLIENT_ID is missing', 'EnvironmentConfig');
+      if (this.NODE_ENV === 'development') {
+        AppLogger.warn('Discord is enabled but DISCORD_BOT_TOKEN or DISCORD_CLIENT_ID is missing', 'EnvironmentConfig');
+      }
     }
+  }
+
+  /**
+   * Get sanitized configuration info for debugging (development only)
+   * Masks sensitive values in production
+   */
+  public static getConfigInfo(): Record<string, any> {
+    if (this.NODE_ENV === 'production') {
+      return {
+        message: 'Configuration details are not available in production for security reasons'
+      };
+    }
+
+    return {
+      DISCORD_ENABLED: this.DISCORD_ENABLED,
+      NODE_ENV: this.NODE_ENV,
+      BASE_URL: this.BASE_URL,
+      NONCE_EXPIRY: this.NONCE_EXPIRY,
+      DYNAMIC_ROLE_CRON: this.DYNAMIC_ROLE_CRON,
+      IS_TEST: this.IS_TEST,
+      // Never expose actual credentials
+      hasDiscordToken: !!this.DISCORD_BOT_TOKEN,
+      hasDiscordClientId: !!this.DISCORD_CLIENT_ID,
+      hasDataSupabaseUrl: !!this.DATA_SUPABASE_URL,
+      hasDataSupabaseKey: !!this.DATA_SUPABASE_ANON_KEY,
+      hasDbSupabaseUrl: !!this.DB_SUPABASE_URL,
+      hasDbSupabaseKey: !!this.DB_SUPABASE_KEY,
+    };
   }
 }
