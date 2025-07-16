@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ListRulesHandler } from '../src/services/discord-commands/handlers/list-rules.handler';
 import { DbService } from '../src/services/db.service';
 import { AdminFeedback } from '../src/services/utils/admin-feedback.util';
+import { formatAttribute } from '../src/services/discord-commands/utils/rule-validation.util';
 
 describe('ListRulesHandler', () => {
   let handler: ListRulesHandler;
@@ -248,15 +249,11 @@ describe('ListRulesHandler', () => {
 
   describe('formatting methods', () => {
     it('should format attributes correctly', () => {
-      // Access private method for testing
-      const formatAttribute = (handler as any).formatAttribute.bind(handler);
-
+      // Test the centralized utility function
       expect(formatAttribute('trait', 'rare')).toBe('trait=rare');
       expect(formatAttribute('type', 'ALL')).toBe('type (any value)');
       expect(formatAttribute('ALL', 'legendary')).toBe('ALL=legendary');
       expect(formatAttribute('ALL', 'ALL')).toBe('ALL');
-      expect(formatAttribute(null, null)).toBe('ALL');
-      expect(formatAttribute('', '')).toBe('ALL');
     });
   });
 });

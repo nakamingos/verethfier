@@ -4,6 +4,7 @@ import { DbService } from '../../db.service';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
 import { RemovalUndoInteractionHandler } from '../interactions/removal-undo.interaction';
 import { DuplicateRuleConfirmationInteractionHandler } from '../interactions/duplicate-rule-confirmation.interaction';
+import { formatAttribute } from '../utils/rule-validation.util';
 
 /**
  * Remove Rule Command Handler
@@ -285,7 +286,7 @@ export class RemoveRuleHandler {
       
       // Add clean rule info for each removed rule using list format
       successful.forEach(s => {
-        const attribute = this.formatAttribute(s.data.attribute_key, s.data.attribute_value);
+        const attribute = formatAttribute(s.data.attribute_key, s.data.attribute_value);
         const slug = s.data.slug || 'ALL';
         const minItems = s.data.min_items || 1;
         
@@ -367,21 +368,5 @@ export class RemoveRuleHandler {
    */
   clearRemovedRuleData(interactionId: string): void {
     this.removedRules.delete(interactionId);
-  }
-
-  /**
-   * Formats attribute key/value pairs for display
-   */
-  private formatAttribute(key: string, value: string): string {
-    if (key && key !== 'ALL' && value && value !== 'ALL') {
-      return `${key}=${value}`;
-    }
-    if (key && key !== 'ALL' && (!value || value === 'ALL')) {
-      return `${key} (any value)`;
-    }
-    if ((!key || key === 'ALL') && value && value !== 'ALL') {
-      return `ALL=${value}`;
-    }
-    return 'ALL';
   }
 }

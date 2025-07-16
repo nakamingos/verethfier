@@ -4,6 +4,8 @@ import { DbService } from '../../db.service';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
 import { RemovalUndoInteractionHandler } from './removal-undo.interaction';
 import { DuplicateRuleConfirmationInteractionHandler } from './duplicate-rule-confirmation.interaction';
+import { cleanupNewlyCreatedRole } from '../utils/role-management.util';
+import { formatAttribute } from '../utils/rule-validation.util';
 
 /**
  * Restore Undo Interaction Handler
@@ -187,7 +189,7 @@ export class RestoreUndoInteractionHandler {
         
         // If this rule was restored with a newly created role, try to clean it up
         if (restoredRule.wasNewlyCreated && restoredRule.role_id) {
-          await this.cleanupNewlyCreatedRole(interaction, restoredRule.role_id, restoredRule.server_id);
+          await cleanupNewlyCreatedRole(interaction, restoredRule.role_id, restoredRule.server_id);
         }
         
         removalResults.push({ 
@@ -230,7 +232,7 @@ export class RestoreUndoInteractionHandler {
     
     // If this rule was restored with a newly created role, try to clean it up
     if (restoredRuleData.wasNewlyCreated) {
-      await this.cleanupNewlyCreatedRole(interaction, restoredRuleData.role_id, restoredRuleData.server_id);
+      await cleanupNewlyCreatedRole(interaction, restoredRuleData.role_id, restoredRuleData.server_id);
     }
 
     // Store the removed rule for potential undo (restore again) using chain ID
@@ -335,7 +337,7 @@ export class RestoreUndoInteractionHandler {
       // Add clean rule info for each removed rule using list format
       successful.forEach(s => {
         const rule = s.originalData;
-        const attribute = this.formatAttribute(rule.attribute_key, rule.attribute_value);
+        const attribute = formatAttribute(rule.attribute_key, rule.attribute_value);
         const slug = rule.slug || 'ALL';
         const minItems = rule.min_items || 1;
         
@@ -386,34 +388,4 @@ export class RestoreUndoInteractionHandler {
     }
   }
 
-  /**
-   * Cleanup a newly created role if it's safe to do so
-   */
-  private async cleanupNewlyCreatedRole(interaction: any, roleId: string, serverId: string): Promise<void> {
-    try {
-      // Check if this role is used by any other rules by querying the database directly
-      // Since we don't have a getRulesByRole method, we'll use a more conservative approach
-      // and skip role cleanup for now to avoid complexity
-      this.logger.log(`Skipping role cleanup for ${roleId} - would need custom query to check usage safely`);
-    } catch (error) {
-      this.logger.error(`Error cleaning up newly created role ${roleId}:`, error);
-      // Don't throw - role cleanup is not critical
-    }
-  }
-
-  /**
-   * Formats attribute key/value pairs for display
-   */
-  private formatAttribute(key: string, value: string): string {
-    if (key && key !== 'ALL' && value && value !== 'ALL') {
-      return `${key}=${value}`;
-    }
-    if (key && key !== 'ALL' && (!value || value === 'ALL')) {
-      return `${key} (any value)`;
-    }
-    if ((!key || key === 'ALL') && value && value !== 'ALL') {
-      return `ALL=${value}`;
-    }
-    return 'ALL';
-  }
 }
