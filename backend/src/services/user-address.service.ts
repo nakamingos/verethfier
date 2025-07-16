@@ -37,7 +37,10 @@ export class UserAddressService {
    */
   async getUserAddresses(userId: string): Promise<string[]> {
     try {
-      this.logger.debug(`Getting addresses for user: ${userId}`);
+      // Log sensitive operations only in development
+      if (process.env.NODE_ENV === 'development') {
+        this.logger.debug(`Getting addresses for user: ${userId}`);
+      }
       
       const { data, error } = await this.supabase
         .from('user_wallets')
@@ -66,7 +69,10 @@ export class UserAddressService {
   async addUserAddress(userId: string, address: string, userName?: string | null): Promise<AddAddressResult> {
     try {
       const normalizedAddress = address.toLowerCase();
-      this.logger.debug(`Adding address ${normalizedAddress} for user: ${userId}${userName ? ` (${userName})` : ''}`);
+      // Log user address operations only in development
+      if (process.env.NODE_ENV === 'development') {
+        this.logger.debug(`Adding address ${normalizedAddress} for user: ${userId}${userName ? ` (${userName})` : ''}`);
+      }
 
       // Check if this user-address combination already exists
       const { data: existing } = await this.supabase
@@ -139,7 +145,10 @@ export class UserAddressService {
   async removeUserAddress(userId: string, address: string): Promise<boolean> {
     try {
       const normalizedAddress = address.toLowerCase();
-      this.logger.debug(`Removing address ${normalizedAddress} for user: ${userId}`);
+      // Log address removal only in development  
+      if (process.env.NODE_ENV === 'development') {
+        this.logger.debug(`Removing address ${normalizedAddress} for user: ${userId}`);
+      }
 
       const { error } = await this.supabase
         .from('user_wallets')

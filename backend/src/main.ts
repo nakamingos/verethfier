@@ -16,7 +16,7 @@ async function bootstrap() {
         : ['error', 'warn', 'log'],
   });
 
-  // Security: Add security headers
+  // Security: Add comprehensive security headers
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
@@ -24,31 +24,42 @@ async function bootstrap() {
         scriptSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'"],
+        frameSrc: ["'none'"],
       },
     },
     hsts: {
-      maxAge: 31536000,
+      maxAge: 31536000, // 1 year
       includeSubDomains: true,
+      preload: true,
     },
+    noSniff: true,
+    xssFilter: true,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+    hidePoweredBy: true,
   }));
 
   // Security: Global validation pipe for input validation
   app.useGlobalPipes(new ValidationPipe({
-    whitelist: false, // Don't strip unknown properties for flexibility
-    forbidNonWhitelisted: false, // Allow unknown properties
+    whitelist: true, // Strip unknown properties for security
+    forbidNonWhitelisted: true, // Reject unknown properties
     transform: true,
-    disableErrorMessages: process.env.NODE_ENV === 'production',
-    skipMissingProperties: true, // Allow optional properties
+    disableErrorMessages: EnvironmentConfig.NODE_ENV === 'production',
+    skipMissingProperties: false, // Enforce required properties
   }));
 
   app.setGlobalPrefix('api');
   
   // Security: Restrict CORS to known origins
   const allowedOrigins = [
-    process.env.BASE_URL || 'http://localhost:4200',
-    'http://localhost:4200', // Always allow local frontend for development
-    'http://localhost:3000', // Common alternative port
-    // Add production domain here when deployed
+    EnvironmentConfig.BASE_URL,
+    ...(EnvironmentConfig.NODE_ENV === 'development' ? [
+      'http://localhost:4200', // Development frontend
+      'http://localhost:3000', // Alternative dev port
+    ] : [])
   ].filter(Boolean);
 
   app.enableCors({
@@ -59,7 +70,9 @@ async function bootstrap() {
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        Logger.warn(`CORS blocked origin: ${origin}`, 'Security');
+        if (EnvironmentConfig.NODE_ENV !== 'production') {
+          Logger.warn(`CORS blocked origin: ${origin}`, 'Security');
+        }
         callback(new Error('Not allowed by CORS'));
       }
     },
@@ -69,6 +82,9 @@ async function bootstrap() {
   });
   await app.listen(3200);
   
-  Logger.debug(`Server running on http://localhost:3200`, 'Bootstrap');
+  // Only log server startup in development
+  if (EnvironmentConfig.NODE_ENV === 'development') {
+    Logger.log(`Server running on http://localhost:3200`, 'Bootstrap');
+  }
 }
 bootstrap();

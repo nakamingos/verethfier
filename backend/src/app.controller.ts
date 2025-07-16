@@ -4,6 +4,7 @@ import { AppService } from './app.service';
 import { VerifyService } from './services/verify.service';
 import { VerifySignatureDto } from './dtos/verify-signature.dto';
 import { DecodedData } from './models/app.interface';
+import { SecurityUtil } from './utils/security.util';
 
 /**
  * AppController
@@ -89,9 +90,15 @@ export class AppController {
       return result;
     } catch (error) {
       // Log detailed error information for debugging and monitoring
-      const errorMessage = error?.message || 'Unknown error occurred';
-      const errorStack = error?.stack || '';
-      Logger.error(`Verification error: ${errorMessage}`, errorStack);
+      const errorMessage = SecurityUtil.sanitizeErrorMessage(error, false); // Always get details for logging
+      
+      // Only log stack traces in development
+      if (SecurityUtil.shouldLogDetails()) {
+        const errorStack = error?.stack || '';
+        Logger.error(`Verification error: ${errorMessage}`, errorStack);
+      } else {
+        Logger.error(`Verification error: ${errorMessage}`);
+      }
       
       // Preserve HTTP exceptions with their intended status codes
       if (error instanceof HttpException) {
@@ -115,7 +122,7 @@ export class AppController {
       if (isUserFriendlyError) {
         // Return user-friendly verification errors with BAD_REQUEST status
         throw new HttpException(
-          errorMessage,
+          SecurityUtil.sanitizeErrorMessage(error), // Use sanitized message for response
           HttpStatus.BAD_REQUEST
         );
       }

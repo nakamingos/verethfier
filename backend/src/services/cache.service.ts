@@ -33,7 +33,10 @@ export class CacheService {
     try {
       const cached = await this.cacheManager.get<T>(key);
       if (cached) {
-        AppLogger.debug(`Cache hit: ${key}`);
+        // Log cache operations only in development
+        if (process.env.NODE_ENV === 'development') {
+          AppLogger.debug(`Cache hit: ${key}`);
+        }
       }
       return cached || null;
     } catch (error) {
@@ -48,7 +51,10 @@ export class CacheService {
   async set<T>(key: string, value: T, ttl?: number): Promise<void> {
     try {
       await this.cacheManager.set(key, value, ttl);
-      AppLogger.debug(`Cache set: ${key} (TTL: ${ttl || 'default'}s)`);
+      // Log cache operations only in development
+      if (process.env.NODE_ENV === 'development') {
+        AppLogger.debug(`Cache set: ${key} (TTL: ${ttl || 'default'}s)`);
+      }
     } catch (error) {
       AppLogger.error(`Cache set error for key ${key}:`, error.message);
     }

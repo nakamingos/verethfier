@@ -100,7 +100,10 @@ export class RemoveRuleHandler {
    */
   private async parseRuleIds(ruleIdInput: string): Promise<number[] | null> {
     try {
-      this.logger.debug(`Parsing rule ID input: "${ruleIdInput}"`);
+      // Log parsing details only in development
+      if (process.env.NODE_ENV === 'development') {
+        this.logger.debug(`Parsing rule ID input: "${ruleIdInput}"`);
+      }
       
       // Parse comma-separated rule IDs (handle both "1,2,3" and "1, 2, 3" formats)
       const ruleIds = ruleIdInput
@@ -115,7 +118,10 @@ export class RemoveRuleHandler {
           return parsed;
         });
 
-      this.logger.debug(`Parsed rule IDs: [${ruleIds.join(', ')}]`);
+      // Log parsed IDs only in development
+      if (process.env.NODE_ENV === 'development') {
+        this.logger.debug(`Parsed rule IDs: [${ruleIds.join(', ')}]`);
+      }
       return ruleIds.length > 0 ? ruleIds : null;
     } catch (error) {
       this.logger.error(`Error parsing rule IDs from "${ruleIdInput}":`, error.message);

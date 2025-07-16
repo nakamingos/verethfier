@@ -58,7 +58,10 @@ export class VerifyComponent {
     this.routeData$ = this.route.params.pipe(
       map((params: any) => this.decodeData(params.data)),
       catchError((err) => {
-        console.error(err);
+        // Only log detailed errors in development (check for localhost)
+        if (window.location.hostname === 'localhost') {
+          console.error(err);
+        }
         this.setState({ errorMessage: 'Failed to decode data' });
         return of(null);
       }),

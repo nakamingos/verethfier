@@ -25,23 +25,40 @@ export class AppService {
   /**
    * Get basic application health and status information
    * 
-   * @returns Object containing application status, version, and health metrics
+   * @returns Object containing application status and essential info only
    */
   getHealth() {
-    return {
+    const baseHealth = {
       status: 'healthy',
       timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || 'development',
-      version: process.env.npm_package_version || '1.0.0'
     };
+
+    // Only include environment and version info in development
+    if (process.env.NODE_ENV === 'development') {
+      return {
+        ...baseHealth,
+        environment: process.env.NODE_ENV || 'development',
+        version: process.env.npm_package_version || '1.0.0'
+      };
+    }
+
+    return baseHealth;
   }
 
   /**
    * Get application information and basic stats
+   * Only available in development environment for security
    * 
-   * @returns Object containing application metadata
+   * @returns Object containing application metadata or restricted access message
    */
   getInfo() {
+    // Restrict detailed info to development environment only
+    if (process.env.NODE_ENV !== 'development') {
+      return {
+        message: 'Application information is not available in production for security reasons'
+      };
+    }
+
     return {
       name: 'Verethfier Backend',
       description: 'NestJS-based Discord bot for Ethscriptions-based role verification',
