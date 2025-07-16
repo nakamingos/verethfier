@@ -9,20 +9,14 @@ import { DecodedData } from '@/models/app.interface';
 /**
  * VerificationService
  * 
- * Unified verification service that handles all verification logic using the new VerificationEngine.
- * This service now acts as a facade that delegates all verification logic to the VerificationEngine
- * while maintaining backward compatibility with existing APIs.
+ * Verification service that handles all verification logic using the VerificationEngine.
+ * This service acts as a facade that delegates verification logic to the VerificationEngine
+ * while providing additional orchestration and Discord integration.
  * 
  * Key responsibilities:
  * - Delegate verification logic to VerificationEngine
- * - Maintain backward compatibility with existing method signatures
  * - Handle wallet verification and Discord integration
- * - Manage role assignments through the unified verifier_user_roles table
- * 
- * Migration Notes:
- * - All verification logic has been moved to VerificationEngine
- * - This service now focuses on orchestration and compatibility
- * - New code should use VerificationEngine.verifyUser() directly for better performance
+ * - Manage role assignments through the verifier_user_roles table
  */
 @Injectable()
 export class VerificationService {
@@ -34,7 +28,7 @@ export class VerificationService {
   ) {}
 
   /**
-   * Verify a user's wallet address using the unified VerificationEngine
+   * Verify a user's wallet address using the VerificationEngine
    * 
    * @param userId - Discord user ID
    * @param ruleId - Rule ID to verify against
@@ -99,7 +93,7 @@ export class VerificationService {
   }
 
   /**
-   * Legacy method: Verify a user's assets against a specific verification rule
+   * Verify a user's assets against a specific verification rule
    * @deprecated Use verifyUser() instead for better performance and unified result format
    */
   async verifyUserAgainstRule(
@@ -116,7 +110,7 @@ export class VerificationService {
   }
 
   /**
-   * Legacy method: Verify a user against multiple rules
+   * Verify a user against multiple rules
    * @deprecated Use verifyUserBulk() instead for better performance and unified result format
    */
   async verifyUserAgainstRules(
@@ -164,7 +158,7 @@ export class VerificationService {
   }
 
   /**
-   * Get all rules for a server (unified approach - no legacy table queries)
+   * Get all rules for a server
    */
   async getAllRulesForServer(serverId: string): Promise<VerifierRole[]> {
     return await this.dbSvc.getRoleMappings(serverId);

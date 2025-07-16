@@ -51,7 +51,7 @@ export class AppService {
         'Dynamic role management',
         'High-performance caching',
         'Multi-tier rate limiting',
-        'Legacy migration support'
+        'Multi-wallet support'
       ]
     };
   }

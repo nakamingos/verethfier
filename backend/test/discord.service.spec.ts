@@ -96,7 +96,6 @@ const mockDiscordVerificationService = {
   requestVerification: jest.fn(),
   addUserRole: jest.fn(),
   throwError: jest.fn(),
-  getVerificationRoleId: jest.fn(),
 };
 
 const mockDiscordCommandsService = {
@@ -523,11 +522,6 @@ describe('DiscordService - Enhanced Tests', () => {
       expect(mockDiscordVerificationService.throwError).toHaveBeenCalledWith('nonce', 'error message');
     });
 
-    it('should delegate getVerificationRoleId to DiscordVerificationService', async () => {
-      await service.getVerificationRoleId('guildId', 'channelId', 'messageId');
-      expect(mockDiscordVerificationService.getVerificationRoleId).toHaveBeenCalledWith('guildId', 'channelId', 'messageId');
-    });
-
     it('should delegate findExistingVerificationMessage to DiscordMessageService', async () => {
       const mockChannel = { id: 'channelId' } as any;
       await service.findExistingVerificationMessage(mockChannel);
@@ -890,7 +884,7 @@ describe('DiscordService - Enhanced Tests', () => {
       handleUnifiedSpy.mockRestore();
     });
 
-    it('should route to unified verification for legacy rules transparently', async () => {
+    it('should route to unified verification transparently', async () => {
       const buttonInteraction = {
         deferReply: jest.fn().mockResolvedValue({}),
         editReply: jest.fn().mockResolvedValue({}),
@@ -902,7 +896,7 @@ describe('DiscordService - Enhanced Tests', () => {
       // Mock VerificationService to return no channel rules, fallback to server rules
       mockVerificationService.getRulesForChannel.mockResolvedValue([]);
       mockVerificationService.getAllRulesForServer.mockResolvedValue([
-        { id: 1, slug: 'legacy_collection', role_id: 'role123' }
+        { id: 1, slug: 'test_collection', role_id: 'role123' }
       ]);
 
       const handleUnifiedSpy = jest.spyOn(service, 'handleUnifiedVerification').mockResolvedValue();

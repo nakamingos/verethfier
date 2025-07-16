@@ -333,12 +333,10 @@ export class DiscordService implements OnModuleInit {
   }
 
   /**
-   * Unified verification request handler for all rule types.
+   * Verification request handler for all rule types.
    * 
-   * This handler transparently processes verification requests for both legacy
-   * and modern rules using the unified verification engine. The system automatically
-   * detects rule types and applies appropriate verification logic without requiring
-   * separate code paths.
+   * This handler processes verification requests using the verification engine.
+   * The system automatically applies verification logic for all verification rules.
    * 
    * @param interaction - The button interaction triggered when a user clicks "Verify Now"
    */
@@ -371,7 +369,7 @@ export class DiscordService implements OnModuleInit {
         throw new Error('No verification rules found for this server or channel.');
       }
       
-      // Route to unified verification handling - no need for legacy-specific routing
+      // Route to verification handling
       await this.handleUnifiedVerification(interaction);
       
     } catch (error) {
@@ -394,10 +392,7 @@ export class DiscordService implements OnModuleInit {
   }
 
   /**
-   * Handles verification flow using the unified verification system.
-   * 
-   * This method transparently processes both legacy and modern rules through
-   * the unified verification service, eliminating the need for separate handlers.
+   * Handles verification flow using the verification system.
    * 
    * @param interaction - The button interaction for verification
    */
@@ -506,13 +501,6 @@ export class DiscordService implements OnModuleInit {
    */
   async throwError(nonce: string, message: string): Promise<void> {
     return this.discordVerificationSvc.throwError(nonce, message);
-  }
-
-  /**
-   * Helper to get the correct roleId for verification using the unified system.
-   */
-  async getVerificationRoleId(guildId: string, channelId: string, messageId: string): Promise<string | null> {
-    return this.discordVerificationSvc.getVerificationRoleId(guildId, channelId, messageId);
   }
 
   /**
@@ -887,7 +875,7 @@ export class DiscordService implements OnModuleInit {
    * Supports configurable time range (1-30 days, default 7).
    * 
    * Data is pulled from verifier_user_roles table joined with user_wallets table
-   * to support both legacy single-address and new multi-wallet users.
+   * to support both single-address and multi-wallet users.
    * 
    * @param interaction - Discord slash command interaction
    */

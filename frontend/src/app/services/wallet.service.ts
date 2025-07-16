@@ -109,7 +109,6 @@ export class WalletService {
     signature: `0x${string}`;
     address: `0x${string}`;
   }> {
-    // TODO(v3): If typedData includes RoleID/RoleName, these are deprecated and will be removed when legacy buttons are phased out
     const account = getAccount(this.config);
     if (!account.isConnected) throw new Error('Wallet not connected');
 

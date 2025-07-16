@@ -8,13 +8,8 @@ import { DecodedData } from './models/app.interface';
 /**
  * AppController
  * 
- * Main REST API controller for the unified verification system.
- * Provides the primary endpoint for wallet signature verification that
- * transparently handles both legacy and modern verification rules.
- * 
- * The unified verification engine automatically detects the rule type
- * and processes verification accordingly, eliminating the need for
- * separate legacy endpoints or API consumers to differentiate between rule types.
+ * Main REST API controller for the verification system.
+ * Provides the primary endpoint for wallet signature verification.
  * 
  * Handles secure communication between the frontend verification interface
  * and the backend verification services.
@@ -53,13 +48,7 @@ export class AppController {
   }
 
   /**
-   * Verifies a wallet signature and processes role assignment using the unified verification system.
-   * 
-   * This endpoint transparently handles both legacy and modern verification rules without
-   * requiring API consumers to know the rule type. The verification engine automatically:
-   * 1. Detects whether rules are legacy (migrated) or modern
-   * 2. Applies the appropriate verification logic
-   * 3. Processes role assignments based on matching criteria
+   * Verifies a wallet signature and processes role assignment.
    * 
    * The flow includes:
    * 1. Validate the request structure using DTO validation
@@ -80,7 +69,6 @@ export class AppController {
   async verify(@Body() body: VerifySignatureDto) {
     try {
       // Transform DTO data to match expected DecodedData interface
-      // The unified verification system automatically handles both legacy and modern rules
       const decodedData = {
         address: body.data.address || '',
         userId: body.data.userId || '',
@@ -94,7 +82,6 @@ export class AppController {
       };
 
       // Delegate to VerifyService for the complete verification and role assignment flow
-      // The verification engine automatically detects and processes legacy vs modern rules
       const result = await this.verifySvc.verifySignatureFlow(
         decodedData,
         body.signature

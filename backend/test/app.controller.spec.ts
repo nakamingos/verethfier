@@ -88,7 +88,7 @@ describe('AppController', () => {
           'Dynamic role management',
           'High-performance caching',
           'Multi-tier rate limiting',
-          'Legacy migration support',
+          'Migration support',
         ],
       };
 

@@ -13,17 +13,12 @@ import { matchRule }   from './utils/match-rule.util';
  * VerifyService
  * 
  * Core verification service that handles the complete wallet signature verification flow.
- * Supports both message-based verification (new rule system) and legacy server-based verification.
  * 
  * Flow:
  * 1. Verifies wallet signature using viem/ethers
  * 2. Validates and invalidates nonce to prevent replay attacks
  * 3. Checks asset ownership against verification rules
  * 4. Assigns Discord roles based on matching criteria
- * 
- * The service supports two verification paths:
- * - Message-based: Uses specific message/channel rules (preferred)
- * - Legacy: Uses server-wide role assignments (deprecated)
  */
 @Injectable()
 export class VerifyService {
@@ -39,10 +34,6 @@ export class VerifyService {
 
   /**
    * Main verification flow that handles wallet signature verification and role assignment.
-   * 
-   * This method supports two verification modes:
-   * 1. Message-based verification: Uses rules associated with a specific Discord message
-   * 2. Legacy verification: Uses server-wide role assignments (deprecated)
    * 
    * @param payload - Decoded JWT payload containing user and server information
    * @param signature - Wallet signature to verify
@@ -168,8 +159,7 @@ export class VerifyService {
     }
 
     // --- Unified verification path ---
-    // This path handles all cases: legacy rules, modern rules, and mixed scenarios
-    // The VerificationEngine automatically detects rule types and applies appropriate logic
+    // This path handles all cases and applies appropriate logic
     Logger.debug(`Unified verification path for address: ${address}`);
     
     // Get all rules for the current guild using the unified verification service
@@ -181,7 +171,7 @@ export class VerifyService {
       throw new Error(errorMsg);
     }
     
-    // Use unified verification engine to check all rules (both legacy and modern)
+    // Use unified verification engine to check all rules
     const ruleIds = rules.map(rule => rule.id);
     const verificationResult = await this.verificationSvc.verifyUserBulk(payload.userId, ruleIds, address);
     const { validRules, matchingAssetCounts } = verificationResult;

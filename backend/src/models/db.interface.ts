@@ -22,7 +22,6 @@ export interface DbResult<T = any> {
  * Server record interface
  * 
  * Represents a Discord server entry in the database.
- * Used for legacy server verification configurations.
  */
 export interface ServerRecord {
   id: string;        // Discord server/guild ID
@@ -31,12 +30,11 @@ export interface ServerRecord {
 }
 
 /**
- * Legacy role record interface
+ * Role record interface
  * 
- * Represents legacy role configuration data.
- * Used during migration from old to new verification system.
+ * Represents role configuration data.
  */
-export interface LegacyRoleRecord {
+export interface RoleRecord {
   role_id: string;   // Discord role ID
   name: string;      // Discord role name
 }
@@ -52,7 +50,7 @@ export interface UserRoleRecord {
   user_id: string;                   // Discord user ID
   server_id: string;                 // Discord server/guild ID
   role_id: string;                   // Discord role ID
-  rule_id?: string;                  // Associated verification rule ID (null for legacy)
+  rule_id?: string;                  // Associated verification rule ID (null for older entries)
   address: string;                   // Wallet address (denormalized for performance)
   user_name?: string;                // Discord username (cached)
   server_name?: string;              // Discord server name (cached)

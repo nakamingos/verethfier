@@ -130,7 +130,7 @@ import { EnvironmentConfig } from '@/config/environment.config';
 
     // Verification engine and related services
     VerificationEngine,          // Unified verification processor
-    VerificationService,         // Legacy compatibility layer
+    VerificationService,         // Verification orchestration layer
     VerifyService,              // Request orchestration
 
     // Security and authentication

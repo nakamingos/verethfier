@@ -5,14 +5,13 @@ import { GuildTextBasedChannel, EmbedBuilder, ActionRowBuilder, ButtonBuilder, B
  * DiscordMessageService
  * 
  * Manages Discord message creation and manipulation for verification systems.
- * Handles both legacy and new verification message formats while preventing
- * duplicate verification messages in channels.
+ * Handles verification message formats while preventing duplicate verification 
+ * messages in channels.
  * 
  * Key responsibilities:
  * - Create verification embed messages with buttons
  * - Detect existing verification messages to prevent duplicates
  * - Update verification messages with current rule information
- * - Support both legacy and new message formats
  */
 @Injectable()
 export class DiscordMessageService {

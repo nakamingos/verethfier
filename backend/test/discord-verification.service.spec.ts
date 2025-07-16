@@ -12,6 +12,7 @@ const loggerDebugSpy = jest.spyOn(Logger, 'debug').mockImplementation(() => {});
 const mockDbService = {
   getServerRole: jest.fn(),
   findRuleByMessageId: jest.fn(),
+  getRulesByChannel: jest.fn(),
   addServerToUser: jest.fn(),
   trackRoleAssignment: jest.fn(),
 };
@@ -99,12 +100,13 @@ describe('DiscordVerificationService', () => {
 
   describe('requestVerification', () => {
     it('should create verification request successfully', async () => {
-      mockDbService.getServerRole.mockResolvedValue('role-id');
+      mockDbService.getRulesByChannel.mockResolvedValue([{ role_id: 'role-id' }]);
       mockNonceService.createNonce.mockResolvedValue('test-nonce');
 
       await service.requestVerification(mockInteraction as any);
 
       // Note: deferReply is now handled by the caller, not by requestVerification
+      expect(mockDbService.getRulesByChannel).toHaveBeenCalledWith('guild-id', 'channel-id');
       expect(mockNonceService.createNonce).toHaveBeenCalledWith(
         'user-id',
         'message-id',
@@ -122,14 +124,13 @@ describe('DiscordVerificationService', () => {
       });
     });
 
-    it('should handle error when role not found', async () => {
-      mockDbService.getServerRole.mockResolvedValue(null);
-      mockDbService.findRuleByMessageId.mockResolvedValue(null);
+    it('should handle error when no rules found', async () => {
+      mockDbService.getRulesByChannel.mockResolvedValue([]);
 
       await service.requestVerification(mockInteraction as any);
 
       expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        content: 'Error: Verification role not found for this message.'
+        content: 'Error: No verification rules found for this channel.'
       });
     });
   });
@@ -207,36 +208,6 @@ describe('DiscordVerificationService', () => {
     it('should handle missing stored interaction gracefully', async () => {
       // Should not throw error
       await service.throwError('invalid-nonce', 'Test error');
-    });
-  });
-
-  describe('getVerificationRoleId', () => {
-    it('should return server role ID when available', async () => {
-      mockDbService.getServerRole.mockResolvedValue('server-role-id');
-
-      const result = await service.getVerificationRoleId('guild-id', 'channel-id', 'message-id');
-
-      expect(result).toBe('server-role-id');
-      expect(mockDbService.getServerRole).toHaveBeenCalledWith('guild-id');
-    });
-
-    it('should return message-specific rule role ID when server role not available', async () => {
-      mockDbService.getServerRole.mockResolvedValue(null);
-      mockDbService.findRuleByMessageId.mockResolvedValue({ role_id: 'message-role-id' });
-
-      const result = await service.getVerificationRoleId('guild-id', 'channel-id', 'message-id');
-
-      expect(result).toBe('message-role-id');
-      expect(mockDbService.findRuleByMessageId).toHaveBeenCalledWith('guild-id', 'channel-id', 'message-id');
-    });
-
-    it('should return null when no role found', async () => {
-      mockDbService.getServerRole.mockResolvedValue(null);
-      mockDbService.findRuleByMessageId.mockResolvedValue(null);
-
-      const result = await service.getVerificationRoleId('guild-id', 'channel-id', 'message-id');
-
-      expect(result).toBeNull();
     });
   });
 

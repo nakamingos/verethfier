@@ -7,8 +7,7 @@
  * This interface is used throughout the verification flow to pass user,
  * Discord server, and verification metadata between services.
  * 
- * The unified verification system handles both legacy and modern rules
- * transparently without requiring legacy-specific fields.
+ * The verification system handles all rules transparently.
  */
 export interface DecodedData {
   address: string;      // Ethereum wallet address being verified

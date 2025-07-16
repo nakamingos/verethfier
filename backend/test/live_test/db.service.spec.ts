@@ -352,9 +352,9 @@ describe('DbService - Integration Tests', () => {
       expect(typeof service.deleteRoleMapping).toBe('function');
       expect(typeof service.logUserRole).toBe('function');
       expect(typeof service.getAllRulesForServer).toBe('function');
-      expect(typeof service.getAllRulesWithLegacy).toBe('function');
-      expect(typeof service.removeAllLegacyRoles).toBe('function');
-      expect(typeof service.getLegacyRoles).toBe('function');
+      expect(typeof service.getAllRulesWithCompat).toBe('function');
+      expect(typeof service.removeAllRoles).toBe('function');
+      expect(typeof service.getRoles).toBe('function');
       expect(typeof service.ruleExists).toBe('function');
       expect(typeof service.findRuleWithMessage).toBe('function');
       expect(typeof service.updateRuleMessageId).toBe('function');
@@ -564,21 +564,21 @@ describe('DbService - Integration Tests', () => {
       expect(rules.every(rule => rule.server_id === serverId)).toBe(true);
     });
 
-    it('should get all rules with legacy compatibility', async () => {
+    it('should get all rules with compatibility method', async () => {
       if (!isSupabaseHealthy) {
         console.log('⏭️ Skipping test: Supabase not available');
         return;
       }
 
-      const serverId = 'test_server_legacy_rules';
-      await service.addUpdateServer(serverId, 'Legacy Rules Server', 'role_legacy');
+      const serverId = 'test_server_compat_rules';
+      await service.addUpdateServer(serverId, 'Compat Rules Server', 'role_test');
 
       const rule = await service.addRoleMapping(
-        serverId, 'Legacy Rules Server', 'channel_legacy', 'Legacy Channel',
-        'legacy-collection', 'role_legacy', 'Legacy Role', 'ALL', 'ALL', 1
+        serverId, 'Compat Rules Server', 'channel_test', 'Test Channel',
+        'test-collection', 'role_test', 'Test Role', 'ALL', 'ALL', 1
       );
 
-      const rules = await service.getAllRulesWithLegacy(serverId);
+      const rules = await service.getAllRulesWithCompat(serverId);
 
       expect(Array.isArray(rules)).toBe(true);
       expect(rules.length).toBeGreaterThan(0);
