@@ -403,13 +403,15 @@ export class DbService {
 
   /**
    * Gets all rules for a specific channel in a guild.
+   * This includes both channel-specific rules AND universal rules (channel_id='ALL').
+   * Universal rules allow legacy migrations and server-wide verification buttons.
    */
   async getRulesByChannel(guildId: string, channelId: string): Promise<VerifierRole[]> {
     const { data, error } = await this.supabase
       .from('verifier_rules')
       .select('*')
       .eq('server_id', guildId)
-      .eq('channel_id', channelId);
+      .or(`channel_id.eq.${channelId},channel_id.eq.ALL`);
     if (error) throw error;
     return data || [];
   }
