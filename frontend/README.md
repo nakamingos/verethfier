@@ -1,27 +1,79 @@
-# Frontend
+# Verethfier Frontend
 
-This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 17.1.1.
+Angular web application for wallet connection and Discord role verification.
 
-## Development server
+## 🏗️ Tech Stack
 
-Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
+- **Angular 17** with TypeScript
+- **SCSS** for styling
+- **Web3** wallet integration
+- **HTTP Client** for API communication
 
-## Code scaffolding
+## 🚀 Getting Started
 
-Run `ng generate component component-name` to generate a new component. You can also use `ng generate directive|pipe|service|class|guard|interface|enum|module`.
+### Prerequisites
+- Node.js 18+
+- Yarn
 
-## Build
+### Setup
+```bash
+yarn install
+yarn start
+```
 
-Run `ng build` to build the project. The build artifacts will be stored in the `dist/` directory.
+Navigate to `http://localhost:4200/`
 
-## Running unit tests
+### Environment Configuration
+Update `src/environments/environment.ts`:
+```typescript
+export const environment = {
+  production: false,
+  apiUrl: 'http://localhost:3000'
+};
+```
 
-Run `ng test` to execute the unit tests via [Karma](https://karma-runner.github.io).
+## 📁 Project Structure
 
-## Running end-to-end tests
+```
+frontend/
+├── src/
+│   ├── app/              # Components and services
+│   ├── assets/           # Static files
+│   ├── environments/     # Environment configs
+│   └── scss/             # Global styles
+└── dist/                 # Build output
+```
 
-Run `ng e2e` to execute the end-to-end tests via a platform of your choice. To use this command, you need to first add a package that implements end-to-end testing capabilities.
+## 🔧 Features
 
-## Further help
+- **Wallet Connection** - MetaMask integration
+- **Discord Integration** - Role verification UI
+- **Responsive Design** - Mobile-friendly interface
 
-To get more help on the Angular CLI use `ng help` or go check out the [Angular CLI Overview and Command Reference](https://angular.io/cli) page.
+## 📜 Scripts
+
+```bash
+yarn start            # Development server
+yarn build            # Build for production
+yarn test             # Run tests
+yarn lint             # Code linting
+```
+
+## 🚀 Deployment
+
+### Build for Production
+```bash
+yarn build
+```
+
+### Deploy
+Deploy the `dist/` folder to:
+- Netlify
+- Vercel  
+- GitHub Pages
+- Any static hosting service
+
+## 📚 Documentation
+
+- [Angular Documentation](https://angular.io/docs)
+- [Project Root README](../README.md)
