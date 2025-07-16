@@ -264,12 +264,13 @@ export class DiscordVerificationService {
   }
 
   /**
-   * Sends a verification complete message showing all assigned roles
+   * Sends a verification complete message showing all assigned roles and potential roles
    */
   async sendVerificationComplete(
     guildId: string,
     nonce: string,
-    roleResults: Array<{ roleId: string; roleName: string; wasAlreadyAssigned: boolean }>
+    roleResults: Array<{ roleId: string; roleName: string; wasAlreadyAssigned: boolean }>,
+    userAddress?: string
   ): Promise<void> {
     if (!this.client) throw new Error('Discord bot not initialized');
 
@@ -297,28 +298,69 @@ export class DiscordVerificationService {
       
       let description = `You have been successfully verified in ${guild.name}`;
       
+      // Get rule details for all assigned roles to show requirements
+      const allRules = await this.dbSvc.getRoleMappings(guildId);
+      const getRoleRequirement = (roleId: string): string => {
+        const rule = allRules.find(r => r.role_id === roleId);
+        if (!rule) return '';
+        
+        let requirement = '';
+        if (rule.slug && rule.slug !== 'ALL') {
+          requirement = `Own ${rule.min_items || 1}+ ${rule.slug}`;
+          
+          if (rule.attribute_key && rule.attribute_key !== 'ALL' && 
+              rule.attribute_value && rule.attribute_value !== 'ALL') {
+            requirement += ` with ${rule.attribute_key}=${rule.attribute_value}`;
+          }
+        } else if (rule.attribute_key && rule.attribute_key !== 'ALL') {
+          requirement = `Own ${rule.min_items || 1}+ NFTs with ${rule.attribute_key}`;
+          if (rule.attribute_value && rule.attribute_value !== 'ALL') {
+            requirement += `=${rule.attribute_value}`;
+          }
+        } else {
+          requirement = `Own ${rule.min_items || 1}+ NFTs from any collection`;
+        }
+        return requirement;
+      };
+      
       // Add new roles section if any
       if (newRoles.length > 0) {
-        description += `\n\n**🎉 New Roles Assigned:**\n${newRoles.map(r => `• ${r.roleName}`).join('\n')}`;
+        description += `\n\n**🎉 New Roles Assigned:**\n${newRoles.map(r => {
+          const requirement = getRoleRequirement(r.roleId);
+          return requirement ? `• **${r.roleName}**: ${requirement}` : `• ${r.roleName}`;
+        }).join('\n')}`;
       }
       
       // Add existing roles section if any
       if (existingRoles.length > 0) {
-        description += `\n\n**✅ Roles You Already Have:**\n${existingRoles.map(r => `• ${r.roleName}`).join('\n')}`;
+        description += `\n\n**✅ Roles You Already Have:**\n${existingRoles.map(r => {
+          const requirement = getRoleRequirement(r.roleId);
+          return requirement ? `• **${r.roleName}**: ${requirement}` : `• ${r.roleName}`;
+        }).join('\n')}`;
       }
       
-      // Show summary at the end
-      if (uniqueRoleResults.length > 0) {
-        const totalNew = newRoles.length;
-        const totalExisting = existingRoles.length;
-        
-        if (totalNew > 0 && totalExisting > 0) {
-          description += `\n\n*${totalNew} new role${totalNew > 1 ? 's' : ''}, ${totalExisting} existing role${totalExisting > 1 ? 's' : ''}*`;
-        } else if (totalNew > 0) {
-          description += `\n\n*${totalNew} new role${totalNew > 1 ? 's' : ''} assigned*`;
-        } else if (totalExisting > 0) {
-          description += `\n\n*You already had all ${totalExisting} role${totalExisting > 1 ? 's' : ''} for this verification*`;
+      // Add role recommendations if we have user address and there are unassigned roles
+      if (userAddress && storedInteraction?.user?.id) {
+        Logger.log(`🔍 Analyzing potential roles for user ${storedInteraction.user.id} with address ${userAddress}`);
+        try {
+          const assignedRoleIds = uniqueRoleResults.map(r => r.roleId);
+          Logger.log(`📋 Assigned role IDs: ${assignedRoleIds.join(', ')}`);
+          
+          const potentialRoles = await this.analyzePotentialRoles(guildId, storedInteraction.user.id, assignedRoleIds, userAddress);
+          Logger.log(`🚀 Found ${potentialRoles.length} potential roles:`, potentialRoles);
+          
+          if (potentialRoles.length > 0) {
+            description += `\n\n**🚀 Additional Roles Available:**\n${potentialRoles.map(r => `• **${r.roleName}**: ${r.requirement}`).join('\n')}`;
+            Logger.log(`✅ Added role recommendations to description`);
+          } else {
+            Logger.log(`ℹ️ No additional roles available for recommendation`);
+          }
+        } catch (error) {
+          Logger.error('Failed to get role recommendations:', error);
+          // Don't fail the verification if recommendations fail
         }
+      } else {
+        Logger.log(`⚠️ Skipping role recommendations - userAddress: ${!!userAddress}, userId: ${storedInteraction?.user?.id}`);
       }
 
       if (!storedInteraction.isRepliable()) {
@@ -551,6 +593,97 @@ export class DiscordVerificationService {
     } catch (error) {
       Logger.debug(`Failed to get guild member ${userId} in server ${serverId}:`, error.message);
       return null;
+    }
+  }
+
+  /**
+   * Analyze potential roles a user could earn but didn't qualify for
+   */
+  async analyzePotentialRoles(
+    guildId: string, 
+    userId: string,
+    assignedRoleIds: string[],
+    address: string
+  ): Promise<Array<{ roleName: string; requirement: string }>> {
+    if (!this.client) {
+      Logger.log(`❌ analyzePotentialRoles: Discord client not initialized`);
+      return [];
+    }
+
+    try {
+      Logger.log(`🔍 analyzePotentialRoles: Starting analysis for guild ${guildId}`);
+      
+      // Get the user's current active role assignments from the database (source of truth)
+      const userActiveAssignments = await this.dbSvc.getUserRoleHistory(userId, guildId);
+      // Filter to only active assignments
+      const activeAssignments = userActiveAssignments.filter(assignment => assignment.status === 'active');
+      const userCurrentRoleIds = activeAssignments.map(assignment => assignment.role_id);
+      Logger.log(`👤 User currently has ${userCurrentRoleIds.length} active roles in database: ${userCurrentRoleIds.join(', ')}`);
+      
+      // Get all rules for this server
+      const allRules = await this.dbSvc.getRoleMappings(guildId);
+      Logger.log(`📋 Found ${allRules.length} total rules in server`);
+      
+      // Filter out rules for roles they already have (based on database, not Discord)
+      const unassignedRules = allRules.filter(rule => !userCurrentRoleIds.includes(rule.role_id));
+      Logger.log(`🎯 Found ${unassignedRules.length} unassigned rules after filtering out current database roles`);
+      
+      // Limit to a reasonable number of recommendations
+      const maxRecommendations = 3;
+      const potentialRoles = [];
+      
+      // Get guild for Discord role fetching
+      const guild = await this.client.guilds.fetch(guildId);
+      
+      for (const rule of unassignedRules.slice(0, maxRecommendations)) {
+        try {
+          Logger.log(`🔎 Processing rule ${rule.id} for role ${rule.role_id}`);
+          
+          // Get the Discord role name (guild already fetched above)
+          const role = await guild.roles.fetch(rule.role_id);
+          
+          if (!role) {
+            Logger.log(`⚠️ Role ${rule.role_id} not found in Discord`);
+            continue;
+          }
+          
+          // Format the requirement description
+          let requirement = '';
+          if (rule.slug && rule.slug !== 'ALL') {
+            requirement = `Own ${rule.min_items || 1}+ ${rule.slug}`;
+            
+            if (rule.attribute_key && rule.attribute_key !== 'ALL' && 
+                rule.attribute_value && rule.attribute_value !== 'ALL') {
+              requirement += ` with ${rule.attribute_key}=${rule.attribute_value}`;
+            }
+          } else if (rule.attribute_key && rule.attribute_key !== 'ALL') {
+            requirement = `Own ${rule.min_items || 1}+ NFTs with ${rule.attribute_key}`;
+            if (rule.attribute_value && rule.attribute_value !== 'ALL') {
+              requirement += `=${rule.attribute_value}`;
+            }
+          } else {
+            requirement = `Own ${rule.min_items || 1}+ NFTs from any collection`;
+          }
+          
+          const potentialRole = {
+            roleName: role.name,
+            requirement
+          };
+          
+          Logger.log(`✅ Added potential role: ${potentialRole.roleName} - ${potentialRole.requirement}`);
+          potentialRoles.push(potentialRole);
+        } catch (error) {
+          Logger.error(`❌ Error processing rule ${rule.id}:`, error);
+          // Skip roles we can't process
+          continue;
+        }
+      }
+      
+      Logger.log(`🎉 analyzePotentialRoles completed with ${potentialRoles.length} recommendations`);
+      return potentialRoles;
+    } catch (error) {
+      Logger.error('❌ Error analyzing potential roles:', error);
+      return [];
     }
   }
 }
