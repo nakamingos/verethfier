@@ -140,7 +140,8 @@ export class VerifyService {
         await this.discordVerificationSvc.sendVerificationComplete(
           payload.discordId,
           payload.nonce,
-          roleResults
+          roleResults,
+          address // Pass the address for role recommendations
         );
       } catch (error) {
         Logger.error('Failed to send verification complete message:', error);
@@ -201,6 +202,7 @@ export class VerifyService {
 
         if (roleResult) {
           roleResults.push(roleResult);
+          Logger.log(`✅ Added role result: ${JSON.stringify(roleResult)}`);
         }
         Logger.debug(`✅ Unified verification: Successfully assigned role: ${rule.role_id} for rule ${rule.id}`);
       } catch (error) {
@@ -211,10 +213,12 @@ export class VerifyService {
     
     // Send verification complete message with role assignment details
     try {
+      Logger.log(`🎯 Sending verification complete message with ${roleResults.length} role results and address: ${address}`);
       await this.discordVerificationSvc.sendVerificationComplete(
         payload.discordId,
         payload.nonce,
-        roleResults
+        roleResults,
+        address // Pass the address for role recommendations
       );
     } catch (error) {
       Logger.error('Failed to send verification complete message:', error);

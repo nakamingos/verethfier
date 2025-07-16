@@ -15,6 +15,25 @@ const mockDbService = {
   getRulesByChannel: jest.fn(),
   addServerToUser: jest.fn(),
   trackRoleAssignment: jest.fn(),
+  getRoleMappings: jest.fn().mockResolvedValue([
+    {
+      id: 1,
+      role_id: 'role-id',
+      slug: 'test-collection',
+      min_items: 1,
+      attribute_key: 'ALL',
+      attribute_value: 'ALL'
+    },
+    {
+      id: 2,
+      role_id: 'role-id-2',
+      slug: 'other-collection',
+      min_items: 1,
+      attribute_key: 'ALL',
+      attribute_value: 'ALL'
+    }
+  ]),
+  getUserRoleHistory: jest.fn().mockResolvedValue([])
 };
 
 const mockNonceService = {
@@ -227,7 +246,7 @@ describe('DiscordVerificationService', () => {
           expect.objectContaining({
             data: expect.objectContaining({
               title: 'Verification Successful',
-              description: expect.stringContaining('Test Role')
+              description: expect.stringContaining('• **Test Role**: Own 1+ test-collection')
             })
           })
         ]),
@@ -260,7 +279,7 @@ describe('DiscordVerificationService', () => {
           expect.objectContaining({
             data: expect.objectContaining({
               title: 'Verification Successful',
-              description: expect.stringMatching(/Test Role[\s\S]*Test Role 2/)
+              description: expect.stringMatching(/New Roles Assigned[\s\S]*Test Role[\s\S]*Roles You Already Have[\s\S]*Test Role 2/)
             })
           })
         ]),
@@ -292,7 +311,7 @@ describe('DiscordVerificationService', () => {
           expect.objectContaining({
             data: expect.objectContaining({
               title: 'Verification Successful',
-              description: expect.stringContaining('• GIF Goddess')
+              description: expect.stringContaining('• **GIF Goddess**: Own 1+ test-collection')
             })
           })
         ]),
@@ -302,7 +321,7 @@ describe('DiscordVerificationService', () => {
       // Verify that 'GIF Goddess' appears only once in the description
       const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
       const description = editReplyCall.embeds[0].data.description;
-      const matches = description.match(/• GIF Goddess/g);
+      const matches = description.match(/\*\*GIF Goddess\*\*/g);
       expect(matches).toHaveLength(1); // Should appear only once, not three times
     });
 
