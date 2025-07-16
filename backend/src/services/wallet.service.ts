@@ -3,6 +3,7 @@ import { recoverTypedDataAddress } from 'viem';
 
 import { NonceService } from '@/services/nonce.service';
 import { UserAddressService } from '@/services/user-address.service';
+import { DiscordService } from '@/services/discord.service';
 import { DecodedData } from '@/models/app.interface';
 
 /**
@@ -23,7 +24,8 @@ export class WalletService {
 
   constructor(
     private nonceSvc: NonceService,
-    private userAddressService: UserAddressService
+    private userAddressService: UserAddressService,
+    private discordService: DiscordService
   ) {}
   
   /**
@@ -110,9 +112,21 @@ export class WalletService {
     
     // Store the verified address in user_wallets table
     try {
-      const result = await this.userAddressService.addUserAddress(data.userId, address);
+      // Get Discord username
+      let userName: string | null = null;
+      try {
+        const user = await this.discordService.getUser(data.userId);
+        if (user) {
+          userName = user.globalName || user.username || null;
+        }
+      } catch (usernameError) {
+        Logger.debug(`Could not fetch Discord username for ${data.userId}:`, usernameError.message);
+        // Continue without username
+      }
+
+      const result = await this.userAddressService.addUserAddress(data.userId, address, userName);
       if (result.success) {
-        Logger.debug(`Successfully ${result.isNewAddress ? 'added new' : 'updated existing'} address for user ${data.userId}`);
+        Logger.debug(`Successfully ${result.isNewAddress ? 'added new' : 'updated existing'} address for user ${data.userId}${userName ? ` (${userName})` : ''}`);
       } else {
         Logger.warn(`Failed to store address for user ${data.userId}: ${result.error}`);
       }

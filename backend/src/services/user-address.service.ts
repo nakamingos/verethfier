@@ -5,6 +5,7 @@ interface UserWallet {
   id: number;
   user_id: string;
   address: string;
+  user_name: string | null;
   created_at: string;
   last_verified_at: string;
 }
@@ -62,10 +63,10 @@ export class UserAddressService {
   /**
    * Add a new address for a user (after successful verification)
    */
-  async addUserAddress(userId: string, address: string): Promise<AddAddressResult> {
+  async addUserAddress(userId: string, address: string, userName?: string | null): Promise<AddAddressResult> {
     try {
       const normalizedAddress = address.toLowerCase();
-      this.logger.debug(`Adding address ${normalizedAddress} for user: ${userId}`);
+      this.logger.debug(`Adding address ${normalizedAddress} for user: ${userId}${userName ? ` (${userName})` : ''}`);
 
       // Check if this user-address combination already exists
       const { data: existing } = await this.supabase
@@ -76,10 +77,13 @@ export class UserAddressService {
         .single();
 
       if (existing) {
-        // Update last_verified_at for existing address
+        // Update last_verified_at and user_name for existing address
         const { data: updated, error: updateError } = await this.supabase
           .from('user_wallets')
-          .update({ last_verified_at: new Date().toISOString() })
+          .update({ 
+            last_verified_at: new Date().toISOString(),
+            user_name: userName !== undefined ? userName : existing.user_name
+          })
           .eq('user_id', userId)
           .eq('address', normalizedAddress)
           .select()
@@ -90,7 +94,7 @@ export class UserAddressService {
           return { success: false, error: updateError.message };
         }
 
-        this.logger.debug(`Updated existing address verification time`);
+        this.logger.debug(`Updated existing address verification time and username`);
         return { 
           success: true, 
           wallet: updated, 
@@ -104,6 +108,7 @@ export class UserAddressService {
         .insert({
           user_id: userId,
           address: normalizedAddress,
+          user_name: userName || null,
           created_at: new Date().toISOString(),
           last_verified_at: new Date().toISOString()
         })
