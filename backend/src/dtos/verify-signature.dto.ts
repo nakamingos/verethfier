@@ -11,15 +11,14 @@ import { IsString, IsNotEmpty, IsObject, IsOptional, IsNumber } from 'class-vali
  * - data: Decoded JWT payload with user, server, and verification details
  * - signature: EIP-712 signature from the user's wallet
  * 
- * The unified verification system automatically handles both legacy and modern
- * verification rules transparently without requiring different API structures.
+ * The verification system automatically handles all verification rules
+ * transparently without requiring different API structures.
  */
 export class VerifySignatureDto {
   /**
    * The decoded verification data object.
    * Contains user information, Discord server details, and verification metadata.
-   * The verification engine automatically detects and processes the appropriate
-   * rule type without requiring legacy-specific fields.
+   * The verification engine automatically processes the verification criteria.
    */
   @IsObject()
   data: {

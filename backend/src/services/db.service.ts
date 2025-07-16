@@ -1,7 +1,7 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { CONSTANTS } from '@/constants';
-import { DbResult, ServerRecord, LegacyRoleRecord } from '@/models/db.interface';
+import { DbResult, ServerRecord, RoleRecord } from '@/models/db.interface';
 import { VerifierRole } from '@/models/verifier-role.interface';
 
 /**
@@ -11,7 +11,7 @@ import { VerifierRole } from '@/models/verifier-role.interface';
  * It handles:
  * - Server and user management
  * - Verification rule CRUD operations
- * - Legacy role management and migration
+ * - Role management and migration
  * - Asset verification tracking
  * 
  * Database Schema:
@@ -270,7 +270,7 @@ export class DbService {
     // Role assignment logged successfully
   }
 
-  // Get all verification rules for a server (unified approach - no legacy table queries)
+  // Get all verification rules for a server (unified approach)
   async getAllRulesForServer(serverId: string): Promise<any[]> {
     const { data: rules, error } = await this.supabase
       .from('verifier_rules')
@@ -280,53 +280,53 @@ export class DbService {
     return rules || [];
   }
 
-  // Legacy method maintained for backwards compatibility - now uses unified approach
-  async getAllRulesWithLegacy(serverId: string): Promise<any[]> {
+  // Method maintained for backwards compatibility - now uses unified approach
+  async getAllRulesWithCompat(serverId: string): Promise<any[]> {
     return await this.getAllRulesForServer(serverId);
   }
 
-  // Legacy methods maintained for backwards compatibility but simplified
+  // Methods maintained for backwards compatibility but simplified
   // Note: These methods now work with the unified verifier_rules table only
-  async removeAllLegacyRoles(serverId: string): Promise<{ removed: Array<{ role_id: string, name: string }> }> {
-    // In the unified system, "legacy" rules are identified by special slug/attributes
-    const { data: legacyRules, error } = await this.supabase
+  async removeAllRoles(serverId: string): Promise<{ removed: Array<{ role_id: string, name: string }> }> {
+    // In the unified system, roles are identified by special slug/attributes
+    const { data: roles, error } = await this.supabase
       .from('verifier_rules')
       .select('role_id, role_name')
       .eq('server_id', serverId)
-      .eq('slug', 'legacy_collection');
+      .eq('slug', 'simple_collection');
     
     if (error) throw error;
-    if (!legacyRules || legacyRules.length === 0) {
+    if (!roles || roles.length === 0) {
       return { removed: [] };
     }
 
-    // Remove legacy rules
+    // Remove rules
     await this.supabase
       .from('verifier_rules')
       .delete()
       .eq('server_id', serverId)
-      .eq('slug', 'legacy_collection');
+      .eq('slug', 'simple_collection');
 
     return { 
-      removed: legacyRules.map(rule => ({ 
+      removed: roles.map(rule => ({ 
         role_id: rule.role_id, 
-        name: rule.role_name || 'Legacy Role' 
+        name: rule.role_name || 'Role' 
       }))
     };
   }
 
-  // Get all legacy rules for a server (now using unified table)
-  async getLegacyRoles(serverId: string): Promise<DbResult<LegacyRoleRecord[]>> {
+  // Get all rules for a server (now using unified table)
+  async getRoles(serverId: string): Promise<DbResult<RoleRecord[]>> {
     const { data, error } = await this.supabase
       .from('verifier_rules')
       .select('role_id, role_name')
       .eq('server_id', serverId)
-      .eq('slug', 'legacy_collection');
+      .eq('slug', 'simple_collection');
     
-    // Transform to match expected legacy format
+    // Transform to match expected format
     const transformedData = data?.map(rule => ({
       role_id: rule.role_id,
-      name: rule.role_name || 'Legacy Role'
+      name: rule.role_name || 'Role'
     })) || [];
 
     return { data: transformedData, error };

@@ -2,11 +2,10 @@
  * VerificationEngine Unit Tests
  * 
  * Comprehensive unit test suite for the VerificationEngine class.
- * Tests all verification logic, rule type detection, and error handling.
+ * Tests all verification logic and error handling.
  * 
  * Coverage Goals:
- * - Legacy and modern verification flows
- * - Rule type detection logic
+ * - Verification flows
  * - Bulk verification operations
  * - Error handling and edge cases
  * - Input validation and sanitization
@@ -26,16 +25,16 @@ describe('VerificationEngine', () => {
   let mockDataService: jest.Mocked<DataService>;
   let loggerSpy: jest.SpyInstance;
 
-  const mockLegacyRule: VerifierRole = {
+  const mockRule: VerifierRole = {
     id: 1,
     server_id: 'server123',
     server_name: 'Test Server',
     channel_id: 'channel123',
     channel_name: 'Test Channel',
-    slug: 'legacy_collection',
+    slug: 'test_collection',
     role_id: 'role123',
-    role_name: 'Legacy Role',
-    attribute_key: 'legacy_attribute',
+    role_name: 'Test Role',
+    attribute_key: 'test_attribute',
     attribute_value: 'ALL',
     min_items: 1
   };
@@ -96,19 +95,18 @@ describe('VerificationEngine', () => {
   });
 
   describe('verifyUser', () => {
-    it('should successfully verify user with legacy rule', async () => {
-      mockDbService.getRuleById.mockResolvedValue(mockLegacyRule);
+    it('should successfully verify user with rule', async () => {
+      mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(5);
 
-      const result = await service.verifyUser('user123', 'legacy_rule', 'address123');
+      const result = await service.verifyUser('user123', 'test_rule', 'address123');
 
       expect(result.isValid).toBe(true);
-      expect(result.ruleType).toBe('legacy');
       expect(result.matchingAssetCount).toBe(5);
-      expect(result.rule).toEqual(mockLegacyRule);
+      expect(result.rule).toEqual(mockRule);
       expect(result.verificationDetails).toEqual({
-        collection: 'ALL',
-        attributeKey: 'ALL',
+        collection: 'test_collection',
+        attributeKey: 'test_attribute',
         attributeValue: 'ALL',
         minItems: 1,
         foundAssets: 5
@@ -122,7 +120,6 @@ describe('VerificationEngine', () => {
       const result = await service.verifyUser('user123', 'modern_rule', 'address123');
 
       expect(result.isValid).toBe(true);
-      expect(result.ruleType).toBe('modern');
       expect(result.matchingAssetCount).toBe(3);
       expect(result.rule).toEqual(mockModernRule);
       expect(result.verificationDetails).toEqual({
@@ -141,7 +138,6 @@ describe('VerificationEngine', () => {
       const result = await service.verifyUser('user123', 'modern_rule', 'address123');
 
       expect(result.isValid).toBe(false);
-      expect(result.ruleType).toBe('modern');
       expect(result.matchingAssetCount).toBe(1);
       expect(result.verificationDetails?.foundAssets).toBe(1);
       expect(result.verificationDetails?.minItems).toBe(3);
@@ -153,7 +149,6 @@ describe('VerificationEngine', () => {
       const result = await service.verifyUser('user123', 'nonexistent', 'address123');
 
       expect(result.isValid).toBe(false);
-      expect(result.ruleType).toBe('unknown');
       expect(result.error).toBe('Rule nonexistent not found');
       expect(result.userId).toBe('user123');
       expect(result.ruleId).toBe('nonexistent');
@@ -167,18 +162,16 @@ describe('VerificationEngine', () => {
       const result = await service.verifyUser('user123', 'rule123', 'address123');
 
       expect(result.isValid).toBe(false);
-      expect(result.ruleType).toBe('unknown'); // getRuleById catches errors and returns null
       expect(result.error).toBe('Rule rule123 not found');
     });
 
-    it('should handle data service errors in legacy verification', async () => {
-      mockDbService.getRuleById.mockResolvedValue(mockLegacyRule);
+    it('should handle data service errors in verification', async () => {
+      mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockRejectedValue(new Error('API error'));
 
-      const result = await service.verifyUser('user123', 'legacy_rule', 'address123');
+      const result = await service.verifyUser('user123', 'test_rule', 'address123');
 
       expect(result.isValid).toBe(false);
-      expect(result.ruleType).toBe('legacy');
       expect(result.error).toBe('API error');
     });
 
@@ -189,7 +182,6 @@ describe('VerificationEngine', () => {
       const result = await service.verifyUser('user123', 'modern_rule', 'address123');
 
       expect(result.isValid).toBe(false);
-      expect(result.ruleType).toBe('modern');
       expect(result.error).toBe('Network timeout');
     });
 
@@ -203,91 +195,19 @@ describe('VerificationEngine', () => {
       expect(mockDbService.getRuleById).toHaveBeenCalledWith('42');
       expect(result.ruleId).toBe(42);
     });
-
-    it('should handle unknown rule types', async () => {
-      const unknownRule: VerifierRole = {
-        id: 3,
-        server_id: 'server123',
-        server_name: 'Test Server',
-        channel_id: 'channel123',
-        channel_name: 'Test Channel',
-        slug: '',
-        role_id: 'role123',
-        role_name: 'Unknown',
-        attribute_key: '',
-        attribute_value: '',
-        min_items: 0
-      };
-
-      mockDbService.getRuleById.mockResolvedValue(unknownRule);
-
-      const result = await service.verifyUser('user123', 'unknown_rule', 'address123');
-
-      expect(result.isValid).toBe(false);
-      expect(result.ruleType).toBe('unknown');
-      expect(result.error).toContain('Unsupported rule type');
-    });
-  });
-
-  describe('rule type detection', () => {
-    it('should detect legacy rule by slug', () => {
-      const legacyRule = { ...mockLegacyRule, slug: 'legacy_collection' };
-      mockDbService.getRuleById.mockResolvedValue(legacyRule);
-      
-      // We need to test the private method indirectly through verifyUser
-      service.verifyUser('user123', 'test', 'address123');
-      
-      // The method should be called with legacy detection
-      expect(mockDbService.getRuleById).toHaveBeenCalled();
-    });
-
-    it('should detect legacy rule by attribute key', () => {
-      const legacyRule = { ...mockLegacyRule, attribute_key: 'legacy_attribute' };
-      expect(legacyRule.attribute_key).toBe('legacy_attribute');
-    });
-
-    it('should detect legacy rule by ID', () => {
-      const legacyRule = { ...mockLegacyRule, id: 'LEGACY' };
-      expect(legacyRule.id).toBe('LEGACY');
-    });
-
-    it('should detect modern rule with specific criteria', () => {
-      expect(mockModernRule.slug).toBe('cool-cats');
-      expect(mockModernRule.attribute_key).toBe('trait_type');
-      expect(mockModernRule.min_items).toBe(3);
-    });
-
-    it('should default to modern for rules with basic structure', () => {
-      const basicRule: VerifierRole = {
-        id: 4,
-        server_id: 'server123',
-        server_name: 'Test Server',
-        channel_id: 'channel123',
-        channel_name: 'Test Channel',
-        slug: 'some-collection',
-        role_id: 'role123',
-        role_name: 'Basic Role',
-        attribute_key: null,
-        attribute_value: null,
-        min_items: 1
-      };
-
-      expect(basicRule.slug).toBeTruthy();
-      expect(basicRule.id).toBeTruthy();
-    });
   });
 
   describe('verifyUserBulk', () => {
     it('should verify multiple rules successfully', async () => {
       mockDbService.getRuleById
-        .mockResolvedValueOnce(mockLegacyRule)
+        .mockResolvedValueOnce(mockRule)
         .mockResolvedValueOnce(mockModernRule);
       
       mockDataService.checkAssetOwnershipWithCriteria
-        .mockResolvedValueOnce(2) // Legacy rule passes
-        .mockResolvedValueOnce(1); // Modern rule fails (needs 3)
+        .mockResolvedValueOnce(2) // First rule passes
+        .mockResolvedValueOnce(1); // Second rule fails (needs 3)
 
-      const result = await service.verifyUserBulk('user123', ['legacy_rule', 'modern_rule'], 'address123');
+      const result = await service.verifyUserBulk('user123', ['test_rule', 'modern_rule'], 'address123');
 
       expect(result.userId).toBe('user123');
       expect(result.address).toBe('address123');
@@ -295,8 +215,8 @@ describe('VerificationEngine', () => {
       expect(result.validRules).toHaveLength(1);
       expect(result.invalidRules).toHaveLength(1);
       expect(result.results).toHaveLength(2);
-      expect(result.matchingAssetCounts.get('1')).toBe(2); // Use actual rule ID from mock
-      expect(result.matchingAssetCounts.has('2')).toBe(false); // Failed verification
+      expect(result.matchingAssetCounts.get('test_rule')).toBe(2); // Use actual rule ID from test call
+      expect(result.matchingAssetCounts.has('modern_rule')).toBe(false); // Failed verification
     });
 
     it('should handle empty rule list', async () => {
@@ -333,7 +253,7 @@ describe('VerificationEngine', () => {
 
       mockDbService.getRoleMappings.mockResolvedValue(serverRules);
       mockDbService.getRuleById
-        .mockResolvedValueOnce(mockLegacyRule)
+        .mockResolvedValueOnce(mockRule)
         .mockResolvedValueOnce(mockModernRule);
       
       mockDataService.checkAssetOwnershipWithCriteria
@@ -357,28 +277,28 @@ describe('VerificationEngine', () => {
     });
   });
 
-  describe('legacy verification logic', () => {
-    it('should pass legacy verification with any assets', async () => {
-      mockDbService.getRuleById.mockResolvedValue(mockLegacyRule);
+  describe('verification logic', () => {
+    it('should pass verification with any assets', async () => {
+      mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(1);
 
-      const result = await service.verifyUser('user123', 'legacy_rule', 'address123');
+      const result = await service.verifyUser('user123', 'test_rule', 'address123');
 
       expect(mockDataService.checkAssetOwnershipWithCriteria).toHaveBeenCalledWith(
         'address123',
-        'ALL',
-        'ALL', 
+        'test_collection',
+        'test_attribute', 
         'ALL',
         1
       );
       expect(result.isValid).toBe(true);
     });
 
-    it('should fail legacy verification with no assets', async () => {
-      mockDbService.getRuleById.mockResolvedValue(mockLegacyRule);
+    it('should fail verification with no assets', async () => {
+      mockDbService.getRuleById.mockResolvedValue(mockRule);
       mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(0);
 
-      const result = await service.verifyUser('user123', 'legacy_rule', 'address123');
+      const result = await service.verifyUser('user123', 'test_rule', 'address123');
 
       expect(result.isValid).toBe(false);
       expect(result.matchingAssetCount).toBe(0);
@@ -463,7 +383,6 @@ describe('VerificationEngine', () => {
       const result = await service.verifyUser('user123', 'modern_rule', 'address123');
 
       expect(result.isValid).toBe(false);
-      expect(result.ruleType).toBe('modern'); // verifyModern catches errors and returns modern type
       expect(result.error).toBe('Unexpected error');
     });
 
@@ -479,7 +398,6 @@ describe('VerificationEngine', () => {
       const result = await service.verifyUser('user123', 'malformed', 'address123');
 
       // Should still attempt verification with defaults
-      expect(result.ruleType).toBe('unknown');
     });
 
     it('should handle empty strings in addresses', async () => {
@@ -530,29 +448,7 @@ describe('VerificationEngine', () => {
         expect.stringContaining('Starting verification for user user123')
       );
       expect(loggerSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Verification result for user user123: PASS')
-      );
-    });
-
-    it('should log rule type detection', async () => {
-      mockDbService.getRuleById.mockResolvedValue(mockLegacyRule);
-      mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(1);
-
-      await service.verifyUser('user123', 'legacy_rule', 'address123');
-
-      expect(loggerSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Detected rule type 'legacy'")
-      );
-    });
-
-    it('should log verification criteria for modern rules', async () => {
-      mockDbService.getRuleById.mockResolvedValue(mockModernRule);
-      mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(3);
-
-      await service.verifyUser('user123', 'modern_rule', 'address123');
-
-      expect(loggerSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Criteria - collection:cool-cats, attr:trait_type=Rare, min:3')
+        expect.stringContaining('Verification PASSED - found 3 assets, needed 3')
       );
     });
 
@@ -577,7 +473,6 @@ describe('VerificationEngine', () => {
 
       // Check all required fields are present
       expect(result).toHaveProperty('isValid');
-      expect(result).toHaveProperty('ruleType');
       expect(result).toHaveProperty('userId');
       expect(result).toHaveProperty('ruleId');
       expect(result).toHaveProperty('address');
@@ -589,8 +484,6 @@ describe('VerificationEngine', () => {
 
       // Verify types
       expect(typeof result.isValid).toBe('boolean');
-      expect(typeof result.ruleType).toBe('string');
-      expect(['legacy', 'modern', 'unknown', 'error']).toContain(result.ruleType);
     });
 
     it('should return BulkVerificationResult with all required fields', async () => {

@@ -75,7 +75,6 @@ describe('VerificationService', () => {
       // Mock the VerificationEngine response
       mockVerificationEngine.verifyUser.mockResolvedValue({
         isValid: true,
-        ruleType: 'modern',
         userId: 'unknown',
         ruleId: 1,
         address: '0xabc',
@@ -108,7 +107,6 @@ describe('VerificationService', () => {
       // Mock the VerificationEngine response for specific rule
       mockVerificationEngine.verifyUser.mockResolvedValue({
         isValid: true,
-        ruleType: 'modern',
         userId: 'unknown',
         ruleId: 2,
         address: '0xdef',
@@ -141,7 +139,6 @@ describe('VerificationService', () => {
       // Mock the VerificationEngine response for failed verification
       mockVerificationEngine.verifyUser.mockResolvedValue({
         isValid: false,
-        ruleType: 'modern',
         userId: 'unknown',
         ruleId: 3,
         address: '0xfailed',
@@ -208,7 +205,6 @@ describe('VerificationService', () => {
     it('should verify user using VerificationEngine', async () => {
       const mockResult = {
         isValid: true,
-        ruleType: 'modern' as const,
         userId: 'user-123',
         ruleId: 1,
         address: '0xabc',

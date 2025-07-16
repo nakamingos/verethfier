@@ -270,42 +270,6 @@ describe('VerificationService - Integration Tests', () => {
     });
   });
 
-  describe('verifyUserAgainstRule (legacy method)', () => {
-    it('should handle legacy verification method', async () => {
-      if (!isSupabaseHealthy) {
-        console.log('⏭️ Skipping test: Supabase not available');
-        return;
-      }
-
-      await testDb.createTestServer('test_server_legacy');
-      const rule = await testDb.createTestRule('test_server_legacy');
-
-      // Convert to VerifierRole format for legacy method
-      const legacyRule = {
-        id: rule.id,
-        server_id: rule.server_id,
-        server_name: rule.server_name,
-        channel_id: rule.channel_id,
-        channel_name: rule.channel_name,
-        slug: rule.slug,
-        role_id: rule.role_id,
-        role_name: rule.role_name,
-        attribute_key: rule.attribute_key,
-        attribute_value: rule.attribute_value,
-        min_items: rule.min_items
-      };
-
-      const result = await verificationService.verifyUserAgainstRule(
-        '0x742d35cc6634c0532925a3b8d3aa3e3cf9fbc4f4',
-        legacyRule
-      );
-
-      expect(result).toBeDefined();
-      expect(typeof result.isValid).toBe('boolean');
-      expect(result.matchingAssetCount).toBeDefined();
-    });
-  });
-
   describe('error handling and edge cases', () => {
     it('should handle invalid addresses gracefully', async () => {
       if (!isSupabaseHealthy) {

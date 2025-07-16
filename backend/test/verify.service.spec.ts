@@ -28,7 +28,6 @@ const mockDiscordVerificationService = {
   }),
   throwError: jest.fn(),
   sendVerificationComplete: jest.fn(),
-  getVerificationRoleId: jest.fn().mockResolvedValue('role-id')
 };
 const mockDataService = { 
   getDetailedAssets: jest.fn(),

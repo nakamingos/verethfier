@@ -21,7 +21,6 @@ const EXPIRY = Number(process.env.NONCE_EXPIRY);
  * - Generate verification links with encoded payloads
  * - Assign Discord roles after successful verification
  * - Handle verification error reporting
- * - Support both legacy and message-based verification flows
  */
 @Injectable()
 export class DiscordVerificationService {
@@ -55,8 +54,6 @@ export class DiscordVerificationService {
    * 3. Generates an encoded verification payload
    * 4. Provides a verification link for the user to complete wallet signing
    * 
-   * Supports both legacy and message-based verification systems.
-   * 
    * @param interaction - The Discord button interaction triggered by the user
    * @throws Error if guild/channel/role not found or verification setup invalid
    */
@@ -70,17 +67,19 @@ export class DiscordVerificationService {
       const channel = interaction.channel;
       if (!channel || !('id' in channel)) throw new Error('Channel not found');
       
-      // Try to get the correct roleId (legacy or new)
-      let roleId: string | null = null;
+      // Get verification rules for this channel
+      let rules: any[] = [];
       try {
-        roleId = await this.getVerificationRoleId(guild.id, channel.id, interaction.message.id);
+        rules = await this.dbSvc.getRulesByChannel(guild.id, channel.id);
       } catch (err) {
-        Logger.error('Error fetching verification roleId', err);
+        Logger.error('Error fetching verification rules', err);
       }
       
-      if (!roleId) throw new Error('Verification role not found for this message.');
+      if (!rules || rules.length === 0) throw new Error('No verification rules found for this channel.');
       
-      const role = guild.roles.cache.get(roleId);
+      // Use the first rule found (most common case is one rule per channel)
+      const rule = rules[0];
+      const role = guild.roles.cache.get(rule.role_id);
       if (!role) throw new Error('Role not found');
 
       // Check if user is already verified
@@ -106,7 +105,7 @@ export class DiscordVerificationService {
         channel.id
       );
       
-      // Encode the payload (keeping legacy format for compatibility)
+      // Encode the payload
       const payloadArr = [
         interaction.user.id,
         interaction.user.tag,
@@ -114,8 +113,8 @@ export class DiscordVerificationService {
         interaction.guild.id,
         interaction.guild.name,
         interaction.guild.iconURL(),
-        role.id, // TODO(v3): deprecated, remove when legacy buttons are phased out
-        role.name, // TODO(v3): deprecated, remove when legacy buttons are phased out
+        role.id,
+        role.name,
         nonce,
         expiry,
       ];
@@ -363,18 +362,8 @@ export class DiscordVerificationService {
   }
 
   /**
-   * Helper to get the correct roleId for verification, supporting both legacy and new rules.
+   * Helper to get the correct roleId for verification.
    */
-  async getVerificationRoleId(guildId: string, channelId: string, messageId: string): Promise<string | null> {
-    // Try legacy first
-    const legacyRoleId = await this.dbSvc.getServerRole(guildId);
-    if (legacyRoleId) return legacyRoleId;
-    // Try new rules
-    const rule = await this.dbSvc.findRuleByMessageId(guildId, channelId, messageId);
-    if (rule && rule.role_id) return rule.role_id;
-    return null;
-  }
-
   // =======================================
   // DYNAMIC ROLE MANAGEMENT METHODS
   // =======================================

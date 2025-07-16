@@ -114,7 +114,6 @@ describe('VerificationEngine - Integration Tests', () => {
       expect(typeof result.isValid).toBe('boolean');
       
       // Should have rule type detected
-      expect(['modern', 'legacy', 'unknown']).toContain(result.ruleType);
     });
 
     it('should handle invalid ethereum address', async () => {
@@ -347,8 +346,6 @@ describe('VerificationEngine - Integration Tests', () => {
         '0x742d35cc6634c0532925a3b8d3aa3e3cf9fbc4f4'
       );
 
-      expect(result.ruleType).toBeDefined();
-      expect(['modern', 'legacy', 'unknown']).toContain(result.ruleType);
     });
   });
 });

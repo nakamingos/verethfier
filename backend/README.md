@@ -14,7 +14,7 @@ NestJS-based Discord bot for Ethscriptions-based role verification with unified 
 
 ## 🎯 Key Features
 
-- **Unified Verification Engine**: Transparent handling of both legacy and modern verification rules
+- **Unified Verification Engine**: Streamlined verification system for all rule types
 - **Channel-Based Verification**: Simplified verification flow based on Discord channels (no message tracking)
 - **Dynamic Role Management**: Automatic role assignment/removal with scheduled re-verification
 - **High Performance**: Optimized database queries with caching layer
@@ -40,7 +40,7 @@ backend/
 │   └── constants/       # Application constants
 ├── test/                # Comprehensive test suites (83%+ coverage)
 ├── supabase/
-│   └── migrations/      # Database migrations with legacy support
+│   └── migrations/      # Database migrations
 └── scripts/             # Utility scripts
 ```
 
@@ -128,10 +128,10 @@ yarn test:watch
 
 ## 🔧 Core Services
 
-### VerificationEngine (New Unified Engine)
-Central verification engine that transparently handles both legacy and modern verification rules:
+### VerificationEngine (Unified Engine)
+Central verification engine that provides streamlined verification for all rule types:
 - **Unified API**: Single entry point for all verification types
-- **Smart Detection**: Automatically identifies rule type (legacy vs modern)
+- **Channel-Based Verification**: Primary verification mode using channel-specific rules
 - **Performance Optimized**: Efficient database queries with caching
 - **Comprehensive Logging**: Detailed verification flow tracking
 
@@ -149,7 +149,7 @@ Automated role management with continuous monitoring:
 - **Automatic Cleanup**: Removes roles when holdings no longer meet criteria
 - **Grace Period Handling**: Supports transition periods for rule changes
 - **Rate Limit Aware**: Respects Discord API limits during bulk operations
-- **Legacy Migration**: Seamless transition from old to new role tracking
+- **Migration Support**: Seamless transition support for role tracking
 
 ### DiscordService
 Comprehensive Discord bot integration:
@@ -180,11 +180,11 @@ Secure wallet verification using modern standards:
 - **`verifier_rules`** - Channel-based verification rules with attribute filtering
 - **`nonces`** - Secure verification nonce management with expiry
 
-### Legacy Migration Support
-- **Automatic Detection**: Seamlessly handles legacy data during transition
+### Migration Support
+- **Smooth Transitions**: Seamlessly handles data during system updates
 - **Grace Period**: 72-hour transition window for existing users
-- **Backward Compatibility**: Maintains support for legacy verification flows
-- **Data Preservation**: Ensures no data loss during migration
+- **Backward Compatibility**: Maintains support for existing verification flows
+- **Data Preservation**: Ensures no data loss during system changes
 
 ### Key Schema Improvements
 - **Channel-Based Verification**: Simplified verification flow (removed message_id dependency)
