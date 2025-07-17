@@ -1,3 +1,11 @@
+// Polyfill for crypto.randomUUID in case it's not available
+if (!global.crypto) {
+  global.crypto = require('crypto');
+}
+if (!global.crypto.randomUUID) {
+  global.crypto.randomUUID = () => require('crypto').randomBytes(16).toString('hex');
+}
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger, ValidationPipe } from '@nestjs/common';
