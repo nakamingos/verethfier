@@ -21,4 +21,4 @@ RUN yarn global add serve
 EXPOSE 3000
 
 # Serve the built application
-CMD ["serve", "-s", "dist/frontend", "-l", "3000"]
+CMD ["serve", "-s", "dist/frontend", "-l", "3000", "--host", "0.0.0.0"]
