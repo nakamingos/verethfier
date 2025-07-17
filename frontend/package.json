@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
-    "start": "npx serve -s dist/frontend -l $PORT",
+    "start": "npx serve -s dist -l $PORT",
     "start:dev": "ng serve",
     "build": "ng build && npm install -g serve",
     "watch": "ng build --watch --configuration development",
