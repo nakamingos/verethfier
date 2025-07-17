@@ -88,11 +88,16 @@ async function bootstrap() {
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
-  await app.listen(3200);
+  
+  // Use Railway's PORT environment variable
+  const port = process.env.PORT || 3000;
+  await app.listen(port, '0.0.0.0');
   
   // Only log server startup in development
   if (EnvironmentConfig.NODE_ENV === 'development') {
-    Logger.log(`Server running on http://localhost:3200`, 'Bootstrap');
+    Logger.log(`Server running on http://localhost:${port}`, 'Bootstrap');
+  } else {
+    Logger.log(`🚀 Application is running on port ${port}`, 'Bootstrap');
   }
 }
 bootstrap();
