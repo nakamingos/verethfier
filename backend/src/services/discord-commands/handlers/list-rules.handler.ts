@@ -43,8 +43,14 @@ export class ListRulesHandler {
       // Format and send the rules list
       const description = this.formatRulesList(rules);
       
+      this.logger.log(`Description length: ${description?.length || 0}`);
+      this.logger.log(`Description preview: ${description?.substring(0, 100)}...`);
+      
+      // Validate description length (Discord embed limit is 4096 characters)
+      const validatedDescription = this.validateDescription(description);
+      
       await interaction.editReply({
-        embeds: [AdminFeedback.info('Verification Rules', description)]
+        embeds: [AdminFeedback.info('Verification Rules', validatedDescription)]
       });
 
     } catch (error) {
@@ -93,10 +99,47 @@ export class ListRulesHandler {
    * Formats a single rule for display
    */
   private formatSingleRule(rule: any): string {
-    const attribute = formatAttribute(rule.attribute_key, rule.attribute_value);
-    const slug = rule.slug || 'ALL';
-    const minItems = rule.min_items || 1;
+    if (!rule) {
+      return 'Invalid rule data';
+    }
 
-    return `ID: ${rule.id} | Channel: <#${rule.channel_id}> | Role: <@&${rule.role_id}> | Slug: ${slug} | Attr: ${attribute} | Min: ${minItems}`;
+    try {
+      const attribute = formatAttribute(rule.attribute_key, rule.attribute_value);
+      const slug = rule.slug || 'ALL';
+      const minItems = rule.min_items || 1;
+      const ruleId = rule.id || 'N/A';
+      const channelId = rule.channel_id || 'N/A';
+      const roleId = rule.role_id || 'N/A';
+
+      return `ID: ${ruleId} | Channel: <#${channelId}> | Role: <@&${roleId}> | Slug: ${slug} | Attr: ${attribute} | Min: ${minItems}`;
+    } catch (error) {
+      this.logger.warn('Error formatting rule:', rule, error);
+      return `ID: ${rule.id || 'N/A'} | Error formatting rule data`;
+    }
+  }
+
+  /**
+   * Validates and truncates description to fit Discord embed limits
+   */
+  private validateDescription(description: string): string {
+    if (!description) {
+      return 'No verification rules found.';
+    }
+
+    // Discord embed description limit is 4096 characters
+    const MAX_LENGTH = 4096;
+    
+    if (description.length <= MAX_LENGTH) {
+      return description;
+    }
+
+    // Truncate and add truncation notice
+    const truncated = description.substring(0, MAX_LENGTH - 100);
+    const lastNewline = truncated.lastIndexOf('\n\n');
+    
+    // Cut at last complete rule if possible
+    const finalDescription = lastNewline > 0 ? truncated.substring(0, lastNewline) : truncated;
+    
+    return `${finalDescription}\n\n... (truncated - showing first ${finalDescription.split('\n\n').length} rules)`;
   }
 }
