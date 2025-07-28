@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { ChatInputCommandInteraction, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle, ButtonInteraction } from 'discord.js';
 import { DbService } from '../../db.service';
 import { AdminFeedback } from '../../utils/admin-feedback.util';
 import { formatAttribute } from '../utils/rule-validation.util';
@@ -7,15 +7,19 @@ import { formatAttribute } from '../utils/rule-validation.util';
 /**
  * List Rules Command Handler
  * 
- * Handles the complete flow for listing verification rules:
+ * Handles the complete flow for listing verification rules with pagination:
  * - Retrieval of all server rules
  * - Filtering and sorting by rule ID
- * - Formatted display with channel/role references
+ * - Paginated display with navigation buttons (20 rules per page)
  * - Proper handling of empty rule sets
  */
 @Injectable()
 export class ListRulesHandler {
   private readonly logger = new Logger(ListRulesHandler.name);
+  private readonly RULES_PER_PAGE = 20;
+
+  // Simple in-memory cache for pagination data
+  private paginationCache = new Map<string, any[]>();
 
   constructor(
     private readonly dbSvc: DbService
@@ -39,19 +43,19 @@ export class ListRulesHandler {
       const rules = this.filterAndSortRules(allRules);
       
       this.logger.log(`Filtered to ${rules?.length || 0} rules`);
+
+      if (rules.length === 0) {
+        await interaction.editReply({
+          embeds: [AdminFeedback.info('Verification Rules', 'No verification rules found.')]
+        });
+        return;
+      }
+
+      // Store rules in cache for pagination
+      this.storeRulesForPagination(interaction.user.id, rules);
       
-      // Format and send the rules list
-      const description = this.formatRulesList(rules);
-      
-      this.logger.log(`Description length: ${description?.length || 0}`);
-      this.logger.log(`Description preview: ${description?.substring(0, 100)}...`);
-      
-      // Validate description length (Discord embed limit is 4096 characters)
-      const validatedDescription = this.validateDescription(description);
-      
-      await interaction.editReply({
-        embeds: [AdminFeedback.info('Verification Rules', validatedDescription)]
-      });
+      // Show first page
+      await this.showRulesPage(interaction, rules, 0, false);
 
     } catch (error) {
       this.logger.error('Error in handleListRules:');
@@ -76,6 +80,110 @@ export class ListRulesHandler {
   }
 
   /**
+   * Handle pagination button interactions
+   */
+  async handlePaginationButton(interaction: ButtonInteraction): Promise<void> {
+    const customId = interaction.customId;
+    const userId = interaction.user.id;
+
+    // Get stored rules data
+    const allRules = this.paginationCache.get(userId);
+    if (!allRules) {
+      await interaction.reply({
+        content: '❌ Pagination data expired. Please run the command again.',
+        ephemeral: true
+      });
+      return;
+    }
+
+    // Extract page info from button ID
+    const [, , direction, currentPageStr] = customId.split('-');
+    const currentPage = parseInt(currentPageStr);
+    
+    let newPage;
+    if (direction === 'next') {
+      newPage = currentPage + 1;
+    } else {
+      newPage = currentPage - 1;
+    }
+
+    // Show the new page
+    await this.showRulesPage(interaction, allRules, newPage, true);
+  }
+
+  /**
+   * Show a specific page of rules
+   */
+  private async showRulesPage(
+    interaction: ChatInputCommandInteraction | ButtonInteraction, 
+    allRules: any[], 
+    page: number, 
+    isUpdate: boolean = false
+  ): Promise<void> {
+    const totalPages = Math.ceil(allRules.length / this.RULES_PER_PAGE);
+    const startIndex = page * this.RULES_PER_PAGE;
+    const endIndex = Math.min(startIndex + this.RULES_PER_PAGE, allRules.length);
+    const rulesForPage = allRules.slice(startIndex, endIndex);
+
+    this.logger.log(`Showing page ${page + 1}/${totalPages} (rules ${startIndex + 1}-${endIndex} of ${allRules.length})`);
+
+    const description = this.formatRulesListForPage(rulesForPage, startIndex);
+
+    // Create navigation buttons
+    const buttons = [];
+    
+    // Previous button (disabled on first page)
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(`list-rules-prev-${page}`)
+        .setLabel('◀ Previous')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page === 0)
+    );
+
+    // Next button (disabled on last page) 
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(`list-rules-next-${page}`)
+        .setLabel('Next ▶')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page >= totalPages - 1)
+    );
+
+    const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
+
+    const title = `Verification Rules (Page ${page + 1}/${totalPages})`;
+    const footer = `Showing ${rulesForPage.length} of ${allRules.length} total rules`;
+
+    const embed = AdminFeedback.info(title, description)
+      .setFooter({ text: footer });
+
+    if (isUpdate && interaction instanceof ButtonInteraction) {
+      await interaction.update({
+        embeds: [embed],
+        components: [actionRow]
+      });
+    } else {
+      await interaction.editReply({
+        embeds: [embed],
+        components: [actionRow]
+      });
+    }
+  }
+
+  /**
+   * Store rules data for pagination
+   */
+  private storeRulesForPagination(userId: string, rules: any[]): void {
+    this.paginationCache.set(userId, rules);
+    
+    // Clear cache after 5 minutes to prevent memory leaks
+    setTimeout(() => {
+      this.paginationCache.delete(userId);
+    }, 5 * 60 * 1000);
+  }
+
+  /**
    * Filters out system rules and sorts by rule ID
    */
   private filterAndSortRules(allRules: any[]): any[] {
@@ -85,18 +193,40 @@ export class ListRulesHandler {
   }
 
   /**
-   * Formats the rules list for display
+   * Formats the rules list for a specific page
    */
-  private formatRulesList(rules: any[]): string {
-    if (rules.length === 0) {
-      return 'No verification rules found.';
-    }
+  private formatRulesListForPage(rules: any[], startIndex: number): string {
+    return rules.map((rule, index) => {
+      const ruleNumber = startIndex + index + 1;
+      const channelMention = `<#${rule.channel_id}>`;
+      const roleMention = `<@&${rule.role_id}>`;
+      
+      let criteria = '';
+      if (rule.slug && rule.slug !== 'ALL') {
+        criteria += `Collection: **${rule.slug}**`;
+      }
+      if (rule.attribute_key && rule.attribute_key !== 'ALL') {
+        criteria += criteria ? ', ' : '';
+        criteria += `Attribute: **${rule.attribute_key}**`;
+      }
+      if (rule.attribute_value && rule.attribute_value !== 'ALL') {
+        criteria += `: **${rule.attribute_value}**`;
+      }
+      if (rule.min_items > 1) {
+        criteria += criteria ? ', ' : '';
+        criteria += `Min Items: **${rule.min_items}**`;
+      }
 
-    return rules.map(rule => this.formatSingleRule(rule)).join('\n\n');
+      if (!criteria) {
+        criteria = '**Any NFT**';
+      }
+
+      return `**${ruleNumber}.** ${channelMention} → ${roleMention}\n   ${criteria}`;
+    }).join('\n\n');
   }
 
   /**
-   * Formats a single rule for display
+   * Formats a single rule for display (legacy method kept for compatibility)
    */
   private formatSingleRule(rule: any): string {
     if (!rule) {
@@ -116,30 +246,5 @@ export class ListRulesHandler {
       this.logger.warn('Error formatting rule:', rule, error);
       return `ID: ${rule.id || 'N/A'} | Error formatting rule data`;
     }
-  }
-
-  /**
-   * Validates and truncates description to fit Discord embed limits
-   */
-  private validateDescription(description: string): string {
-    if (!description) {
-      return 'No verification rules found.';
-    }
-
-    // Discord embed description limit is 4096 characters
-    const MAX_LENGTH = 4096;
-    
-    if (description.length <= MAX_LENGTH) {
-      return description;
-    }
-
-    // Truncate and add truncation notice
-    const truncated = description.substring(0, MAX_LENGTH - 100);
-    const lastNewline = truncated.lastIndexOf('\n\n');
-    
-    // Cut at last complete rule if possible
-    const finalDescription = lastNewline > 0 ? truncated.substring(0, lastNewline) : truncated;
-    
-    return `${finalDescription}\n\n... (truncated - showing first ${finalDescription.split('\n\n').length} rules)`;
   }
 }

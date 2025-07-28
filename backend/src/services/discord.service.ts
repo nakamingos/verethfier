@@ -225,6 +225,9 @@ export class DiscordService implements OnModuleInit {
       if (interaction.isButton()) {
         if (interaction.customId === 'requestVerification') {
           await this.handleVerificationRequest(interaction);
+        } else if (interaction.customId.startsWith('list-rules-')) {
+          // Handle pagination buttons for list-rules command
+          await this.discordCommandsSvc.handleListRulesPagination(interaction);
         }
       }
     });

@@ -391,6 +391,11 @@ export class DiscordCommandsService {
     return this.listRulesHandler.handle(interaction);
   }
 
+  async handleListRulesPagination(interaction: any): Promise<void> {
+    // Delegate pagination button interactions to the specialized handler
+    return this.listRulesHandler.handlePaginationButton(interaction);
+  }
+
   /**
    * Recovers verification setup for a channel by creating a new message and updating orphaned rules
    */
