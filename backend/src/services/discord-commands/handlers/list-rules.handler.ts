@@ -196,33 +196,7 @@ export class ListRulesHandler {
    * Formats the rules list for a specific page
    */
   private formatRulesListForPage(rules: any[], startIndex: number): string {
-    return rules.map((rule, index) => {
-      const ruleNumber = startIndex + index + 1;
-      const channelMention = `<#${rule.channel_id}>`;
-      const roleMention = `<@&${rule.role_id}>`;
-      
-      let criteria = '';
-      if (rule.slug && rule.slug !== 'ALL') {
-        criteria += `Collection: **${rule.slug}**`;
-      }
-      if (rule.attribute_key && rule.attribute_key !== 'ALL') {
-        criteria += criteria ? ', ' : '';
-        criteria += `Attribute: **${rule.attribute_key}**`;
-      }
-      if (rule.attribute_value && rule.attribute_value !== 'ALL') {
-        criteria += `: **${rule.attribute_value}**`;
-      }
-      if (rule.min_items > 1) {
-        criteria += criteria ? ', ' : '';
-        criteria += `Min Items: **${rule.min_items}**`;
-      }
-
-      if (!criteria) {
-        criteria = '**Any NFT**';
-      }
-
-      return `**${ruleNumber}.** ${channelMention} → ${roleMention}\n   ${criteria}`;
-    }).join('\n\n');
+    return rules.map(rule => this.formatSingleRule(rule)).join('\n\n');
   }
 
   /**
@@ -241,7 +215,10 @@ export class ListRulesHandler {
       const channelId = rule.channel_id || 'N/A';
       const roleId = rule.role_id || 'N/A';
 
-      return `ID: ${ruleId} | Channel: <#${channelId}> | Role: <@&${roleId}> | Slug: ${slug} | Attr: ${attribute} | Min: ${minItems}`;
+      // Only include Min when it's greater than 1
+      const minPart = minItems > 1 ? ` | Min: ${minItems}` : '';
+
+      return `ID: ${ruleId} | Channel: <#${channelId}> | Role: <@&${roleId}> | Slug: ${slug} | Attr: ${attribute}${minPart}`;
     } catch (error) {
       this.logger.warn('Error formatting rule:', rule, error);
       return `ID: ${rule.id || 'N/A'} | Error formatting rule data`;
