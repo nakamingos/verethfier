@@ -212,16 +212,25 @@ export class DbService {
   }
 
   async getRoleMappings(serverId: string, channelId?: string): Promise<any[]> {
-    let query = this.supabase
-      .from('verifier_rules')
-      .select('*')
-      .eq('server_id', serverId);
-    if (channelId) {
-      query = query.eq('channel_id', channelId);
+    try {
+      let query = this.supabase
+        .from('verifier_rules')
+        .select('*')
+        .eq('server_id', serverId);
+      if (channelId) {
+        query = query.eq('channel_id', channelId);
+      }
+      const { data, error } = await query;
+      if (error) {
+        this.logger.error('Supabase error in getRoleMappings:', error);
+        this.logger.error('Error details:', JSON.stringify(error, null, 2));
+        throw error;
+      }
+      return data || [];
+    } catch (error) {
+      this.logger.error('Exception in getRoleMappings:', error);
+      throw error;
     }
-    const { data, error } = await query;
-    if (error) throw error;
-    return data;
   }
 
   async deleteRoleMapping(ruleId: string, serverId: string): Promise<void> {

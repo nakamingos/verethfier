@@ -29,9 +29,16 @@ export class ListRulesHandler {
       // Defer the reply early to prevent timeout
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       
+      this.logger.log(`Fetching rules for server: ${interaction.guild.id}`);
+      
       // Get all verification rules for the server
       const allRules = await this.dbSvc.getRoleMappings(interaction.guild.id);
+      
+      this.logger.log(`Found ${allRules?.length || 0} total rules`);
+      
       const rules = this.filterAndSortRules(allRules);
+      
+      this.logger.log(`Filtered to ${rules?.length || 0} rules`);
       
       // Format and send the rules list
       const description = this.formatRulesList(rules);
@@ -41,9 +48,14 @@ export class ListRulesHandler {
       });
 
     } catch (error) {
-      this.logger.error('Error in handleListRules:', error);
+      this.logger.error('Error in handleListRules:');
+      this.logger.error('Error details:', error);
+      this.logger.error('Error stack:', error.stack);
+      this.logger.error('Error message:', error.message);
+      this.logger.error('Error type:', typeof error);
+      this.logger.error('Error constructor:', error.constructor?.name);
       
-      const errorMessage = `Error retrieving rules: ${error.message}`;
+      const errorMessage = `Error retrieving rules: ${error?.message || error?.toString() || 'Unknown error'}`;
       if (interaction.deferred) {
         await interaction.editReply({
           content: AdminFeedback.simple(errorMessage, true)
