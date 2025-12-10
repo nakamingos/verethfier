@@ -209,7 +209,11 @@ export class ListRulesHandler {
 
     try {
       const attribute = formatAttribute(rule.attribute_key, rule.attribute_value);
-      const slug = rule.slug || 'ALL';
+      let slug = rule.slug || 'ALL';
+      // Format multi-slug display with spaces after commas for readability
+      if (slug !== 'ALL' && slug.includes(',')) {
+        slug = slug.split(',').map(s => s.trim()).join(', ');
+      }
       const minItems = rule.min_items || 1;
       const ruleId = rule.id || 'N/A';
       const channelId = rule.channel_id || 'N/A';
