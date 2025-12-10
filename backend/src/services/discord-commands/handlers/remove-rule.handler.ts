@@ -293,7 +293,11 @@ export class RemoveRuleHandler {
       // Add clean rule info for each removed rule using list format
       successful.forEach(s => {
         const attribute = formatAttribute(s.data.attribute_key, s.data.attribute_value);
-        const slug = s.data.slug || 'ALL';
+        let slug = s.data.slug || 'ALL';
+        // Format multi-slug display with spaces after commas for readability
+        if (slug !== 'ALL' && slug.includes(',')) {
+          slug = slug.split(',').map(s => s.trim()).join(', ');
+        }
         const minItems = s.data.min_items || 1;
         
         const ruleInfo = `ID: ${s.id} | Channel: <#${s.data.channel_id}> | Role: <@&${s.data.role_id}> | Slug: ${slug} | Attr: ${attribute} | Min: ${minItems}`;

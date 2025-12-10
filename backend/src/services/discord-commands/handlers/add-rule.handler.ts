@@ -115,7 +115,7 @@ export class AddRuleHandler {
   } | null> {
     const channel = interaction.options.getChannel('channel') as TextChannel;
     const roleName = interaction.options.getString('role');
-    const slug = interaction.options.getString('slug') || 'ALL';
+    let slug = interaction.options.getString('slug') || 'ALL';
     const attributeKey = interaction.options.getString('attribute_key') || 'ALL';
     const attributeValue = interaction.options.getString('attribute_value') || 'ALL';
     const minItems = interaction.options.getInteger('min_items') || 1;
@@ -125,6 +125,21 @@ export class AddRuleHandler {
         content: AdminFeedback.simple('Channel and role are required.', true)
       });
       return null;
+    }
+
+    // Normalize multi-slug input: parse, trim, sort alphabetically, rejoin
+    // This prevents duplicate rules like "collection-a,collection-b" vs "collection-b,collection-a"
+    if (slug !== 'ALL' && slug.includes(',')) {
+      const slugs = slug.split(',')
+        .map(s => s.trim())
+        .filter(s => s.length > 0)
+        .sort(); // Alphabetical sorting ensures consistent ordering
+      
+      if (slugs.length === 0) {
+        slug = 'ALL';
+      } else {
+        slug = slugs.join(',');
+      }
     }
 
     // Validate input combinations against database
@@ -962,13 +977,28 @@ export class AddRuleHandler {
     }
 
     try {
-      // Validate slug exists (unless ALL)
+      // Validate slug(s) exist (unless ALL)
       if (slug !== 'ALL') {
         const availableSlugs = await this.dataSvc.getAllSlugs();
-        if (!availableSlugs.includes(slug)) {
+        
+        // Handle multi-slug input: validate each slug individually
+        const inputSlugs = slug.split(',').map(s => s.trim()).filter(s => s.length > 0);
+        const invalidSlugs = inputSlugs.filter(s => !availableSlugs.includes(s));
+        
+        if (invalidSlugs.length > 0) {
+          const slugLabel = invalidSlugs.length > 1 ? 'Collections' : 'Collection';
+          const slugList = invalidSlugs.map(s => `"${s}"`).join(', ');
           return {
             isValid: false,
-            message: `Collection "${slug}" does not exist in the marketplace database.`
+            message: `${slugLabel} ${slugList} do not exist in the marketplace database.`
+          };
+        }
+        
+        // For multi-slug rules, attributes must be ALL (can't filter specific attributes across multiple collections)
+        if (inputSlugs.length > 1 && (attributeKey !== 'ALL' || attributeValue !== 'ALL')) {
+          return {
+            isValid: false,
+            message: 'Multi-collection rules (comma-separated slugs) do not support attribute filtering. Set both attribute key and value to ALL.'
           };
         }
       }
