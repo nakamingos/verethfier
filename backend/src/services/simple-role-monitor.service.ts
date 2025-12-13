@@ -97,45 +97,38 @@ export class SimpleRoleMonitorService {
         this.dbSvc.getRoleMappings(serverId)
       ]);
       
-      // Get ALL user's verified addresses (not just latest)
+      // Get ALL user's verified addresses for wallet stacking
       const userAddresses = await this.userAddressService.getUserAddresses(userId);
       if (userAddresses.length === 0) {
         result.errors.push('No addresses found for user');
         return result;
       }
+      
+      Logger.log(`🔍 Re-verifying ${userAddresses.length} wallet(s) for user ${userId}`);
 
-      // Check each rule against current holdings across ALL wallets
+      // Check each rule against STACKED holdings across ALL wallets
       for (const rule of rules) {
         try {
-          // Check holdings for each wallet and track which ones qualify
-          let currentlyQualifies = false;
-          let qualifyingAddress: string | null = null;
-          
-          for (const address of userAddresses) {
-            const matchingAssets = await this.dataSvc.checkAssetOwnershipWithCriteria(
-              address,
-              rule.slug,
-              rule.attribute_key,
-              rule.attribute_value,
-              rule.min_items || 1
-            );
+          // Check holdings across ALL wallets simultaneously (wallet stacking)
+          const matchingAssets = await this.dataSvc.checkAssetOwnershipWithCriteria(
+            userAddresses, // Pass all addresses for stacking
+            rule.slug,
+            rule.attribute_key,
+            rule.attribute_value,
+            rule.min_items || 1
+          );
 
-            const requiredMinItems = rule.min_items || 1;
-            if (matchingAssets >= requiredMinItems) {
-              currentlyQualifies = true;
-              qualifyingAddress = address;
-              break; // Found a qualifying wallet, no need to check others for this rule
-            }
-          }
-          
           const requiredMinItems = rule.min_items || 1;
+          const currentlyQualifies = matchingAssets >= requiredMinItems;
+          
+          Logger.debug(`Rule ${rule.id}: ${matchingAssets} assets across ${userAddresses.length} wallet(s), ${currentlyQualifies ? 'qualifies' : 'does not qualify'}`);
           
           // Check if user currently has this role
           const hasRole = await this.checkUserHasRole(userId, serverId, rule.role_id);
           
           if (currentlyQualifies && !hasRole) {
-            // User should have role but doesn't - grant it
-            await this.grantRole(userId, serverId, rule, qualifyingAddress!);
+            // User should have role but doesn't - grant it (use first address for logging)
+            await this.grantRole(userId, serverId, rule, userAddresses[0]);
             result.verified.push(rule.role_name || rule.role_id);
             
           } else if (!currentlyQualifies && hasRole) {
