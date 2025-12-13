@@ -42,16 +42,18 @@ export class VerificationEngine {
    * Main verification method - entry point for all verification
    * 
    * Verifies a user's asset ownership against a verification rule.
+   * Now supports wallet stacking - aggregates holdings across ALL user's verified wallets.
    * 
    * Process Flow:
    * 1. Fetch and validate the rule exists
-   * 2. Query user's asset holdings from marketplace
-   * 3. Match holdings against rule criteria
-   * 4. Return detailed verification result
+   * 2. Get ALL user's verified wallet addresses
+   * 3. Query asset holdings across all wallets from marketplace
+   * 4. Sum holdings and match against rule criteria
+   * 5. Return detailed verification result
    * 
    * @param userId - Discord user ID requesting verification
    * @param ruleId - Rule ID to verify against (supports both string and number)
-   * @param address - Ethereum wallet address to verify asset ownership for
+   * @param address - Ethereum wallet address to verify asset ownership for (also retrieves other user wallets)
    * @returns Promise<VerificationResult> - Comprehensive verification outcome
    */
   async verifyUser(
@@ -74,11 +76,26 @@ export class VerificationEngine {
         };
       }
 
-      // Apply verification logic
+      // Get ALL wallet addresses for this user (for wallet stacking)
+      const userAddresses = await this.userAddressService.getUserAddresses(userId);
+      
+      // Ensure the current address is included in the list (handles race condition)
+      // If the user just verified with this address, it might not be in DB yet
+      const addressesToCheck = userAddresses.includes(address.toLowerCase()) 
+        ? userAddresses 
+        : [...userAddresses, address.toLowerCase()];
+      
+      if (addressesToCheck.length !== userAddresses.length) {
+        Logger.warn(`Address ${address} not found in getUserAddresses for user ${userId}, adding it manually to prevent race condition`);
+      }
+      
+      Logger.debug(`VerificationEngine: Checking ${addressesToCheck.length} wallet(s) for user ${userId}: ${addressesToCheck.join(', ')}`);
+
+      // Apply verification logic - now checks across ALL user's wallets
       Logger.debug(`VerificationEngine: Verifying rule ${ruleId} for user ${userId}`);
       
       const assetCount = await this.dataSvc.checkAssetOwnershipWithCriteria(
-        address,
+        addressesToCheck, // Pass array of all user's wallets
         rule.slug || 'ALL',
         rule.attribute_key || 'ALL',
         rule.attribute_value || 'ALL',
@@ -88,7 +105,7 @@ export class VerificationEngine {
       const requiredCount = rule.min_items || 1;
       const isValid = assetCount >= requiredCount;
       
-      Logger.debug(`VerificationEngine: Verification ${isValid ? 'PASSED' : 'FAILED'} - found ${assetCount} assets, needed ${requiredCount}`);
+      Logger.debug(`VerificationEngine: Verification ${isValid ? 'PASSED' : 'FAILED'} - found ${assetCount} assets across ${addressesToCheck.length} wallet(s), needed ${requiredCount}`);
       
       return {
         isValid,
