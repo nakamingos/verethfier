@@ -192,35 +192,20 @@ export class DynamicRoleService {
       Logger.log(`   - Attribute: ${rule.attribute_key}=${rule.attribute_value}`);
       Logger.log(`   - Min required: ${rule.min_items || 1}`);
 
-      // Check asset ownership across ALL addresses (multi-wallet support)
-      // User qualifies if ANY of their addresses meets the criteria
-      let totalMatchingAssets = 0;
-      for (const address of userAddresses) {
-        try {
-          const matchingAssets = await this.dataSvc.checkAssetOwnershipWithCriteria(
-            address,
-            rule.slug,
-            rule.attribute_key,
-            rule.attribute_value,
-            rule.min_items || 1
-          );
-          totalMatchingAssets += matchingAssets;
-          
-          // If this address alone meets the requirement, user qualifies
-          if (matchingAssets >= (rule.min_items || 1)) {
-            Logger.log(`🔍 User ${assignment.user_id} qualifies with address ${address}: ${matchingAssets}/${rule.min_items || 1} assets ✅`);
-            return true;
-          }
-        } catch (error) {
-          Logger.error(`Error checking address ${address}:`, error.message);
-          // Continue checking other addresses
-        }
-      }
+      // Check asset ownership across ALL addresses with WALLET STACKING
+      // Passes all addresses to data service to aggregate holdings
+      const totalMatchingAssets = await this.dataSvc.checkAssetOwnershipWithCriteria(
+        userAddresses, // Pass all addresses for stacking
+        rule.slug,
+        rule.attribute_key,
+        rule.attribute_value,
+        rule.min_items || 1
+      );
 
       const requiredMinItems = rule.min_items || 1;
       const stillQualifies = totalMatchingAssets >= requiredMinItems;
 
-      Logger.log(`🔍 User ${assignment.user_id} total assets across all addresses: ${totalMatchingAssets}/${requiredMinItems} - ${stillQualifies ? 'QUALIFIED ✅' : 'NOT QUALIFIED ❌'}`);
+      Logger.log(`🔍 User ${assignment.user_id} total assets across ${userAddresses.length} wallet(s): ${totalMatchingAssets}/${requiredMinItems} - ${stillQualifies ? 'QUALIFIED ✅' : 'NOT QUALIFIED ❌'}`);
       
       return stillQualifies;
       

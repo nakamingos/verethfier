@@ -450,20 +450,22 @@ export class DataService {
    * @returns Number of matching assets, or 0 if requirements not met
    */
   async checkAssetOwnershipWithCriteria(
-    address: string,
+    address: string | string[],
     slug?: string,
     attributeKey?: string,
     attributeValue?: string,
     minItems: number = 1
   ): Promise<number> {
-    const normalizedAddress = address.toLowerCase();
+    // Handle both single address and array of addresses (for wallet stacking)
+    const addresses = Array.isArray(address) ? address : [address];
+    const normalizedAddresses = addresses.map(addr => addr.toLowerCase());
     const marketAddress = '0xd3418772623be1a3cc6b6d45cb46420cedd9154a';
     
     // Parse comma-separated slugs for multi-collection support
     const slugs = this.parseMultiSlug(slug);
     const isMultiSlug = slugs.length > 1;
     
-    Logger.log(`🔍 DETAILED CHECK - Address: ${address} -> ${normalizedAddress}`);
+    Logger.log(`🔍 DETAILED CHECK - Address${addresses.length > 1 ? 'es' : ''}: ${addresses.join(', ')} (${addresses.length} wallet${addresses.length > 1 ? 's' : ''})`);
     Logger.log(`🎯 DETAILED CHECK - Criteria: slug=${slug} (${slugs.length} collection${slugs.length > 1 ? 's' : ''}), attribute=${attributeKey}=${attributeValue}, minItems=${minItems}`);
 
     // Early return for simple ownership check (no attribute filtering)
@@ -472,10 +474,17 @@ export class DataService {
     
     if (!hasAttributeFilter) {
       Logger.log(`🔍 DETAILED CHECK - Using simple ownership check (no attribute filter)`);
+      
+      // Build ownership condition for all addresses
+      // For each address: owner.eq.address OR (owner.eq.market AND prevOwner.eq.address)
+      const ownershipConditions = normalizedAddresses.map(addr => 
+        `owner.eq.${addr},and(owner.eq.${marketAddress},prevOwner.eq.${addr})`
+      ).join(',');
+      
       let query = supabase
         .from('ethscriptions')
         .select('hashId, owner, prevOwner, slug')
-        .or(`owner.eq.${normalizedAddress},and(owner.eq.${marketAddress},prevOwner.eq.${normalizedAddress})`);
+        .or(ownershipConditions);
 
       // Filter by slug(s) if specified
       if (slugs.length > 0 && slugs[0] !== 'ALL' && slugs[0] !== 'all-collections') {
@@ -494,12 +503,18 @@ export class DataService {
         throw new Error(error.message);
       }
       
-      Logger.log(`🔍 DETAILED CHECK - Simple query returned ${data.length} assets across ${isMultiSlug ? 'multiple collections' : '1 collection'}`);
+      Logger.log(`🔍 DETAILED CHECK - Simple query returned ${data.length} assets across ${normalizedAddresses.length} wallet(s) and ${isMultiSlug ? 'multiple collections' : '1 collection'}`);
       return data.length >= minItems ? data.length : 0;
     }
 
     Logger.log(`🔍 DETAILED CHECK - Using attribute filtering query`);
-    // For attribute filtering, use optimized JOIN query
+    
+    // For attribute filtering, build ownership condition for all addresses
+    const ownershipConditions = normalizedAddresses.map(addr => 
+      `owner.eq.${addr},and(owner.eq.${marketAddress},prevOwner.eq.${addr})`
+    ).join(',');
+    
+    // Use optimized JOIN query
     let joinQuery = supabase
       .from('ethscriptions')
       .select(`
@@ -510,7 +525,7 @@ export class DataService {
         sha,
         attributes_new!inner(sha, values)
       `)
-      .or(`owner.eq.${normalizedAddress},and(owner.eq.${marketAddress},prevOwner.eq.${normalizedAddress})`);
+      .or(ownershipConditions);
 
     // Filter by slug(s) if specified
     if (slugs.length > 0 && slugs[0] !== 'ALL' && slugs[0] !== 'all-collections') {
@@ -539,7 +554,7 @@ export class DataService {
     const matchingItems = this.filterByAttributes(joinedData, attributeKey, attributeValue);
     const matchingCount = matchingItems.length;
     
-    Logger.debug(`Found ${matchingCount} matching ethscriptions with ${attributeKey}=${attributeValue} across ${isMultiSlug ? slugs.length + ' collections' : '1 collection'}`);
+    Logger.debug(`Found ${matchingCount} matching ethscriptions with ${attributeKey}=${attributeValue} across ${normalizedAddresses.length} wallet(s) and ${isMultiSlug ? slugs.length + ' collections' : '1 collection'}`);
     
     return matchingCount >= minItems ? matchingCount : 0;
   }
