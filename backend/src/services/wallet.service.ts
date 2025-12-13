@@ -111,6 +111,8 @@ export class WalletService {
     if (address !== data.address) throw new Error('Invalid signature.');
     
     // Store the verified address in user_wallets table
+    // CRITICAL: Wait for this to complete before returning to prevent race condition
+    // where verification queries getUserAddresses() before INSERT completes
     try {
       // Get Discord username
       let userName: string | null = null;
@@ -125,12 +127,14 @@ export class WalletService {
       }
 
       const result = await this.userAddressService.addUserAddress(data.userId, address, userName);
-      if (result.success) {
-        Logger.debug(`Successfully ${result.isNewAddress ? 'added new' : 'updated existing'} address for user ${data.userId}${userName ? ` (${userName})` : ''}`);
-      } else {
+      if (!result.success) {
+        // Log warning but don't fail verification - address storage is supplementary
         Logger.warn(`Failed to store address for user ${data.userId}: ${result.error}`);
+      } else {
+        Logger.debug(`Successfully ${result.isNewAddress ? 'added new' : 'updated existing'} address for user ${data.userId}${userName ? ` (${userName})` : ''}`);
       }
     } catch (error) {
+      // Log error but don't fail verification - address storage is supplementary
       Logger.error(`Exception storing address for user ${data.userId}:`, error);
     }
     
