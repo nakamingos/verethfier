@@ -9,6 +9,22 @@ describe('ListRulesHandler', () => {
   let mockDbService: jest.Mocked<DbService>;
   let mockInteraction: any;
 
+  const getLastEditReplyPayload = () => mockInteraction.editReply.mock.calls.at(-1)?.[0];
+
+  const expectPaginatedRulesReply = (description: string, shownRules: number, totalRules: number = shownRules) => {
+    const payload = getLastEditReplyPayload();
+    const expectedEmbed = AdminFeedback.info(
+      'Verification Rules (Page 1/1)',
+      description
+    ).setFooter({
+      text: `Showing ${shownRules} of ${totalRules} total rules`,
+    });
+
+    expect(payload.components).toHaveLength(1);
+    expect(payload.embeds).toHaveLength(1);
+    expect(payload.embeds[0].toJSON()).toMatchObject(expectedEmbed.toJSON());
+  };
+
   beforeEach(async () => {
     // Create mock DbService
     mockDbService = {
@@ -24,6 +40,9 @@ describe('ListRulesHandler', () => {
       editReply: jest.fn(),
       reply: jest.fn(),
       deferred: false,
+      user: {
+        id: 'test-user-id',
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -73,14 +92,10 @@ describe('ListRulesHandler', () => {
 
       await handler.handle(mockInteraction);
 
-      expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: [
-          AdminFeedback.info(
-            'Verification Rules',
-            'ID: 1 | Channel: <#channel-123> | Role: <@&role-456> | Slug: test-collection | Attr: trait=rare | Min: 1'
-          ),
-        ],
-      });
+      expectPaginatedRulesReply(
+        'ID: 1 | Channel: <#channel-123> | Role: <@&role-456> | Slug: test-collection | Attr: trait=rare',
+        1
+      );
     });
 
     it('should handle multiple rules and sort by ID', async () => {
@@ -113,12 +128,10 @@ describe('ListRulesHandler', () => {
 
       // Should be sorted by ID (1 then 3)
       const expectedDescription = 
-        'ID: 1 | Channel: <#channel-123> | Role: <@&role-456> | Slug: test-collection | Attr: trait=rare | Min: 1\n\n' +
+        'ID: 1 | Channel: <#channel-123> | Role: <@&role-456> | Slug: test-collection | Attr: trait=rare\n\n' +
         'ID: 3 | Channel: <#channel-789> | Role: <@&role-999> | Slug: ALL | Attr: ALL | Min: 2';
 
-      expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: [AdminFeedback.info('Verification Rules', expectedDescription)],
-      });
+      expectPaginatedRulesReply(expectedDescription, 2);
     });
 
     it('should filter out system rules', async () => {
@@ -150,14 +163,10 @@ describe('ListRulesHandler', () => {
       await handler.handle(mockInteraction);
 
       // Should only show the non-system rule
-      expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: [
-          AdminFeedback.info(
-            'Verification Rules',
-            'ID: 1 | Channel: <#channel-123> | Role: <@&role-456> | Slug: test-collection | Attr: trait=rare | Min: 1'
-          ),
-        ],
-      });
+      expectPaginatedRulesReply(
+        'ID: 1 | Channel: <#channel-123> | Role: <@&role-456> | Slug: test-collection | Attr: trait=rare',
+        1
+      );
     });
 
     it('should handle various attribute formats', async () => {
@@ -209,14 +218,12 @@ describe('ListRulesHandler', () => {
       await handler.handle(mockInteraction);
 
       const expectedDescription = 
-        'ID: 1 | Channel: <#channel-123> | Role: <@&role-456> | Slug: test-collection | Attr: trait=rare | Min: 1\n\n' +
-        'ID: 2 | Channel: <#channel-234> | Role: <@&role-567> | Slug: another-collection | Attr: type (any value) | Min: 1\n\n' +
-        'ID: 3 | Channel: <#channel-345> | Role: <@&role-678> | Slug: third-collection | Attr: ALL=legendary | Min: 1\n\n' +
-        'ID: 4 | Channel: <#channel-456> | Role: <@&role-789> | Slug: fourth-collection | Attr: ALL | Min: 1';
+        'ID: 1 | Channel: <#channel-123> | Role: <@&role-456> | Slug: test-collection | Attr: trait=rare\n\n' +
+        'ID: 2 | Channel: <#channel-234> | Role: <@&role-567> | Slug: another-collection | Attr: type (any value)\n\n' +
+        'ID: 3 | Channel: <#channel-345> | Role: <@&role-678> | Slug: third-collection | Attr: ALL=legendary\n\n' +
+        'ID: 4 | Channel: <#channel-456> | Role: <@&role-789> | Slug: fourth-collection | Attr: ALL';
 
-      expect(mockInteraction.editReply).toHaveBeenCalledWith({
-        embeds: [AdminFeedback.info('Verification Rules', expectedDescription)],
-      });
+      expectPaginatedRulesReply(expectedDescription, 4);
     });
 
     it('should handle database errors', async () => {

@@ -29,6 +29,7 @@ describe('DynamicRoleService', () => {
   let mockDataService: jest.Mocked<DataService>;
   let mockDiscordVerificationService: jest.Mocked<DiscordVerificationService>;
   let mockDiscordService: jest.Mocked<DiscordService>;
+  let mockUserAddressService: jest.Mocked<UserAddressService>;
   let loggerSpy: jest.SpyInstance;
 
   const mockActiveAssignment = {
@@ -80,6 +81,10 @@ describe('DynamicRoleService', () => {
       // Add any methods if needed
     };
 
+    const mockUserAddressServiceValue = {
+      getUserAddresses: jest.fn().mockResolvedValue(['address123']),
+    };
+
     module = await Test.createTestingModule({
       providers: [
         DynamicRoleService,
@@ -87,7 +92,7 @@ describe('DynamicRoleService', () => {
         { provide: DataService, useValue: mockDataServiceValue },
         { provide: DiscordVerificationService, useValue: mockDiscordVerificationServiceValue },
         { provide: DiscordService, useValue: mockDiscordServiceValue },
-        { provide: UserAddressService, useValue: { getUserAddresses: jest.fn().mockResolvedValue(['address123']) } }
+        { provide: UserAddressService, useValue: mockUserAddressServiceValue }
       ],
     }).compile();
 
@@ -96,6 +101,7 @@ describe('DynamicRoleService', () => {
     mockDataService = module.get(DataService);
     mockDiscordVerificationService = module.get(DiscordVerificationService);
     mockDiscordService = module.get(DiscordService);
+    mockUserAddressService = module.get(UserAddressService);
     
     loggerSpy = jest.spyOn(Logger, 'log').mockImplementation();
     jest.spyOn(Logger, 'debug').mockImplementation();
@@ -346,7 +352,7 @@ describe('DynamicRoleService', () => {
       await service.performScheduledReverification();
 
       expect(mockDataService.checkAssetOwnershipWithCriteria).toHaveBeenCalledWith(
-        'address123',
+        ['address123'],
         'cool-cats',
         'trait_type',
         'Rare',
@@ -392,10 +398,12 @@ describe('DynamicRoleService', () => {
 
       await service.performScheduledReverification();
 
-      // Currently the service revokes when API errors occur and getUserAddresses returns addresses
-      // This might need to be changed to be more conservative in the future
-      expect(mockDiscordVerificationService.removeUserRole).toHaveBeenCalledWith('user123', 'server123', 'role123');
-      // Note: updateLastVerified is not called when there are API errors
+      expect(mockDiscordVerificationService.removeUserRole).not.toHaveBeenCalled();
+      expect(mockDbService.updateLastVerified).toHaveBeenCalledWith('assignment123');
+      expect(Logger.error).toHaveBeenCalledWith(
+        'Error checking qualification:',
+        'API timeout'
+      );
     });
 
     it('should handle default min_items', async () => {
@@ -409,7 +417,7 @@ describe('DynamicRoleService', () => {
       await service.performScheduledReverification();
 
       expect(mockDataService.checkAssetOwnershipWithCriteria).toHaveBeenCalledWith(
-        'address123',
+        ['address123'],
         'cool-cats',
         'trait_type',
         'Rare',
@@ -512,7 +520,7 @@ describe('DynamicRoleService', () => {
       await service.performScheduledReverification();
 
       expect(mockDataService.checkAssetOwnershipWithCriteria).toHaveBeenCalledWith(
-        'address123',
+        ['address123'],
         undefined,
         undefined,
         undefined,
@@ -529,21 +537,19 @@ describe('DynamicRoleService', () => {
       mockDbService.updateLastVerified.mockResolvedValue(undefined);
       
       // Mock getUserAddresses to return empty string for this test
-      const mockUserAddressService = module.get(UserAddressService);
-      jest.spyOn(mockUserAddressService, 'getUserAddresses').mockResolvedValue(['']);
+      mockUserAddressService.getUserAddresses.mockResolvedValue(['']);
 
       await service.performScheduledReverification();
 
       expect(mockDataService.checkAssetOwnershipWithCriteria).toHaveBeenCalledWith(
-        '',
+        [''],
         'cool-cats',
         'trait_type',
         'Rare',
         2
       );
       
-      // Restore the original mock
-      jest.spyOn(mockUserAddressService, 'getUserAddresses').mockResolvedValue(['address123']);
+      mockUserAddressService.getUserAddresses.mockResolvedValue(['address123']);
     });
 
     it('should handle very large batch sizes', async () => {
@@ -597,11 +603,10 @@ describe('DynamicRoleService', () => {
 
       await service.performScheduledReverification();
 
-      // Currently the service revokes on network errors when addresses are available
-      // This might need to be changed to be more conservative in the future
-      expect(mockDiscordVerificationService.removeUserRole).toHaveBeenCalledWith('user123', 'server123', 'role123');
+      expect(mockDiscordVerificationService.removeUserRole).not.toHaveBeenCalled();
+      expect(mockDbService.updateLastVerified).toHaveBeenCalledWith('assignment123');
       expect(Logger.error).toHaveBeenCalledWith(
-        'Error checking address address123:',
+        'Error checking qualification:',
         'Network timeout'
       );
     });

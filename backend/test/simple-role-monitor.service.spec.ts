@@ -115,7 +115,7 @@ describe('SimpleRoleMonitorService', () => {
       expect(result.errors).toHaveLength(0);
       expect(dbService.getUserRoleHistory).toHaveBeenCalledWith('user1', 'server1');
       expect(dataService.checkAssetOwnershipWithCriteria).toHaveBeenCalledWith(
-        '0x123',
+        ['0x123'],
         'test-collection',
         'trait',
         'rare',
@@ -172,7 +172,7 @@ describe('SimpleRoleMonitorService', () => {
 
       expect(result.verified).toHaveLength(0);
       expect(result.revoked).toHaveLength(0);
-      expect(result.errors).toContain('No address found for user');
+      expect(result.errors).toContain('No addresses found for user');
     });
 
     it('should grant new roles when user qualifies but doesnt have them', async () => {

@@ -23,6 +23,7 @@ describe('VerificationEngine', () => {
   let service: VerificationEngine;
   let mockDbService: jest.Mocked<DbService>;
   let mockDataService: jest.Mocked<DataService>;
+  let mockUserAddressService: jest.Mocked<UserAddressService>;
   let loggerSpy: jest.SpyInstance;
 
   const mockRule: VerifierRole = {
@@ -79,6 +80,8 @@ describe('VerificationEngine', () => {
     service = module.get<VerificationEngine>(VerificationEngine);
     mockDbService = module.get(DbService);
     mockDataService = module.get(DataService);
+    mockUserAddressService = module.get(UserAddressService);
+    mockUserAddressService.getUserAddresses.mockResolvedValue([]);
     
     loggerSpy = jest.spyOn(Logger, 'debug').mockImplementation();
     jest.spyOn(Logger, 'error').mockImplementation();
@@ -101,6 +104,13 @@ describe('VerificationEngine', () => {
 
       const result = await service.verifyUser('user123', 'test_rule', 'address123');
 
+      expect(mockDataService.checkAssetOwnershipWithCriteria).toHaveBeenCalledWith(
+        ['address123'],
+        'test_collection',
+        'test_attribute',
+        'ALL',
+        1
+      );
       expect(result.isValid).toBe(true);
       expect(result.matchingAssetCount).toBe(5);
       expect(result.rule).toEqual(mockRule);
@@ -119,6 +129,13 @@ describe('VerificationEngine', () => {
 
       const result = await service.verifyUser('user123', 'modern_rule', 'address123');
 
+      expect(mockDataService.checkAssetOwnershipWithCriteria).toHaveBeenCalledWith(
+        ['address123'],
+        'cool-cats',
+        'trait_type',
+        'Rare',
+        3
+      );
       expect(result.isValid).toBe(true);
       expect(result.matchingAssetCount).toBe(3);
       expect(result.rule).toEqual(mockModernRule);
@@ -285,7 +302,7 @@ describe('VerificationEngine', () => {
       const result = await service.verifyUser('user123', 'test_rule', 'address123');
 
       expect(mockDataService.checkAssetOwnershipWithCriteria).toHaveBeenCalledWith(
-        'address123',
+        ['address123'],
         'test_collection',
         'test_attribute', 
         'ALL',
@@ -313,7 +330,7 @@ describe('VerificationEngine', () => {
       const result = await service.verifyUser('user123', 'modern_rule', 'address123');
 
       expect(mockDataService.checkAssetOwnershipWithCriteria).toHaveBeenCalledWith(
-        'address123',
+        ['address123'],
         'cool-cats',
         'trait_type',
         'Rare',
@@ -363,7 +380,7 @@ describe('VerificationEngine', () => {
       const result = await service.verifyUser('user123', 'rule_with_nulls', 'address123');
 
       expect(mockDataService.checkAssetOwnershipWithCriteria).toHaveBeenCalledWith(
-        'address123',
+        ['address123'],
         'some-collection',
         'ALL',
         'ALL',
@@ -408,7 +425,7 @@ describe('VerificationEngine', () => {
 
       expect(result.address).toBe('');
       expect(mockDataService.checkAssetOwnershipWithCriteria).toHaveBeenCalledWith(
-        '',
+        [''],
         'cool-cats',
         'trait_type',
         'Rare',
@@ -448,7 +465,7 @@ describe('VerificationEngine', () => {
         expect.stringContaining('Starting verification for user user123')
       );
       expect(loggerSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Verification PASSED - found 3 assets, needed 3')
+        expect.stringContaining('Verification PASSED - found 3 assets across 1 wallet(s), needed 3')
       );
     });
 
