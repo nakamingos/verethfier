@@ -95,7 +95,7 @@ import { EnvironmentConfig } from '@/config/environment.config';
             },
             global: {
               headers: {
-                'x-application-name': 'verethfier-backend',
+                'x-application-name': 'verethier-backend',
               },
             },
           }

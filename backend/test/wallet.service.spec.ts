@@ -96,7 +96,7 @@ describe('WalletService', () => {
       // Verify that the unified EIP-712 structure is used (without legacy fields)
       expect(mockRecoverTypedDataAddress).toHaveBeenCalledWith({
         domain: {
-          name: 'verethfier',
+          name: 'verethier',
           version: '1',
           chainId: 1,
         },

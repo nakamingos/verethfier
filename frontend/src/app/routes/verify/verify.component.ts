@@ -127,7 +127,7 @@ export class VerifyComponent {
 
       // Create message to sign
       const domain = {
-        name: 'verethfier',
+        name: 'verethier',
         version: '1',
         chainId: 1,
       };

@@ -21,7 +21,7 @@ A Discord bot for Ethscriptions-based role verification using wallet connections
 ## 📁 Project Structure
 
 ```
-verethfier-fresh/
+verethier/
 ├── backend/           # NestJS API server
 ├── frontend/          # Angular web app
 ├── docs/              # Documentation
