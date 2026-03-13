@@ -1,5 +1,5 @@
 -- =====================================================================================
--- Universal Database Migration - Verethfier Discord Bot
+-- Universal Database Migration - Verethier Discord Bot
 -- =====================================================================================
 -- This migration handles both fresh installations and legacy database upgrades
 -- Creates modern schema and migrates legacy data when present
