@@ -123,6 +123,71 @@ describe('WalletService', () => {
       });
     });
 
+    it('accepts the legacy verethfier EIP-712 domain during rollout', async () => {
+      mockNonceService.validateNonce.mockResolvedValue(true);
+      mockRecoverTypedDataAddress
+        .mockResolvedValueOnce('0xother')
+        .mockResolvedValueOnce('0xabc');
+
+      const result = await service.verifySignature(baseData, 'sig');
+
+      expect(result).toBe('0xabc');
+      expect(mockRecoverTypedDataAddress).toHaveBeenNthCalledWith(1, {
+        domain: {
+          name: 'verethier',
+          version: '1',
+          chainId: 1,
+        },
+        types: {
+          Verification: [
+            { name: 'UserID', type: 'string' },
+            { name: 'UserTag', type: 'string' },
+            { name: 'ServerID', type: 'string' },
+            { name: 'ServerName', type: 'string' },
+            { name: 'Nonce', type: 'string' },
+            { name: 'Expiry', type: 'uint256' },
+          ]
+        },
+        primaryType: 'Verification',
+        message: {
+          UserID: 'u',
+          UserTag: 'tag',
+          ServerID: 'd',
+          ServerName: 'dn',
+          Nonce: 'n',
+          Expiry: baseData.expiry,
+        },
+        signature: 'sig',
+      });
+      expect(mockRecoverTypedDataAddress).toHaveBeenNthCalledWith(2, {
+        domain: {
+          name: 'verethfier',
+          version: '1',
+          chainId: 1,
+        },
+        types: {
+          Verification: [
+            { name: 'UserID', type: 'string' },
+            { name: 'UserTag', type: 'string' },
+            { name: 'ServerID', type: 'string' },
+            { name: 'ServerName', type: 'string' },
+            { name: 'Nonce', type: 'string' },
+            { name: 'Expiry', type: 'uint256' },
+          ]
+        },
+        primaryType: 'Verification',
+        message: {
+          UserID: 'u',
+          UserTag: 'tag',
+          ServerID: 'd',
+          ServerName: 'dn',
+          Nonce: 'n',
+          Expiry: baseData.expiry,
+        },
+        signature: 'sig',
+      });
+    });
+
     it('handles verification with minimal data', async () => {
       const minimalData: DecodedData = {
         address: '0x123',

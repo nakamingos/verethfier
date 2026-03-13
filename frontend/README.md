@@ -1,4 +1,4 @@
-# Verethfier Frontend
+# Verethier Frontend
 
 Angular web application for wallet connection and Discord role verification.
 

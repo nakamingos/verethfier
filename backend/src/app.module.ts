@@ -38,7 +38,7 @@ import { EnvironmentConfig } from '@/config/environment.config';
 /**
  * AppModule - Main application module
  * 
- * Central module configuration for the Verethfier Discord bot backend.
+ * Central module configuration for the Verethier Discord bot backend.
  * Configures all services, middleware, and global application settings.
  * 
  * Key Configurations:

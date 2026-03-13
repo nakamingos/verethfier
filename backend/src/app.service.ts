@@ -8,7 +8,7 @@ dotenv.config();
  * AppService
  * 
  * Main application service that provides core functionality and health checks
- * for the Verethfier Discord bot backend. This service is primarily used for
+ * for the Verethier Discord bot backend. This service is primarily used for
  * application lifecycle management and basic health monitoring.
  * 
  * Key Responsibilities:
@@ -60,7 +60,7 @@ export class AppService {
     }
 
     return {
-      name: 'Verethfier Backend',
+      name: 'Verethier Backend',
       description: 'NestJS-based Discord bot for Ethscriptions-based role verification',
       architecture: 'Unified verification engine with channel-based verification',
       features: [

@@ -1,4 +1,4 @@
-# Verethfier
+# Verethier
 
 A Discord bot for Ethscriptions-based role verification using wallet connections and collection ownership.
 

@@ -1,4 +1,4 @@
-# Verethfier Backend
+# Verethier Backend
 
 NestJS API server for Discord bot with Ethscriptions verification.
 

@@ -80,7 +80,7 @@ describe('AppController', () => {
   describe('getInfo', () => {
     it('should return application information', () => {
       const expectedInfo = {
-        name: 'Verethfier Backend',
+        name: 'Verethier Backend',
         description: 'NestJS-based Discord bot for Ethscriptions-based role verification',
         architecture: 'Unified verification engine with channel-based verification',
         features: [

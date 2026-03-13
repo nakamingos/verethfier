@@ -62,13 +62,6 @@ export class WalletService {
     const expired = expiry < Date.now();
     if (expired) throw new Error('Verification has expired.');
 
-    // Create message to sign
-    const domain = {
-      name: 'verethier',
-      version: '1',
-      chainId: 1,
-    };
-
     const types = {
       Verification: [
         { name: 'UserID', type: 'string' },
@@ -89,26 +82,53 @@ export class WalletService {
       Expiry: data.expiry,
     };
 
-    const typedData = {
-      types,
-      domain,
-      message,
-    };
+    const domainNames = ['verethier', 'verethfier'] as const;
+    let address: string | null = null;
+    let hadSuccessfulRecovery = false;
+    let lastRecoveryError: Error | null = null;
 
-    Logger.debug('EIP-712 typedData for verification:', JSON.stringify(typedData, null, 2));
+    for (const domainName of domainNames) {
+      const typedData = {
+        types,
+        domain: {
+          name: domainName,
+          version: '1',
+          chainId: 1,
+        },
+        message,
+      };
 
-    const address = await recoverTypedDataAddress({ 
-      domain: typedData.domain,
-      types: typedData.types,
-      primaryType: 'Verification',
-      message: typedData.message,
-      signature: signature as `0x${string}`
-    });
+      Logger.debug(`EIP-712 typedData for verification (${domainName}):`, JSON.stringify(typedData, null, 2));
 
-    Logger.debug('Recovered address:', address);
+      try {
+        const recoveredAddress = await recoverTypedDataAddress({
+          domain: typedData.domain,
+          types: typedData.types,
+          primaryType: 'Verification',
+          message: typedData.message,
+          signature: signature as `0x${string}`
+        });
+
+        hadSuccessfulRecovery = true;
+        Logger.debug(`Recovered address for domain ${domainName}:`, recoveredAddress);
+
+        if (recoveredAddress === data.address) {
+          address = recoveredAddress;
+          break;
+        }
+      } catch (error) {
+        lastRecoveryError = error instanceof Error ? error : new Error('Signature recovery failed');
+        Logger.debug(`Signature recovery failed for domain ${domainName}:`, lastRecoveryError.message);
+      }
+    }
+
     Logger.debug('Expected address:', data.address);
 
-    if (address !== data.address) throw new Error('Invalid signature.');
+    if (!address) {
+      if (hadSuccessfulRecovery) throw new Error('Invalid signature.');
+      if (lastRecoveryError) throw lastRecoveryError;
+      throw new Error('Invalid signature.');
+    }
     
     // Store the verified address in user_wallets table
     // CRITICAL: Wait for this to complete before returning to prevent race condition
