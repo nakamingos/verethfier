@@ -15,6 +15,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { execSync, spawn } from 'child_process';
+import { getTestDbSupabaseKey, getTestDbSupabaseUrl } from '../test-env';
 
 export class DatabaseSetup {
   private static instance: DatabaseSetup;
@@ -22,10 +23,7 @@ export class DatabaseSetup {
   private supabaseStartedByUs: boolean = false;
   
   private constructor() {
-    const supabaseUrl = process.env.SUPABASE_URL || 'http://localhost:54321';
-    const supabaseKey = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
-    
-    this.supabase = createClient(supabaseUrl, supabaseKey);
+    this.supabase = createClient(getTestDbSupabaseUrl(), getTestDbSupabaseKey());
   }
 
   public static getInstance(): DatabaseSetup {

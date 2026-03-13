@@ -1,14 +1,17 @@
-import dotenv from 'dotenv';
-import path from 'path';
+import {
+  ensureExplicitTestSupabaseEnv,
+  getTestDataSupabaseUrl,
+  getTestDbSupabaseUrl,
+} from './test-env';
 
-// Load test environment variables
-dotenv.config({ path: path.resolve(__dirname, '../.env.test') });
+ensureExplicitTestSupabaseEnv();
 
 // Global test setup
 beforeAll(async () => {
   // Ensure we're using test environment
   console.log('🧪 Test environment configured');
-  console.log('📍 Supabase URL:', process.env.SUPABASE_URL || 'http://localhost:54321');
+  console.log('📍 DATA_SUPABASE_URL:', getTestDataSupabaseUrl());
+  console.log('📍 DB_SUPABASE_URL:', getTestDbSupabaseUrl());
 });
 
 // Global test teardown
