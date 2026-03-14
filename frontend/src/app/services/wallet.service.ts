@@ -1,6 +1,6 @@
 import { Injectable, NgZone } from '@angular/core';
 
-import { PublicClient, createPublicClient, http } from 'viem';
+import { Address, PublicClient, createPublicClient, getAddress, http } from 'viem';
 import { mainnet } from 'viem/chains';
 
 import { Web3Modal, createWeb3Modal } from '@web3modal/wagmi';
@@ -105,18 +105,69 @@ export class WalletService {
     }
   }
 
+  async syncConnectedAccount(): Promise<`0x${string}`> {
+    const account = getAccount(this.config);
+    if (!account.isConnected || !account.connector) {
+      throw new Error('Wallet not connected');
+    }
+
+    const provider = (await account.connector.getProvider()) as
+      | { request?: (args: { method: string }) => Promise<unknown> }
+      | undefined;
+    let accounts: readonly Address[] = [];
+
+    if (provider?.request) {
+      try {
+        const providerAccounts = await provider.request({ method: 'eth_accounts' });
+        if (Array.isArray(providerAccounts)) {
+          accounts = providerAccounts.map((value) => getAddress(String(value)));
+        }
+      } catch {
+        // Fall back to the connector cache below if direct provider lookup fails.
+      }
+    }
+
+    if (!accounts.length) {
+      accounts = await account.connector.getAccounts();
+    }
+
+    if (!accounts.length) {
+      throw new Error('Wallet not connected');
+    }
+
+    const refreshedAccounts = accounts as unknown as readonly [`0x${string}`, ...`0x${string}`[]];
+    const activeAddress = refreshedAccounts[0];
+    const currentUid = this.config.state.current;
+    const currentConnection = currentUid ? this.config.state.connections.get(currentUid) : undefined;
+
+    if (
+      currentConnection &&
+      currentConnection.connector.uid === account.connector.uid &&
+      currentConnection.accounts[0] !== activeAddress
+    ) {
+      this.config.setState((state) => ({
+        ...state,
+        connections: new Map(state.connections).set(currentConnection.connector.uid, {
+          ...currentConnection,
+          accounts: refreshedAccounts,
+        }),
+      }));
+    }
+
+    return activeAddress;
+  }
+
   async signTypedMessage(typedData: any): Promise<{
     signature: `0x${string}`;
     address: `0x${string}`;
   }> {
-    const account = getAccount(this.config);
-    if (!account.isConnected) throw new Error('Wallet not connected');
+    const address = await this.syncConnectedAccount();
 
     const signature = await signTypedData(this.config, typedData);
 
     return {
       signature,
-      address: account.address as `0x${string}`,
+      address,
     };
   }
 }
