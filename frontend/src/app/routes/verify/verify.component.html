@@ -44,13 +44,9 @@
 
         <div class="content">
           <div class="title">Connect your wallet</div>
-          @if (state.connectedAddress) {
-            <div class="sub">Connected: <span class="pink">{{ formatAddress(state.connectedAddress) }}</span></div>
-          } @else {
-            <div class="sub">Choose the wallet you want to verify for this Discord user.</div>
-          }
+          <!-- <div class="sub"></div> -->
           <div class="actions">
-            <button (click)="handleWalletConnect()">{{ state.walletConnected ? 'Switch Wallet' : 'Connect Wallet' }}</button>
+            <button (click)="walletSvc.connect()">{{ state.walletConnected ? 'Connected' : 'Connect' }}</button>
           </div>
         </div>
       </div>
@@ -65,19 +61,8 @@
         </div>
         <div class="content">
           <div class="title">Verify Ownership.</div>
-          <div class="sub">
-            Sign a message with your wallet to check your Ethscriptions collection for eligible roles in the <span class="pink">{{ data.discordName }}</span> Server.
-            @if (state.connectedAddress) {
-              <br />
-              Connected wallet: <span class="pink">{{ formatAddress(state.connectedAddress) }}</span>
-            }
-          </div>
+          <div class="sub">Sign a message with your wallet to check your Ethscriptions collection for eligible roles in the <span class="pink">{{ data.discordName }}</span> Server.</div>
           <div class="actions">
-            <button
-              (click)="handleWalletConnect()"
-              [disabled]="state.messageSigning || state.verificationSubmitting || state.messageVerified">
-              Switch Wallet
-            </button>
             <button 
               (click)="verify(data)"
               [disabled]="state.messageSigning || state.verificationSubmitting || state.messageVerified">

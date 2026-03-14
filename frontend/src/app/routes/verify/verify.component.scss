@@ -135,10 +135,6 @@
     }
 
     .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1rem;
-
       button {
         box-shadow: .3rem .3rem 0 0 rgba(var(--black), 1);
       }
