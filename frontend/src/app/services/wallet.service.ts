@@ -105,11 +105,6 @@ export class WalletService {
     }
   }
 
-  getConnectedAddress(): `0x${string}` | null {
-    const account = getAccount(this.config);
-    return account.isConnected ? (account.address as `0x${string}` | undefined) || null : null;
-  }
-
   async signTypedMessage(typedData: any): Promise<{
     signature: `0x${string}`;
     address: `0x${string}`;

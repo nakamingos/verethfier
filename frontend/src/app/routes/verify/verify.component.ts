@@ -236,7 +236,7 @@ export class VerifyComponent {
               errorMessage.includes('already verified by another user') &&
               this.state$.value.connectedAddress
             ) {
-              errorMessage += ` Connected wallet: ${this.formatAddress(this.state$.value.connectedAddress)}. If that's the wrong wallet, switch wallets and try again.`;
+              errorMessage += ` Connected wallet: ${this.formatAddress(this.state$.value.connectedAddress)}.`;
             }
             
             this.setState({
@@ -272,10 +272,6 @@ export class VerifyComponent {
       ...this.state$.value,
       ...state
     });
-  }
-
-  async handleWalletConnect(): Promise<void> {
-    await this.walletSvc.connect();
   }
 
   formatAddress(address: string | null): string {

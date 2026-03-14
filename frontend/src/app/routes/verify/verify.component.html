@@ -46,11 +46,9 @@
           <div class="title">Connect your wallet</div>
           @if (state.connectedAddress) {
             <div class="sub">Connected: <span class="pink">{{ formatAddress(state.connectedAddress) }}</span></div>
-          } @else {
-            <div class="sub">Choose the wallet you want to verify for this Discord user.</div>
           }
           <div class="actions">
-            <button (click)="handleWalletConnect()">{{ state.walletConnected ? 'Switch Wallet' : 'Connect Wallet' }}</button>
+            <button (click)="walletSvc.connect()">{{ state.walletConnected ? 'Connected' : 'Connect' }}</button>
           </div>
         </div>
       </div>
@@ -73,11 +71,6 @@
             }
           </div>
           <div class="actions">
-            <button
-              (click)="handleWalletConnect()"
-              [disabled]="state.messageSigning || state.verificationSubmitting || state.messageVerified">
-              Switch Wallet
-            </button>
             <button 
               (click)="verify(data)"
               [disabled]="state.messageSigning || state.verificationSubmitting || state.messageVerified">
