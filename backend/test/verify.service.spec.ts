@@ -191,7 +191,8 @@ describe('VerifyService', () => {
     expect(mockDiscordVerificationService.sendVerificationComplete).toHaveBeenCalledWith('guild123', 'nonce123', [{
       roleId: 'test-role-id',
       roleName: 'Test Role',
-      wasAlreadyAssigned: false
+      wasAlreadyAssigned: false,
+      matchingCount: 2
     }], '0xabc');
     expect(result.message).toContain('message-based');
     expect(result.assignedRoles).toEqual(['test-role-id']);
@@ -243,8 +244,8 @@ describe('VerifyService', () => {
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('user123', 'role-123', 'guild123', 'nonce123', '1');
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('user123', 'role-456', 'guild123', 'nonce123', '2');
     expect(mockDiscordVerificationService.sendVerificationComplete).toHaveBeenCalledWith('guild123', 'nonce123', [
-      { roleId: 'test-role-id', roleName: 'Test Role', wasAlreadyAssigned: false },
-      { roleId: 'test-role-id', roleName: 'Test Role', wasAlreadyAssigned: false }
+      { roleId: 'test-role-id', roleName: 'Test Role', wasAlreadyAssigned: false, matchingCount: 5 },
+      { roleId: 'test-role-id', roleName: 'Test Role', wasAlreadyAssigned: false, matchingCount: 3 }
     ], '0xabc');
     expect(result.assignedRoles).toEqual(['test-role-id', 'test-role-id']);
   });

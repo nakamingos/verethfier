@@ -118,7 +118,10 @@ export class VerifyService {
           // No need for additional tracking here
 
           if (roleResult) {
-            roleResults.push(roleResult);
+            roleResults.push({
+              ...roleResult,
+              matchingCount: assetCount,
+            });
           }
           Logger.debug(`✅ Role assigned for rule ${rule.id} (${rule.slug})`);
         } catch (error) {
@@ -201,7 +204,10 @@ export class VerifyService {
         // No need for additional tracking here
 
         if (roleResult) {
-          roleResults.push(roleResult);
+          roleResults.push({
+            ...roleResult,
+            matchingCount: assetCount,
+          });
           Logger.log(`✅ Added role result: ${JSON.stringify(roleResult)}`);
         }
         Logger.debug(`✅ Unified verification: Successfully assigned role: ${rule.role_id} for rule ${rule.id}`);

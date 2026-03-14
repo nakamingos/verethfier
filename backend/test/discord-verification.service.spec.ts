@@ -3,6 +3,7 @@ import { DiscordVerificationService } from '../src/services/discord-verification
 import { DbService } from '../src/services/db.service';
 import { NonceService } from '../src/services/nonce.service';
 import { DataService } from '../src/services/data.service';
+import { UserAddressService } from '../src/services/user-address.service';
 import { Logger } from '@nestjs/common';
 import { MessageFlags } from 'discord.js';
 
@@ -43,10 +44,37 @@ const mockNonceService = {
 
 const mockDataService = {
   getCollectionNames: jest.fn().mockResolvedValue({
-    'test-collection': 'Test Collection',
-    'other-collection': 'Other Collection',
-    'third-collection': 'Third Collection',
+    'test-collection': {
+      name: 'The Test Collection',
+      singleName: 'Comrade',
+    },
+    'other-collection': {
+      name: 'The Other Collection',
+      singleName: 'Misprint',
+    },
+    'third-collection': {
+      name: 'The Third Collection',
+      singleName: 'EtherPhunk',
+    },
   }),
+  checkAssetOwnershipWithCriteria: jest.fn().mockResolvedValue(0),
+};
+
+const mockUserAddressService = {
+  getUserAddresses: jest.fn().mockResolvedValue(['0xexistingwallet']),
+};
+
+const mockFetchedGuild = {
+  roles: {
+    fetch: jest.fn().mockImplementation(async (roleId: string) => {
+      if (roleId === 'role-id') return { id: 'role-id', name: 'Test Role' };
+      if (roleId === 'role-id-2') return { id: 'role-id-2', name: 'Test Role 2' };
+      if (roleId === 'role-id-3') return { id: 'role-id-3', name: 'Bonus Role' };
+      if (roleId === 'role-id-4') return { id: 'role-id-4', name: 'Second Bonus Role' };
+      if (roleId === 'role-id-5') return { id: 'role-id-5', name: 'Third Bonus Role' };
+      return undefined;
+    }),
+  },
 };
 
 const mockClient = {
@@ -78,7 +106,8 @@ const mockClient = {
           }
         }
       }]
-    ])
+    ]),
+    fetch: jest.fn().mockResolvedValue(mockFetchedGuild),
   },
   get: jest.fn().mockImplementation((id) => {
     return mockClient.guilds.cache.get(id);
@@ -112,6 +141,7 @@ describe('DiscordVerificationService', () => {
         { provide: DbService, useValue: mockDbService },
         { provide: NonceService, useValue: mockNonceService },
         { provide: DataService, useValue: mockDataService },
+        { provide: UserAddressService, useValue: mockUserAddressService },
       ],
     }).compile();
 
@@ -290,7 +320,7 @@ describe('DiscordVerificationService', () => {
       service.tempMessages[nonce] = mockInteraction as any;
 
       const roleResults = [
-        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false }
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false, matchingCount: 1 }
       ];
 
       await service.sendVerificationComplete('guild-id', nonce, roleResults);
@@ -300,7 +330,7 @@ describe('DiscordVerificationService', () => {
           expect.objectContaining({
             data: expect.objectContaining({
               title: 'Verification Successful',
-              description: expect.stringContaining('• **Test Role**: Own 1+ Test Collection')
+              description: expect.stringContaining('• **Test Role**: Own 1+ item from The Test Collection')
             })
           })
         ]),
@@ -322,8 +352,8 @@ describe('DiscordVerificationService', () => {
       service.tempMessages[nonce] = mockInteraction as any;
 
       const roleResults = [
-        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false, ruleId: '1' },
-        { roleId: 'role-id-2', roleName: 'Test Role 2', wasAlreadyAssigned: true, ruleId: '2' }
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false, ruleId: '1', matchingCount: 1 },
+        { roleId: 'role-id-2', roleName: 'Test Role 2', wasAlreadyAssigned: true, ruleId: '2', matchingCount: 1 }
       ];
 
       await service.sendVerificationComplete('guild-id', nonce, roleResults);
@@ -353,9 +383,9 @@ describe('DiscordVerificationService', () => {
 
       // Pass duplicate role IDs (same role assigned by multiple rules)
       const roleResults = [
-        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false, ruleId: '1' },
-        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false, ruleId: '1' },
-        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false, ruleId: '1' }
+        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false, ruleId: '1', matchingCount: 1 },
+        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false, ruleId: '1', matchingCount: 1 },
+        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false, ruleId: '1', matchingCount: 1 }
       ];
 
       await service.sendVerificationComplete('guild-id', nonce, roleResults);
@@ -365,7 +395,7 @@ describe('DiscordVerificationService', () => {
           expect.objectContaining({
             data: expect.objectContaining({
               title: 'Verification Successful',
-              description: expect.stringContaining('• **GIF Goddess**: Own 1+ Test Collection')
+              description: expect.stringContaining('• **GIF Goddess**: Own 1+ item from The Test Collection')
             })
           })
         ]),
@@ -402,8 +432,8 @@ describe('DiscordVerificationService', () => {
       ]);
 
       const roleResults = [
-        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '1' },
-        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '2' }
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '1', matchingCount: 3 },
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '2', matchingCount: 1 }
       ];
 
       await service.sendVerificationComplete('guild-id', nonce, roleResults);
@@ -413,11 +443,92 @@ describe('DiscordVerificationService', () => {
 
       expect(description).toContain('**✅ Roles You Already Have:**');
       expect(description).toContain('• **Test Role**:');
-      expect(description).toContain('  - Own 1+ Test Collection with Eyes=Laser');
-      expect(description).toContain('  - Own 1+ Other Collection with Type=Gold');
+      expect(description).toContain('↳ 3 Comrades with Eyes: Laser');
+      expect(description).toContain('↳ 1 Misprint with Type: Gold');
 
       const matches = description.match(/\*\*Test Role\*\*/g);
       expect(matches).toHaveLength(1);
+    });
+
+    it('should only show additional roles the user currently qualifies for and include all matched reasons', async () => {
+      const nonce = 'test-nonce';
+      service.tempMessages[nonce] = mockInteraction as any;
+      mockDbService.getRoleMappings.mockResolvedValue([
+        {
+          id: 1,
+          role_id: 'role-id',
+          slug: 'test-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        },
+        {
+          id: 2,
+          role_id: 'role-id-2',
+          slug: 'other-collection',
+          min_items: 1,
+          attribute_key: 'Head',
+          attribute_value: 'Crown'
+        },
+        {
+          id: 3,
+          role_id: 'role-id-2',
+          slug: 'third-collection',
+          min_items: 1,
+          attribute_key: 'Type',
+          attribute_value: 'Legendary'
+        },
+        {
+          id: 4,
+          role_id: 'role-id-3',
+          slug: 'third-collection',
+          min_items: 2,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        },
+        {
+          id: 5,
+          role_id: 'role-id-4',
+          slug: 'other-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        },
+        {
+          id: 6,
+          role_id: 'role-id-5',
+          slug: 'third-collection',
+          min_items: 1,
+          attribute_key: 'Head',
+          attribute_value: 'Halo'
+        }
+      ]);
+      mockDataService.checkAssetOwnershipWithCriteria.mockImplementation(async (_addresses, slug, attributeKey, attributeValue) => {
+        if (slug === 'other-collection' && attributeKey === 'Head' && attributeValue === 'Crown') return 1;
+        if (slug === 'third-collection' && attributeKey === 'Type' && attributeValue === 'Legendary') return 1;
+        if (slug === 'third-collection' && attributeKey === 'ALL' && attributeValue === 'ALL') return 2;
+        if (slug === 'other-collection' && attributeKey === 'ALL' && attributeValue === 'ALL') return 1;
+        if (slug === 'third-collection' && attributeKey === 'Head' && attributeValue === 'Halo') return 1;
+        return 0;
+      });
+
+      const roleResults = [
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '1', matchingCount: 1 }
+      ];
+
+      await service.sendVerificationComplete('guild-id', nonce, roleResults, '0xnewwallet');
+
+      const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
+      const description = editReplyCall.embeds[0].data.description;
+
+      expect(mockUserAddressService.getUserAddresses).toHaveBeenCalledWith('user-id');
+      expect(description).toContain('**🚀 Additional Roles Available:**');
+      expect(description).toContain('• **Test Role 2**:');
+      expect(description).toContain('↳ Own 1+ Misprint with Head: Crown');
+      expect(description).toContain('↳ Own 1+ EtherPhunk with Type: Legendary');
+      expect(description).toContain('• **Bonus Role**: Own 2+ items from The Third Collection (2/2)');
+      expect(description).toContain('• **Second Bonus Role**: Own 1+ item from The Other Collection');
+      expect(description).toContain('• **Third Bonus Role**: Own 1+ EtherPhunk with Head: Halo');
     });
 
     it('should keep a newly assigned role out of the existing roles section even if multiple rules match it', async () => {
@@ -443,8 +554,8 @@ describe('DiscordVerificationService', () => {
       ]);
 
       const roleResults = [
-        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false, ruleId: '1' },
-        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '3' }
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false, ruleId: '1', matchingCount: 1 },
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '3', matchingCount: 2 }
       ];
 
       await service.sendVerificationComplete('guild-id', nonce, roleResults);
@@ -464,7 +575,7 @@ describe('DiscordVerificationService', () => {
       service.tempMessages[nonce] = mockInteraction as any;
 
       const roleResults = [
-        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false }
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false, matchingCount: 1 }
       ];
 
       await service.sendVerificationComplete('guild-id', nonce, roleResults);
@@ -479,7 +590,7 @@ describe('DiscordVerificationService', () => {
       service.tempMessages[nonce] = mockInteraction as any;
 
       const roleResults = [
-        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false }
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false, matchingCount: 1 }
       ];
 
       await expect(

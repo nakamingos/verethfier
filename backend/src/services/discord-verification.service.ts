@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { DbService } from './db.service';
 import { NonceService } from './nonce.service';
 import { DataService } from './data.service';
+import { UserAddressService } from './user-address.service';
 
 // Load environment variables
 dotenv.config();
@@ -16,13 +17,25 @@ type VerificationRoleResult = {
   roleName: string;
   wasAlreadyAssigned: boolean;
   ruleId?: string | null;
+  matchingCount?: number;
+};
+
+type RuleMatchSummary = {
+  ruleId: string;
+  matchingCount?: number;
 };
 
 type GroupedVerificationRoleResult = {
   roleId: string;
   roleName: string;
   wasAlreadyAssigned: boolean;
-  matchedRuleIds: string[];
+  matchedRules: RuleMatchSummary[];
+};
+
+type RoleRequirementGroup = {
+  roleId: string;
+  roleName: string;
+  matchedRules: RuleMatchSummary[];
 };
 
 type VerificationDisplayRule = {
@@ -32,6 +45,11 @@ type VerificationDisplayRule = {
   min_items?: number | null;
   attribute_key?: string | null;
   attribute_value?: string | null;
+};
+
+type CollectionDisplayName = {
+  name?: string;
+  singleName?: string;
 };
 
 /**
@@ -76,7 +94,8 @@ export class DiscordVerificationService {
   constructor(
     private readonly dbSvc: DbService,
     private readonly nonceSvc: NonceService,
-    private readonly dataSvc: DataService
+    private readonly dataSvc: DataService,
+    private readonly userAddressService: UserAddressService
   ) {}
 
   private getScopeKey(userId: string, guildId: string, channelId: string): string {
@@ -162,20 +181,62 @@ export class DiscordVerificationService {
       .join(' ');
   }
 
-  private formatCollectionLabel(slug?: string | null, collectionNames: Record<string, string> = {}): string {
-    const slugs = this.parseRuleSlugs(slug);
+  private humanizeAttributeKey(attributeKey: string): string {
+    if (!attributeKey.includes('_') && !attributeKey.includes('-')) {
+      return attributeKey;
+    }
+
+    return attributeKey
+      .split(/[_-]+/)
+      .filter(part => part.length > 0)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
+  private formatCollectionLabel(
+    rule: {
+      slug?: string | null;
+      attribute_key?: string | null;
+      attribute_value?: string | null;
+    },
+    collectionNames: Record<string, CollectionDisplayName> = {}
+  ): string {
+    const slugs = this.parseRuleSlugs(rule.slug);
     if (slugs.length === 0) {
       return '';
     }
 
+    const useCollectionName =
+      (!rule.attribute_key || rule.attribute_key === 'ALL') &&
+      (!rule.attribute_value || rule.attribute_value === 'ALL');
+
     return slugs
-      .map(value => collectionNames[value] || this.humanizeSlug(value))
+      .map(value => {
+        const collectionName = collectionNames[value];
+        if (!collectionName) {
+          return this.humanizeSlug(value);
+        }
+
+        if (useCollectionName && collectionName.name) {
+          return collectionName.name;
+        }
+
+        if (collectionName.singleName) {
+          return collectionName.singleName;
+        }
+
+        if (collectionName.name) {
+          return collectionName.name;
+        }
+
+        return this.humanizeSlug(value);
+      })
       .join(', ');
   }
 
   private async getCollectionNamesForRules(
     rules: Array<{ slug?: string | null }>
-  ): Promise<Record<string, string>> {
+  ): Promise<Record<string, CollectionDisplayName>> {
     const uniqueSlugs = Array.from(new Set(
       rules.flatMap(rule => this.parseRuleSlugs(rule.slug))
     ));
@@ -199,31 +260,71 @@ export class DiscordVerificationService {
       attribute_key?: string | null;
       attribute_value?: string | null;
     },
-    collectionNames: Record<string, string> = {}
+    collectionNames: Record<string, CollectionDisplayName> = {},
+    options: {
+      style?: 'requirement' | 'holding';
+      matchingCount?: number;
+    } = {}
   ): string {
     const minItems = rule.min_items || 1;
-    const collectionLabel = this.formatCollectionLabel(rule.slug, collectionNames);
+    const style = options.style || 'requirement';
+    const matchingCount = options.matchingCount;
+    const collectionLabel = this.formatCollectionLabel(rule, collectionNames);
+    const slugCount = this.parseRuleSlugs(rule.slug).length;
+    const hasAttributeFilter =
+      !!rule.attribute_key &&
+      rule.attribute_key !== 'ALL' &&
+      !!rule.attribute_value &&
+      rule.attribute_value !== 'ALL';
 
     if (collectionLabel) {
-      let requirement = `Own ${minItems}+ ${collectionLabel}`;
+      const quantity = style === 'holding' ? (matchingCount || minItems) : minItems;
+      const collectionReference = this.formatCollectionReference(
+        collectionLabel,
+        quantity,
+        style,
+        {
+          prefersDirectNoun: hasAttributeFilter && slugCount === 1,
+          isMultiCollection: slugCount > 1,
+          isCollectionOnly: !hasAttributeFilter,
+        }
+      );
+      let requirement = style === 'holding'
+        ? `${quantity} ${collectionReference}`
+        : `Own ${minItems}+ ${collectionReference}`;
 
-      if (rule.attribute_key && rule.attribute_key !== 'ALL' &&
-          rule.attribute_value && rule.attribute_value !== 'ALL') {
-        requirement += ` with ${rule.attribute_key}=${rule.attribute_value}`;
+      if (hasAttributeFilter) {
+        requirement += ` with ${this.humanizeAttributeKey(rule.attribute_key!)}: ${rule.attribute_value}`;
+      }
+
+      if (style === 'requirement' && typeof matchingCount === 'number' && minItems > 1) {
+        requirement += ` (${matchingCount}/${minItems})`;
       }
 
       return requirement;
     }
 
     if (rule.attribute_key && rule.attribute_key !== 'ALL') {
-      let requirement = `Own ${minItems}+ NFTs with ${rule.attribute_key}`;
+      let requirement = style === 'holding'
+        ? `${matchingCount || minItems} NFTs with ${this.humanizeAttributeKey(rule.attribute_key)}`
+        : `Own ${minItems}+ NFTs with ${this.humanizeAttributeKey(rule.attribute_key)}`;
       if (rule.attribute_value && rule.attribute_value !== 'ALL') {
-        requirement += `=${rule.attribute_value}`;
+        requirement += `: ${rule.attribute_value}`;
+      }
+      if (style === 'requirement' && typeof matchingCount === 'number' && minItems > 1) {
+        requirement += ` (${matchingCount}/${minItems})`;
       }
       return requirement;
     }
 
-    return `Own ${minItems}+ NFTs from any collection`;
+    if (style === 'holding') {
+      return `${matchingCount || minItems} NFTs from any collection`;
+    }
+
+    const countSuffix = typeof matchingCount === 'number' && minItems > 1
+      ? ` (${matchingCount}/${minItems})`
+      : '';
+    return `Own ${minItems}+ NFTs from any collection${countSuffix}`;
   }
 
   /**
@@ -509,7 +610,7 @@ export class DiscordVerificationService {
           Logger.log(`🚀 Found ${potentialRoles.length} potential roles:`, potentialRoles);
           
           if (potentialRoles.length > 0) {
-            description += `\n\n**🚀 Additional Roles Available:**\n${potentialRoles.map(r => `• **${r.roleName}**: ${r.requirement}`).join('\n')}`;
+            description += `\n\n**🚀 Additional Roles Available:**\n${potentialRoles.map(r => this.formatRequirementGroupDisplay(r, allRules, collectionNames)).join('\n')}`;
             Logger.log(`✅ Added role recommendations to description`);
           } else {
             Logger.log(`ℹ️ No additional roles available for recommendation`);
@@ -763,7 +864,7 @@ export class DiscordVerificationService {
     userId: string,
     assignedRoleIds: string[],
     address: string
-  ): Promise<Array<{ roleName: string; requirement: string }>> {
+  ): Promise<RoleRequirementGroup[]> {
     if (!this.client) {
       Logger.log(`❌ analyzePotentialRoles: Discord client not initialized`);
       return [];
@@ -777,45 +878,81 @@ export class DiscordVerificationService {
       // Filter to only active assignments
       const activeAssignments = userActiveAssignments.filter(assignment => assignment.status === 'active');
       const userCurrentRoleIds = activeAssignments.map(assignment => assignment.role_id);
-      Logger.log(`👤 User currently has ${userCurrentRoleIds.length} active roles in database: ${userCurrentRoleIds.join(', ')}`);
+      const excludedRoleIds = new Set([...userCurrentRoleIds, ...assignedRoleIds]);
+      Logger.log(`👤 User currently has ${excludedRoleIds.size} excluded roles in database/current verification: ${Array.from(excludedRoleIds).join(', ')}`);
       
       // Get all rules for this server
       const allRules = await this.dbSvc.getRoleMappings(guildId);
       Logger.log(`📋 Found ${allRules.length} total rules in server`);
       
-      // Filter out rules for roles they already have (based on database, not Discord)
-      const unassignedRules = allRules.filter(rule => !userCurrentRoleIds.includes(rule.role_id));
+      // Filter out rules for roles they already have or were just assigned in this verification
+      const unassignedRules = allRules.filter(rule => !excludedRoleIds.has(rule.role_id));
       Logger.log(`🎯 Found ${unassignedRules.length} unassigned rules after filtering out current database roles`);
-      const collectionNames = await this.getCollectionNamesForRules(unassignedRules);
-      
-      // Limit to a reasonable number of recommendations
-      const maxRecommendations = 3;
-      const potentialRoles = [];
+      if (unassignedRules.length === 0) {
+        return [];
+      }
+
+      const userAddresses = await this.userAddressService.getUserAddresses(userId);
+      const normalizedAddress = address.toLowerCase();
+      const addressesToCheck = userAddresses.includes(normalizedAddress)
+        ? userAddresses
+        : [...userAddresses, normalizedAddress];
+
+      const qualifyingRules = [];
+      for (const rule of unassignedRules) {
+        try {
+          const matchingCount = await this.dataSvc.checkAssetOwnershipWithCriteria(
+            addressesToCheck,
+            rule.slug || 'ALL',
+            rule.attribute_key || 'ALL',
+            rule.attribute_value || 'ALL',
+            1
+          );
+
+          if (matchingCount > 0) {
+            const requiredCount = rule.min_items || 1;
+            if (matchingCount >= requiredCount) {
+              qualifyingRules.push({
+                ...rule,
+                matchingCount,
+              });
+            }
+          }
+        } catch (error) {
+          Logger.error(`❌ Error checking availability for rule ${rule.id}:`, error);
+        }
+      }
+
+      Logger.log(`✅ Found ${qualifyingRules.length} qualifying unassigned rules based on current holdings`);
+      if (qualifyingRules.length === 0) {
+        return [];
+      }
+
+      const collectionNames = await this.getCollectionNamesForRules(qualifyingRules);
+      const groupedPotentialRoles = this.groupRulesByRole(qualifyingRules);
       
       // Get guild for Discord role fetching
       const guild = await this.client.guilds.fetch(guildId);
-      
-      for (const rule of unassignedRules.slice(0, maxRecommendations)) {
+
+      const potentialRoles: RoleRequirementGroup[] = [];
+      for (const groupedRole of groupedPotentialRoles) {
         try {
-          Logger.log(`🔎 Processing rule ${rule.id} for role ${rule.role_id}`);
-          
-          // Get the Discord role name (guild already fetched above)
-          const role = await guild.roles.fetch(rule.role_id);
+          Logger.log(`🔎 Processing qualifying role ${groupedRole.roleId}`);
+
+          const role = await guild.roles.fetch(groupedRole.roleId);
           
           if (!role) {
-            Logger.log(`⚠️ Role ${rule.role_id} not found in Discord`);
+            Logger.log(`⚠️ Role ${groupedRole.roleId} not found in Discord`);
             continue;
           }
-          
-          const potentialRole = {
+
+          potentialRoles.push({
+            roleId: groupedRole.roleId,
             roleName: role.name,
-            requirement: this.formatRoleRequirement(rule, collectionNames)
-          };
-          
-          Logger.log(`✅ Added potential role: ${potentialRole.roleName} - ${potentialRole.requirement}`);
-          potentialRoles.push(potentialRole);
+            matchedRules: groupedRole.matchedRules,
+          });
         } catch (error) {
-          Logger.error(`❌ Error processing rule ${rule.id}:`, error);
+          Logger.error(`❌ Error processing potential role ${groupedRole.roleId}:`, error);
           // Skip roles we can't process
           continue;
         }
@@ -839,14 +976,20 @@ export class DiscordVerificationService {
           roleId: roleResult.roleId,
           roleName: roleResult.roleName,
           wasAlreadyAssigned: roleResult.wasAlreadyAssigned,
-          matchedRuleIds: roleResult.ruleId ? [roleResult.ruleId] : [],
+          matchedRules: roleResult.ruleId ? [{
+            ruleId: roleResult.ruleId,
+            matchingCount: roleResult.matchingCount,
+          }] : [],
         });
         return;
       }
 
       existing.wasAlreadyAssigned = existing.wasAlreadyAssigned && roleResult.wasAlreadyAssigned;
-      if (roleResult.ruleId && !existing.matchedRuleIds.includes(roleResult.ruleId)) {
-        existing.matchedRuleIds.push(roleResult.ruleId);
+      if (roleResult.ruleId && !existing.matchedRules.some(match => match.ruleId === roleResult.ruleId)) {
+        existing.matchedRules.push({
+          ruleId: roleResult.ruleId,
+          matchingCount: roleResult.matchingCount,
+        });
       }
     });
 
@@ -854,14 +997,15 @@ export class DiscordVerificationService {
   }
 
   private getMatchedRulesForRole(
-    role: GroupedVerificationRoleResult,
+    role: { roleId: string; matchedRules: RuleMatchSummary[] },
     allRules: VerificationDisplayRule[]
-  ): VerificationDisplayRule[] {
-    if (role.matchedRuleIds.length > 0) {
+  ): Array<{ rule: VerificationDisplayRule; matchingCount?: number }> {
+    if (role.matchedRules.length > 0) {
       const rulesById = new Map(allRules.map(rule => [rule.id.toString(), rule]));
-      const matchedRules = role.matchedRuleIds
-        .map(ruleId => rulesById.get(ruleId))
-        .filter((rule): rule is VerificationDisplayRule => !!rule);
+      const matchedRules = role.matchedRules.flatMap(match => {
+        const rule = rulesById.get(match.ruleId);
+        return rule ? [{ rule, matchingCount: match.matchingCount }] : [];
+      });
 
       if (matchedRules.length > 0) {
         return matchedRules;
@@ -869,26 +1013,38 @@ export class DiscordVerificationService {
     }
 
     const fallbackRule = allRules.find(rule => rule.role_id === role.roleId);
-    return fallbackRule ? [fallbackRule] : [];
+    return fallbackRule ? [{ rule: fallbackRule }] : [];
   }
 
   private getPrimaryRoleRequirement(
     role: GroupedVerificationRoleResult,
     allRules: VerificationDisplayRule[],
-    collectionNames: Record<string, string>
+    collectionNames: Record<string, CollectionDisplayName>
   ): string {
     const [primaryRule] = this.getMatchedRulesForRole(role, allRules);
-    return primaryRule ? this.formatRoleRequirement(primaryRule, collectionNames) : '';
+    return primaryRule
+      ? this.formatRoleRequirement(primaryRule.rule, collectionNames, {
+          style: 'requirement',
+          matchingCount: primaryRule.matchingCount,
+        })
+      : '';
   }
 
-  private formatExistingRoleDisplay(
-    role: GroupedVerificationRoleResult,
+  private formatRequirementGroupDisplay(
+    role: { roleId: string; roleName: string; matchedRules: RuleMatchSummary[] },
     allRules: VerificationDisplayRule[],
-    collectionNames: Record<string, string>
+    collectionNames: Record<string, CollectionDisplayName>
   ): string {
     const requirements = Array.from(new Set(
       this.getMatchedRulesForRole(role, allRules)
-        .map(rule => this.formatRoleRequirement(rule, collectionNames))
+        .map(({ rule, matchingCount }) => this.formatRoleRequirement(
+          rule,
+          collectionNames,
+          {
+            style: 'requirement',
+            matchingCount,
+          }
+        ))
         .filter(requirement => requirement.length > 0)
     ));
 
@@ -900,6 +1056,109 @@ export class DiscordVerificationService {
       return `• **${role.roleName}**: ${requirements[0]}`;
     }
 
-    return `• **${role.roleName}**:\n${requirements.map(requirement => `  - ${requirement}`).join('\n')}`;
+    return `• **${role.roleName}**:\n${requirements.map(requirement => `↳ ${requirement}`).join('\n')}`;
+  }
+
+  private groupRulesByRole(
+    rules: Array<VerificationDisplayRule & { matchingCount?: number }>
+  ): RoleRequirementGroup[] {
+    const groupedRoles = new Map<string, RoleRequirementGroup>();
+
+    rules.forEach(rule => {
+      const existing = groupedRoles.get(rule.role_id);
+      if (!existing) {
+        groupedRoles.set(rule.role_id, {
+          roleId: rule.role_id,
+          roleName: '',
+          matchedRules: [{
+            ruleId: rule.id.toString(),
+            matchingCount: rule.matchingCount,
+          }],
+        });
+        return;
+      }
+
+      if (!existing.matchedRules.some(match => match.ruleId === rule.id.toString())) {
+        existing.matchedRules.push({
+          ruleId: rule.id.toString(),
+          matchingCount: rule.matchingCount,
+        });
+      }
+    });
+
+    return Array.from(groupedRoles.values());
+  }
+
+  private formatCollectionReference(
+    collectionLabel: string,
+    quantity: number,
+    style: 'requirement' | 'holding',
+    options: {
+      prefersDirectNoun: boolean;
+      isMultiCollection: boolean;
+      isCollectionOnly: boolean;
+    }
+  ): string {
+    if (options.isMultiCollection) {
+      const itemWord = quantity === 1 ? 'item' : 'items';
+      return `${itemWord} from ${collectionLabel}`;
+    }
+
+    if (options.prefersDirectNoun) {
+      return this.pluralizeCollectionLabel(collectionLabel, quantity);
+    }
+
+    if (options.isCollectionOnly) {
+      const itemWord = style === 'holding'
+        ? (quantity === 1 ? 'item' : 'items')
+        : `item${quantity > 1 ? 's' : ''}`;
+      return `${itemWord} from ${collectionLabel}`;
+    }
+
+    return this.pluralizeCollectionLabel(collectionLabel, quantity);
+  }
+
+  private pluralizeCollectionLabel(collectionLabel: string, quantity: number): string {
+    if (quantity === 1) {
+      return collectionLabel;
+    }
+
+    if (collectionLabel.trim().toLowerCase().endsWith('s')) {
+      return collectionLabel;
+    }
+
+    const labelParts = collectionLabel.split(' ');
+    const lastPartIndex = labelParts.length - 1;
+    labelParts[lastPartIndex] = `${labelParts[lastPartIndex]}s`;
+    return labelParts.join(' ');
+  }
+
+  private formatExistingRoleDisplay(
+    role: GroupedVerificationRoleResult,
+    allRules: VerificationDisplayRule[],
+    collectionNames: Record<string, CollectionDisplayName>
+  ): string {
+    const requirements = Array.from(new Set(
+      this.getMatchedRulesForRole(role, allRules)
+        .map(({ rule, matchingCount }) => this.formatRoleRequirement(
+          rule,
+          collectionNames,
+          {
+            style: 'holding',
+            matchingCount,
+          }
+        ))
+        .filter(requirement => requirement.length > 0)
+    ));
+
+    if (requirements.length === 0) {
+      return `• ${role.roleName}`;
+    }
+
+    if (requirements.length === 1) {
+      return `• **${role.roleName}**: ${requirements[0]}`;
+    }
+
+    return `• **${role.roleName}**:\n${requirements.map(requirement => `↳ ${requirement}`).join('\n')}`;
   }
 }

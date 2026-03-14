@@ -133,7 +133,9 @@ export class DataService {
     return ['all-collections', ...uniqueSlugs];
   }
 
-  async getCollectionNames(slugs: string[]): Promise<Record<string, string>> {
+  async getCollectionNames(
+    slugs: string[]
+  ): Promise<Record<string, { name?: string; singleName?: string }>> {
     const uniqueSlugs = Array.from(new Set(
       slugs
         .map(slug => slug?.trim())
@@ -146,20 +148,23 @@ export class DataService {
 
     const { data, error } = await supabase
       .from('collections')
-      .select('slug, singleName')
+      .select('slug, name, singleName')
       .in('slug', uniqueSlugs);
 
     if (error) throw new Error(error.message);
 
-    const collectionNames: Record<string, string> = {};
+    const collectionNames: Record<string, { name?: string; singleName?: string }> = {};
     data?.forEach(record => {
       if (!record.slug) return;
 
-      const displayName = typeof record.singleName === 'string' && record.singleName.trim().length > 0
-        ? record.singleName.trim()
-        : record.slug;
-
-      collectionNames[record.slug] = displayName;
+      collectionNames[record.slug] = {
+        name: typeof record.name === 'string' && record.name.trim().length > 0
+          ? record.name.trim()
+          : undefined,
+        singleName: typeof record.singleName === 'string' && record.singleName.trim().length > 0
+          ? record.singleName.trim()
+          : undefined,
+      };
     });
 
     return collectionNames;
