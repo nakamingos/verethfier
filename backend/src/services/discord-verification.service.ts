@@ -366,12 +366,9 @@ export class DiscordVerificationService {
 
     const beforeWith = text.slice(0, markerIndex);
     const afterWith = text.slice(markerIndex + marker.length);
-    const hintedBeforeWith =
-      beforeWith.length <= 24 && !beforeWith.includes('\u2228')
-        ? this.keepPhraseTogether(beforeWith)
-        : beforeWith;
+    const hintedAfterWith = this.keepPhraseTogether(afterWith);
 
-    return `${hintedBeforeWith}\u00A0with ${afterWith}`;
+    return `${beforeWith} with ${hintedAfterWith}`;
   }
 
   private keepPhraseTogether(text: string): string {

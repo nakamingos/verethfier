@@ -519,7 +519,8 @@ describe('DiscordVerificationService', () => {
         }
       );
 
-      expect(requirement).toContain('\u00A0with ');
+      expect(requirement).toContain(' with Classification:\u00A0Official\u00A0Rug\u00A0Lord\u00A0Fan\u00A0Club\u00A0Glasses');
+      expect(requirement).not.toContain('\u00A0with ');
       expect(requirement).not.toContain('\n');
     });
 
