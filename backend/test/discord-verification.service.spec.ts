@@ -144,6 +144,37 @@ describe('DiscordVerificationService', () => {
       });
     });
 
+    it('should retire the previous verification link when a newer one is requested in the same channel', async () => {
+      const previousInteraction = {
+        ...mockInteraction,
+        editReply: jest.fn(),
+        isRepliable: jest.fn().mockReturnValue(true),
+      };
+
+      mockDbService.getRulesByChannel.mockResolvedValue([{ role_id: 'role-id' }]);
+      mockNonceService.createNonce.mockResolvedValue('test-nonce');
+
+      service.tempMessages['old-nonce'] = previousInteraction as any;
+      (service as any).nonceScopes['old-nonce'] = 'user-id:guild-id:channel-id';
+      (service as any).latestRequestNonces['user-id:guild-id:channel-id'] = 'old-nonce';
+
+      await service.requestVerification(mockInteraction as any);
+
+      expect(previousInteraction.editReply).toHaveBeenCalledWith({
+        embeds: expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              title: 'Verification Link Replaced',
+              description: 'A newer verification link was requested. Please use the latest "Verify Now" button.'
+            })
+          })
+        ]),
+        components: []
+      });
+      expect(service.tempMessages['old-nonce']).toBeUndefined();
+      expect((service as any).latestRequestNonces['user-id:guild-id:channel-id']).toBe('test-nonce');
+    });
+
     it('should handle error when no rules found', async () => {
       mockDbService.getRulesByChannel.mockResolvedValue([]);
 

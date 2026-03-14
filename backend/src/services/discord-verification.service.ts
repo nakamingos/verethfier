@@ -30,6 +30,14 @@ export class DiscordVerificationService {
     [nonce: string]: ButtonInteraction<CacheType>;
   } = {};
 
+  private latestRequestNonces: {
+    [scopeKey: string]: string;
+  } = {};
+
+  private nonceScopes: {
+    [nonce: string]: string;
+  } = {};
+
   /**
    * Initialize the service with the Discord client instance.
    * Required for Discord API operations and role management.
@@ -44,6 +52,55 @@ export class DiscordVerificationService {
     private readonly dbSvc: DbService,
     private readonly nonceSvc: NonceService
   ) {}
+
+  private getScopeKey(userId: string, guildId: string, channelId: string): string {
+    return `${userId}:${guildId}:${channelId}`;
+  }
+
+  private async retirePreviousVerificationRequest(scopeKey: string): Promise<void> {
+    const previousNonce = this.latestRequestNonces[scopeKey];
+    if (!previousNonce) return;
+
+    const previousInteraction = this.tempMessages[previousNonce];
+    if (!previousInteraction) {
+      delete this.latestRequestNonces[scopeKey];
+      delete this.nonceScopes[previousNonce];
+      return;
+    }
+
+    try {
+      if (!previousInteraction.isRepliable()) {
+        Logger.warn(`Previous interaction for nonce ${previousNonce} is no longer repliable`);
+        return;
+      }
+
+      await previousInteraction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('Verification Link Replaced')
+            .setDescription('A newer verification link was requested. Please use the latest "Verify Now" button.')
+            .setColor('#FFA500')
+        ],
+        components: []
+      });
+    } catch (error) {
+      Logger.warn(`Failed to retire previous verification request for nonce ${previousNonce}: ${error.message}`);
+    } finally {
+      delete this.tempMessages[previousNonce];
+      delete this.nonceScopes[previousNonce];
+      delete this.latestRequestNonces[scopeKey];
+    }
+  }
+
+  private clearTrackedRequest(nonce: string): void {
+    const scopeKey = this.nonceScopes[nonce];
+    if (scopeKey && this.latestRequestNonces[scopeKey] === nonce) {
+      delete this.latestRequestNonces[scopeKey];
+    }
+
+    delete this.nonceScopes[nonce];
+    delete this.tempMessages[nonce];
+  }
 
   /**
    * Handles verification button interactions from Discord users.
@@ -81,6 +138,9 @@ export class DiscordVerificationService {
       const rule = rules[0];
       const role = guild.roles.cache.get(rule.role_id);
       if (!role) throw new Error('Role not found');
+
+      const scopeKey = this.getScopeKey(interaction.user.id, guild.id, channel.id);
+      await this.retirePreviousVerificationRequest(scopeKey);
 
       // Check if user is already verified
       // const userServers = await this.dbSvc.getUserServers(interaction.user.id);
@@ -144,6 +204,8 @@ export class DiscordVerificationService {
 
       // Store the temp message
       this.tempMessages[nonce] = interaction;
+      this.nonceScopes[nonce] = scopeKey;
+      this.latestRequestNonces[scopeKey] = nonce;
       
     } catch (error) {
       Logger.error('Error in requestVerification:', error);
@@ -260,7 +322,7 @@ export class DiscordVerificationService {
       Logger.error(`Failed to edit reply for nonce ${nonce}:`, error);
     } finally {
       // Clean up the stored interaction
-      delete this.tempMessages[nonce];
+      this.clearTrackedRequest(nonce);
     }
   }
 
@@ -400,7 +462,7 @@ export class DiscordVerificationService {
       }
     } finally {
       // Clean up the stored interaction
-      delete this.tempMessages[nonce];
+      this.clearTrackedRequest(nonce);
     }
   }
 
