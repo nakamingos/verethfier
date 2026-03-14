@@ -41,6 +41,7 @@ type RoleRequirementGroup = {
 type VerificationDisplayRule = {
   id: number;
   role_id: string;
+  role_name?: string | null;
   slug?: string | null;
   min_items?: number | null;
   attribute_key?: string | null;
@@ -913,6 +914,7 @@ export class DiscordVerificationService {
         : [...userAddresses, normalizedAddress];
 
       const potentialRules = [];
+      const ruleEvaluations: Array<Record<string, unknown>> = [];
       for (const rule of unassignedRules) {
         try {
           const matchingCount = await this.dataSvc.checkAssetOwnershipWithCriteria(
@@ -923,6 +925,17 @@ export class DiscordVerificationService {
             1
           );
 
+          ruleEvaluations.push({
+            ruleId: rule.id,
+            roleId: rule.role_id,
+            roleName: rule.role_name || null,
+            slug: rule.slug || 'ALL',
+            attributeKey: rule.attribute_key || 'ALL',
+            attributeValue: rule.attribute_value || 'ALL',
+            minItems: rule.min_items || 1,
+            matchingCount,
+          });
+
           if (matchingCount > 0) {
             potentialRules.push({
               ...rule,
@@ -930,12 +943,27 @@ export class DiscordVerificationService {
             });
           }
         } catch (error) {
+          ruleEvaluations.push({
+            ruleId: rule.id,
+            roleId: rule.role_id,
+            roleName: rule.role_name || null,
+            slug: rule.slug || 'ALL',
+            attributeKey: rule.attribute_key || 'ALL',
+            attributeValue: rule.attribute_value || 'ALL',
+            minItems: rule.min_items || 1,
+            error: error.message,
+          });
           Logger.error(`❌ Error checking availability for rule ${rule.id}:`, error);
         }
       }
 
       Logger.log(`✅ Found ${potentialRules.length} unassigned rules with matching holdings`);
       if (potentialRules.length === 0) {
+        Logger.warn(
+          `No additional roles surfaced for user ${userId} in guild ${guildId}. ` +
+          `Checked ${ruleEvaluations.length} unassigned rules across ${addressesToCheck.length} wallet(s): ` +
+          `${JSON.stringify(ruleEvaluations)}`
+        );
         return [];
       }
 
