@@ -348,7 +348,7 @@ describe('DiscordVerificationService', () => {
           expect.objectContaining({
               data: expect.objectContaining({
                 title: 'Verification Successful',
-                description: expect.stringContaining('**Test Role**: Own 1+ item from The Test Collection (1/1)')
+                description: expect.stringContaining('**Test Role**: (1/1) The Test Collection')
               })
             })
           ]),
@@ -413,7 +413,7 @@ describe('DiscordVerificationService', () => {
           expect.objectContaining({
               data: expect.objectContaining({
                 title: 'Verification Successful',
-                description: expect.stringContaining('**GIF Goddess**: Own 1+ item from The Test Collection (1/1)')
+                description: expect.stringContaining('**GIF Goddess**: (1/1) The Test Collection')
               })
             })
           ]),
@@ -648,9 +648,10 @@ describe('DiscordVerificationService', () => {
       expect(description).toContain('**Test Role 2**:');
       expect(description).toContain(' ↳ Own 1+ Misprint with Head: Crown');
       expect(description).toContain(' ↳ Own 1+ EtherPhunk with Type: Legendary');
-      expect(description).toContain('**Bonus Role**: Own 2+ items from The Third Collection (2/2)');
-      expect(description).toContain('**Second Bonus Role**: Own 1+ item from The Other Collection (1/1)');
+      expect(description).toContain('**Bonus Role**: (2/2) The Third Collection');
+      expect(description).toContain('**Second Bonus Role**: (1/1) The Other Collection');
       expect(description).toContain('**Third Bonus Role**: Own 1+ EtherPhunk with Head: Halo');
+      expect(description).not.toContain('items from The Third Collection');
     });
 
     it('should keep additional roles visible when the user has partial progress toward a higher threshold', async () => {
@@ -704,7 +705,8 @@ describe('DiscordVerificationService', () => {
       const description = editReplyCall.embeds[0].data.description;
 
       expect(description).toContain('**🚀 Additional Roles Available:**');
-      expect(description).toContain('**Bonus Role**: Own 5+ items from The Third Collection (2/5)');
+      expect(description).toContain('**Bonus Role**: (2/5) The Third Collection');
+      expect(description).not.toContain('Own 5+ items from The Third Collection');
     });
 
     it('should still show additional roles when the user has zero matching holdings for them', async () => {
@@ -750,7 +752,7 @@ describe('DiscordVerificationService', () => {
       expect(description).toContain('**🚀 Additional Roles Available:**');
       expect(description).toContain('**Test Role 2**: Own 1+ Misprint with Head: Crown');
       expect(description).not.toContain('Own 1+ Misprint with Head: Crown (0/1)');
-      expect(description).toContain('**Bonus Role**: Own 5+ items from The Third Collection (0/5)');
+      expect(description).toContain('**Bonus Role**: (0/5) The Third Collection');
     });
 
     it('should still recommend a role when database history is stale but the member no longer has it in Discord', async () => {
@@ -793,7 +795,7 @@ describe('DiscordVerificationService', () => {
       const description = editReplyCall.embeds[0].data.description;
 
       expect(description).toContain('**🚀 Additional Roles Available:**');
-      expect(description).toContain('**Bonus Role**: Own 2+ items from The Third Collection (2/2)');
+      expect(description).toContain('**Bonus Role**: (2/2) The Third Collection');
     });
 
     it('should keep a newly assigned role out of the existing roles section even if multiple rules match it', async () => {
@@ -830,6 +832,9 @@ describe('DiscordVerificationService', () => {
 
       expect(description).toContain('**🎉 New Roles Assigned:**');
       expect(description).not.toContain('**✅ Roles You Already Have:**');
+      expect(description).toContain('**Test Role**:');
+      expect(description).toContain(' ↳ (1/1) The Test Collection');
+      expect(description).toContain(' ↳ 2 EtherPhunks with Type: Legendary');
 
       const matches = description.match(/\*\*Test Role\*\*/g);
       expect(matches).toHaveLength(1);

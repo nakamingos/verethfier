@@ -605,40 +605,30 @@ export class DiscordVerificationService {
       // Add new roles section if any
       if (newRoles.length > 0) {
         description += `\n\n**🎉 New Roles Assigned:**\n${newRoles.map(r => {
-          const requirement = this.getPrimaryRoleRequirement(r, allRules, collectionNames);
-          return this.formatRoleDisplay(r.roleName, requirement ? [requirement] : []);
+          return this.formatVerifiedRoleDisplay(r, allRules, collectionNames);
         }).join('\n')}`;
       }
       
       // Add existing roles section if any
       if (existingRoles.length > 0) {
         description += `\n\n**✅ Roles You Already Have:**\n${existingRoles.map(r => {
-          return this.formatExistingRoleDisplay(r, allRules, collectionNames);
+          return this.formatVerifiedRoleDisplay(r, allRules, collectionNames);
         }).join('\n')}`;
       }
       
       // Add role recommendations if we have user address and there are unassigned roles
       if (userAddress && storedInteraction?.user?.id) {
-        Logger.log(`🔍 Analyzing potential roles for user ${storedInteraction.user.id} with address ${userAddress}`);
         try {
           const assignedRoleIds = groupedRoleResults.map(r => r.roleId);
-          Logger.log(`📋 Assigned role IDs: ${assignedRoleIds.join(', ')}`);
-          
           const potentialRoles = await this.analyzePotentialRoles(guildId, storedInteraction.user.id, assignedRoleIds, userAddress);
-          Logger.log(`🚀 Found ${potentialRoles.length} potential roles:`, potentialRoles);
-          
+
           if (potentialRoles.length > 0) {
             description += `\n\n**🚀 Additional Roles Available:**\n${potentialRoles.map(r => this.formatRequirementGroupDisplay(r, allRules, collectionNames)).join('\n')}`;
-            Logger.log(`✅ Added role recommendations to description`);
-          } else {
-            Logger.log(`ℹ️ No additional roles available for recommendation`);
           }
         } catch (error) {
           Logger.error('Failed to get role recommendations:', error);
           // Don't fail the verification if recommendations fail
         }
-      } else {
-        Logger.log(`⚠️ Skipping role recommendations - userAddress: ${!!userAddress}, userId: ${storedInteraction?.user?.id}`);
       }
 
       if (!storedInteraction.isRepliable()) {
@@ -888,12 +878,12 @@ export class DiscordVerificationService {
     address: string
   ): Promise<RoleRequirementGroup[]> {
     if (!this.client) {
-      Logger.log(`❌ analyzePotentialRoles: Discord client not initialized`);
+      Logger.error('analyzePotentialRoles: Discord client not initialized');
       return [];
     }
 
     try {
-      Logger.log(`🔍 analyzePotentialRoles: Starting analysis for guild ${guildId}`);
+      Logger.debug(`Analyzing additional roles for user ${userId} in guild ${guildId}`);
 
       const guild = await this.client.guilds.fetch(guildId);
 
@@ -902,7 +892,7 @@ export class DiscordVerificationService {
         const member = await guild.members.fetch(userId);
         const currentDiscordRoleIds = Array.from(member.roles.cache.keys());
         excludedRoleIds = new Set([...currentDiscordRoleIds, ...assignedRoleIds]);
-        Logger.log(`👤 User currently has ${excludedRoleIds.size} excluded roles in Discord/current verification: ${Array.from(excludedRoleIds).join(', ')}`);
+        Logger.debug(`Potential role analysis is excluding ${excludedRoleIds.size} current role(s) from Discord state`);
       } catch (memberError) {
         Logger.warn(`Falling back to database role history for user ${userId} in guild ${guildId}: ${memberError.message}`);
 
@@ -910,16 +900,15 @@ export class DiscordVerificationService {
         const activeAssignments = userActiveAssignments.filter(assignment => assignment.status === 'active');
         const userCurrentRoleIds = activeAssignments.map(assignment => assignment.role_id);
         excludedRoleIds = new Set([...userCurrentRoleIds, ...assignedRoleIds]);
-        Logger.log(`👤 User currently has ${excludedRoleIds.size} excluded roles in database/current verification: ${Array.from(excludedRoleIds).join(', ')}`);
+        Logger.debug(`Potential role analysis is excluding ${excludedRoleIds.size} current role(s) from database state`);
       }
       
       // Get all rules for this server
       const allRules = await this.dbSvc.getRoleMappings(guildId);
-      Logger.log(`📋 Found ${allRules.length} total rules in server`);
       
       // Filter out rules for roles they already have or were just assigned in this verification
       const unassignedRules = allRules.filter(rule => !excludedRoleIds.has(rule.role_id));
-      Logger.log(`🎯 Found ${unassignedRules.length} unassigned rules after filtering out current database roles`);
+      Logger.debug(`Potential role analysis found ${unassignedRules.length} unassigned rule(s) out of ${allRules.length} total rule(s)`);
       if (unassignedRules.length === 0) {
         return [];
       }
@@ -931,7 +920,6 @@ export class DiscordVerificationService {
         : [...userAddresses, normalizedAddress];
 
       const remainingRules = [];
-      const ruleEvaluations: Array<Record<string, unknown>> = [];
       for (const rule of unassignedRules) {
         try {
           const matchingCount = await this.dataSvc.checkAssetOwnershipWithCriteria(
@@ -942,42 +930,19 @@ export class DiscordVerificationService {
             1
           );
 
-          ruleEvaluations.push({
-            ruleId: rule.id,
-            roleId: rule.role_id,
-            roleName: rule.role_name || null,
-            slug: rule.slug || 'ALL',
-            attributeKey: rule.attribute_key || 'ALL',
-            attributeValue: rule.attribute_value || 'ALL',
-            minItems: rule.min_items || 1,
-            matchingCount,
-          });
-
           remainingRules.push({
             ...rule,
             matchingCount,
           });
         } catch (error) {
-          ruleEvaluations.push({
-            ruleId: rule.id,
-            roleId: rule.role_id,
-            roleName: rule.role_name || null,
-            slug: rule.slug || 'ALL',
-            attributeKey: rule.attribute_key || 'ALL',
-            attributeValue: rule.attribute_value || 'ALL',
-            minItems: rule.min_items || 1,
-            error: error.message,
-          });
-          Logger.error(`❌ Error checking availability for rule ${rule.id}:`, error);
+          Logger.error(`Error checking availability for rule ${rule.id}:`, error);
         }
       }
 
-      Logger.log(`✅ Evaluated ${remainingRules.length} unassigned rules for additional-role messaging`);
       if (remainingRules.length === 0) {
-        Logger.warn(
-          `No additional roles surfaced for user ${userId} in guild ${guildId}. ` +
-          `Checked ${ruleEvaluations.length} unassigned rules across ${addressesToCheck.length} wallet(s): ` +
-          `${JSON.stringify(ruleEvaluations)}`
+        Logger.debug(
+          `Potential role analysis found no evaluable rules for user ${userId} in guild ${guildId} ` +
+          `after checking ${unassignedRules.length} unassigned rule(s) across ${addressesToCheck.length} wallet(s)`
         );
         return [];
       }
@@ -987,12 +952,10 @@ export class DiscordVerificationService {
       const potentialRoles: RoleRequirementGroup[] = [];
       for (const groupedRole of groupedPotentialRoles) {
         try {
-          Logger.log(`🔎 Processing qualifying role ${groupedRole.roleId}`);
-
           const role = await guild.roles.fetch(groupedRole.roleId);
           
           if (!role) {
-            Logger.log(`⚠️ Role ${groupedRole.roleId} not found in Discord`);
+            Logger.warn(`Potential role ${groupedRole.roleId} was not found in Discord for guild ${guildId}`);
             continue;
           }
 
@@ -1002,16 +965,19 @@ export class DiscordVerificationService {
             matchedRules: groupedRole.matchedRules,
           });
         } catch (error) {
-          Logger.error(`❌ Error processing potential role ${groupedRole.roleId}:`, error);
+          Logger.error(`Error processing potential role ${groupedRole.roleId}:`, error);
           // Skip roles we can't process
           continue;
         }
       }
       
-      Logger.log(`🎉 analyzePotentialRoles completed with ${potentialRoles.length} recommendations`);
+      Logger.debug(
+        `Potential role analysis completed for user ${userId} in guild ${guildId}: ` +
+        `${potentialRoles.length} role recommendation(s) across ${addressesToCheck.length} wallet(s)`
+      );
       return potentialRoles;
     } catch (error) {
-      Logger.error('❌ Error analyzing potential roles:', error);
+      Logger.error('Error analyzing potential roles:', error);
       return [];
     }
   }
@@ -1074,32 +1040,28 @@ export class DiscordVerificationService {
     return fallbackRule ? [{ rule: fallbackRule, matchingCount: role.fallbackMatchingCount }] : [];
   }
 
-  private getPrimaryRoleRequirement(
-    role: GroupedVerificationRoleResult,
-    allRules: VerificationDisplayRule[],
-    collectionNames: Record<string, CollectionDisplayName>
-  ): string {
-    const [primaryRule] = this.getMatchedRulesForRole(role, allRules);
-    return primaryRule
-      ? this.formatRoleRequirement(primaryRule.rule, collectionNames, {
-          style: 'requirement',
-          matchingCount: primaryRule.matchingCount,
-        })
-      : '';
-  }
-
   private formatRequirementGroupDisplay(
     role: { roleId: string; roleName: string; matchedRules: RuleMatchSummary[] },
     allRules: VerificationDisplayRule[],
     collectionNames: Record<string, CollectionDisplayName>
   ): string {
+    const matchedRules = this.getMatchedRulesForRole(role, allRules);
+    const combinedCollectionRequirement = this.formatCombinedCollectionRequirement(
+      matchedRules,
+      collectionNames,
+      'holding'
+    );
+    if (combinedCollectionRequirement) {
+      return this.formatRoleDisplay(role.roleName, [combinedCollectionRequirement]);
+    }
+
     const requirements = Array.from(new Set(
-      this.getMatchedRulesForRole(role, allRules)
+      matchedRules
         .map(({ rule, matchingCount }) => this.formatRoleRequirement(
           rule,
           collectionNames,
           {
-            style: 'requirement',
+            style: this.isCollectionOnlyRule(rule) ? 'holding' : 'requirement',
             matchingCount,
           }
         ))
@@ -1183,15 +1145,16 @@ export class DiscordVerificationService {
     return labelParts.join(' ');
   }
 
-  private formatExistingRoleDisplay(
+  private formatVerifiedRoleDisplay(
     role: GroupedVerificationRoleResult,
     allRules: VerificationDisplayRule[],
     collectionNames: Record<string, CollectionDisplayName>
   ): string {
     const matchedRules = this.getMatchedRulesForRole(role, allRules);
-    const combinedCollectionRequirement = this.formatCombinedCollectionHoldingRequirement(
+    const combinedCollectionRequirement = this.formatCombinedCollectionRequirement(
       matchedRules,
-      collectionNames
+      collectionNames,
+      'holding'
     );
     if (combinedCollectionRequirement) {
       return this.formatRoleDisplay(role.roleName, [combinedCollectionRequirement]);
@@ -1213,9 +1176,10 @@ export class DiscordVerificationService {
     return this.formatRoleDisplay(role.roleName, requirements);
   }
 
-  private formatCombinedCollectionHoldingRequirement(
+  private formatCombinedCollectionRequirement(
     matchedRules: Array<{ rule: VerificationDisplayRule; matchingCount?: number }>,
-    collectionNames: Record<string, CollectionDisplayName>
+    collectionNames: Record<string, CollectionDisplayName>,
+    style: 'requirement' | 'holding'
   ): string | null {
     if (
       matchedRules.length <= 1 ||
@@ -1228,7 +1192,7 @@ export class DiscordVerificationService {
       matchedRules
         .map(({ rule, matchingCount }) => this.keepPhraseTogether(
           this.formatRoleRequirement(rule, collectionNames, {
-            style: 'holding',
+            style,
             matchingCount,
           })
         ))

@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import { NonceService }  from './nonce.service';
-import { DiscordService } from './discord.service';
 import { DiscordVerificationService } from './discord-verification.service';
 import { DataService }   from './data.service';
 import { DbService }     from './db.service';
@@ -25,7 +24,6 @@ export class VerifyService {
   constructor(
     private readonly walletSvc: WalletService,
     private readonly nonceSvc: NonceService,
-    private readonly discordSvc: DiscordService,
     private readonly discordVerificationSvc: DiscordVerificationService,
     private readonly dataSvc: DataService,
     private readonly dbSvc: DbService,
@@ -77,7 +75,7 @@ export class VerifyService {
       // Use the unified verification engine to verify the user against all rules
       const ruleIds = rules.map(rule => rule.id);
       const verificationResult = await this.verificationSvc.verifyUserBulk(payload.userId, ruleIds, address);
-      const { validRules, invalidRules, matchingAssetCounts } = verificationResult;
+      const { validRules, matchingAssetCounts } = verificationResult;
       
       const roleResults = [];
       let hasMatchingAssets = validRules.length > 0;
@@ -93,19 +91,7 @@ export class VerifyService {
         
         try {
           Logger.debug(`Assigning role: ${rule.role_id} to user: ${payload.userId}`);
-          
-          // Get user, guild, and role information for logging (with fallbacks)
-          let user = null, guild = null, role = null;
-          try {
-            [user, guild, role] = await Promise.all([
-              this.discordSvc.getUser(payload.userId),
-              this.discordSvc.getGuild(payload.discordId),
-              this.discordSvc.getRole(payload.discordId, rule.role_id)
-            ]);
-          } catch (discordError) {
-            Logger.warn(`Discord API calls failed for role assignment:`, discordError.message);
-          }
-          
+
           const roleResult = await this.discordVerificationSvc.addUserRole(
             payload.userId,
             rule.role_id,
@@ -154,7 +140,7 @@ export class VerifyService {
       const totalAssigned = roleResults.length;
       const newlyAssigned = roleResults.filter(r => !r.wasAlreadyAssigned).length;
       
-      Logger.log(`✅ User verification completed (${newlyAssigned} new roles, ${totalAssigned - newlyAssigned} existing roles)`);
+      Logger.log(`Verification completed (${newlyAssigned} new roles, ${totalAssigned - newlyAssigned} existing roles)`);
       return { 
         message: `Verification successful (message-based) - ${newlyAssigned} new roles assigned, ${totalAssigned - newlyAssigned} existing roles`, 
         address,
@@ -208,7 +194,6 @@ export class VerifyService {
             ...roleResult,
             matchingCount: assetCount,
           });
-          Logger.log(`✅ Added role result: ${JSON.stringify(roleResult)}`);
         }
         Logger.debug(`✅ Unified verification: Successfully assigned role: ${rule.role_id} for rule ${rule.id}`);
       } catch (error) {
@@ -219,7 +204,6 @@ export class VerifyService {
     
     // Send verification complete message with role assignment details
     try {
-      Logger.log(`🎯 Sending verification complete message with ${roleResults.length} role results and address: ${address}`);
       await this.discordVerificationSvc.sendVerificationComplete(
         payload.discordId,
         payload.nonce,
@@ -234,7 +218,7 @@ export class VerifyService {
     const totalAssigned = roleResults.length;
     const newlyAssigned = roleResults.filter(r => !r.wasAlreadyAssigned).length;
     
-    Logger.log(`✅ Unified verification completed (${newlyAssigned} new roles, ${totalAssigned - newlyAssigned} existing roles)`);
+    Logger.log(`Verification completed (${newlyAssigned} new roles, ${totalAssigned - newlyAssigned} existing roles)`);
     return { 
       message: `Verification successful - ${newlyAssigned} new roles assigned, ${totalAssigned - newlyAssigned} existing roles`, 
       address, 
