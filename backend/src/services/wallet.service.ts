@@ -140,6 +140,10 @@ export class WalletService {
       const result = await this.userAddressService.addUserAddress(data.userId, address, userName);
       if (!result.success) {
         if (result.error === CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED) {
+          Logger.warn(
+            `Wallet ownership conflict during verification: ` +
+            `user=${data.userId}, guild=${data.discordId}, submitted=${data.address}, recovered=${address}`
+          );
           throw new Error(result.error);
         }
 

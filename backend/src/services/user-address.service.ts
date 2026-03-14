@@ -90,7 +90,10 @@ export class UserAddressService {
       }
 
       if (existingWalletForOtherUser) {
-        this.logger.warn(`Rejected wallet claim for address ${normalizedAddress}; already linked to user ${existingWalletForOtherUser.user_id}`);
+        this.logger.warn(
+          `Rejected wallet claim for address ${normalizedAddress}; ` +
+          `attempted user=${userId}, existing user=${existingWalletForOtherUser.user_id}`
+        );
         return {
           success: false,
           error: CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED
@@ -299,13 +302,21 @@ export class UserAddressService {
     }
 
     if (existingWallets.length > 0) {
-      this.logger.warn(`Rejected wallet claim after unique constraint conflict for address ${address}`);
+      const existingUserIds = existingWallets.map(wallet => wallet.user_id).join(', ');
+      this.logger.warn(
+        `Rejected wallet claim after unique constraint conflict for address ${address}; ` +
+        `attempted user=${userId}, existing user(s)=${existingUserIds}`
+      );
       return {
         success: false,
         error: CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED
       };
     }
 
+    this.logger.error(
+      `Unique constraint conflict reported for address ${address}, ` +
+      `but no wallet owner was found on re-read for attempted user=${userId}`
+    );
     return {
       success: false,
       error: 'Failed to store wallet address due to a conflicting wallet record.'
