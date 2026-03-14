@@ -149,6 +149,7 @@ describe('DiscordVerificationService', () => {
         ...mockInteraction,
         editReply: jest.fn(),
         isRepliable: jest.fn().mockReturnValue(true),
+        deleteReply: jest.fn().mockResolvedValue(undefined),
       };
 
       mockDbService.getRulesByChannel.mockResolvedValue([{ role_id: 'role-id' }]);
@@ -158,21 +159,32 @@ describe('DiscordVerificationService', () => {
       (service as any).nonceScopes['old-nonce'] = 'user-id:guild-id:channel-id';
       (service as any).latestRequestNonces['user-id:guild-id:channel-id'] = 'old-nonce';
 
-      await service.requestVerification(mockInteraction as any);
+      jest.useFakeTimers();
+      try {
+        await service.requestVerification(mockInteraction as any);
 
-      expect(previousInteraction.editReply).toHaveBeenCalledWith({
-        embeds: expect.arrayContaining([
-          expect.objectContaining({
-            data: expect.objectContaining({
-              title: 'Verification Link Replaced',
-              description: 'A newer verification link was requested. Please use the latest "Verify Now" button.'
+        expect(previousInteraction.editReply).toHaveBeenCalledWith({
+          embeds: expect.arrayContaining([
+            expect.objectContaining({
+              data: expect.objectContaining({
+                title: 'Verification Link Replaced',
+                description: 'A newer verification link was requested. Please use the latest "Verify Now" button. This notice will disappear shortly.'
+              })
             })
-          })
-        ]),
-        components: []
-      });
-      expect(service.tempMessages['old-nonce']).toBeUndefined();
-      expect((service as any).latestRequestNonces['user-id:guild-id:channel-id']).toBe('test-nonce');
+          ]),
+          components: []
+        });
+        expect(previousInteraction.deleteReply).not.toHaveBeenCalled();
+
+        jest.advanceTimersByTime(10_000);
+        await Promise.resolve();
+
+        expect(previousInteraction.deleteReply).toHaveBeenCalled();
+        expect(service.tempMessages['old-nonce']).toBeUndefined();
+        expect((service as any).latestRequestNonces['user-id:guild-id:channel-id']).toBe('test-nonce');
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('should handle error when no rules found', async () => {

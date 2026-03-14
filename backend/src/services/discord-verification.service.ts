@@ -8,6 +8,7 @@ import { NonceService } from './nonce.service';
 dotenv.config();
 
 const EXPIRY = Number(process.env.NONCE_EXPIRY);
+const REPLACED_LINK_NOTICE_TTL_MS = 10_000;
 
 /**
  * DiscordVerificationService
@@ -57,6 +58,19 @@ export class DiscordVerificationService {
     return `${userId}:${guildId}:${channelId}`;
   }
 
+  private scheduleReplyDeletion(interaction: ButtonInteraction<CacheType>, delayMs: number): void {
+    const timeout = setTimeout(async () => {
+      try {
+        await interaction.deleteReply();
+      } catch (error) {
+        Logger.warn(`Failed to delete superseded verification reply: ${error.message}`);
+      }
+    }, delayMs);
+
+    // Avoid keeping the process alive just for cleanup of an ephemeral message.
+    timeout.unref?.();
+  }
+
   private async retirePreviousVerificationRequest(scopeKey: string): Promise<void> {
     const previousNonce = this.latestRequestNonces[scopeKey];
     if (!previousNonce) return;
@@ -78,11 +92,13 @@ export class DiscordVerificationService {
         embeds: [
           new EmbedBuilder()
             .setTitle('Verification Link Replaced')
-            .setDescription('A newer verification link was requested. Please use the latest "Verify Now" button.')
+            .setDescription('A newer verification link was requested. Please use the latest "Verify Now" button. This notice will disappear shortly.')
             .setColor('#FFA500')
         ],
         components: []
       });
+
+      this.scheduleReplyDeletion(previousInteraction, REPLACED_LINK_NOTICE_TTL_MS);
     } catch (error) {
       Logger.warn(`Failed to retire previous verification request for nonce ${previousNonce}: ${error.message}`);
     } finally {
