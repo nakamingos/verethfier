@@ -178,9 +178,12 @@ export class ListRulesHandler {
     this.paginationCache.set(userId, rules);
     
     // Clear cache after 5 minutes to prevent memory leaks
-    setTimeout(() => {
+    const timeout = setTimeout(() => {
       this.paginationCache.delete(userId);
     }, 5 * 60 * 1000);
+
+    // Don't keep the process alive just to evict cached pagination data.
+    timeout.unref?.();
   }
 
   /**
