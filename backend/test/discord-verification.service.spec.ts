@@ -499,6 +499,54 @@ describe('DiscordVerificationService', () => {
       expect(description).toContain('\u00A0∨ ');
     });
 
+    it('should compact multiple collection-only existing-role matches onto one line', async () => {
+      const nonce = 'test-nonce';
+      service.tempMessages[nonce] = mockInteraction as any;
+      mockDbService.getRoleMappings.mockResolvedValueOnce([
+        {
+          id: 1,
+          role_id: 'role-id',
+          slug: 'test-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        },
+        {
+          id: 2,
+          role_id: 'role-id',
+          slug: 'other-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        },
+        {
+          id: 3,
+          role_id: 'role-id',
+          slug: 'third-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        }
+      ]);
+
+      const roleResults = [
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '1', matchingCount: 3 },
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '2', matchingCount: 1 },
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '3', matchingCount: 2 }
+      ];
+
+      await service.sendVerificationComplete('guild-id', nonce, roleResults);
+
+      const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
+      const description = editReplyCall.embeds[0].data.description;
+      const normalizedDescription = description.replace(/\u00A0/g, ' ');
+
+      expect(normalizedDescription).toContain(
+        '**Test Role**: (3/1) The Test Collection ∨ (1/1) The Other Collection ∨ (2/1) The Third Collection'
+      );
+      expect(description).not.toContain('\n ↳ (3/1) The Test Collection');
+    });
+
     it('should leave long trait requirements naturally wrappable without forcing visible line breaks', () => {
       const requirement = (service as any).formatRoleRequirement(
         {

@@ -1188,8 +1188,17 @@ export class DiscordVerificationService {
     allRules: VerificationDisplayRule[],
     collectionNames: Record<string, CollectionDisplayName>
   ): string {
+    const matchedRules = this.getMatchedRulesForRole(role, allRules);
+    const combinedCollectionRequirement = this.formatCombinedCollectionHoldingRequirement(
+      matchedRules,
+      collectionNames
+    );
+    if (combinedCollectionRequirement) {
+      return this.formatRoleDisplay(role.roleName, [combinedCollectionRequirement]);
+    }
+
     const requirements = Array.from(new Set(
-      this.getMatchedRulesForRole(role, allRules)
+      matchedRules
         .map(({ rule, matchingCount }) => this.formatRoleRequirement(
           rule,
           collectionNames,
@@ -1202,6 +1211,43 @@ export class DiscordVerificationService {
     ));
 
     return this.formatRoleDisplay(role.roleName, requirements);
+  }
+
+  private formatCombinedCollectionHoldingRequirement(
+    matchedRules: Array<{ rule: VerificationDisplayRule; matchingCount?: number }>,
+    collectionNames: Record<string, CollectionDisplayName>
+  ): string | null {
+    if (
+      matchedRules.length <= 1 ||
+      !matchedRules.every(({ rule }) => this.isCollectionOnlyRule(rule))
+    ) {
+      return null;
+    }
+
+    const requirements = Array.from(new Set(
+      matchedRules
+        .map(({ rule, matchingCount }) => this.keepPhraseTogether(
+          this.formatRoleRequirement(rule, collectionNames, {
+            style: 'holding',
+            matchingCount,
+          })
+        ))
+        .filter(requirement => requirement.length > 0)
+    ));
+
+    return requirements.length > 1 ? requirements.join('\u00A0\u2228 ') : null;
+  }
+
+  private isCollectionOnlyRule(
+    rule: Pick<VerificationDisplayRule, 'slug' | 'attribute_key' | 'attribute_value'>
+  ): boolean {
+    const hasAttributeFilter =
+      !!rule.attribute_key &&
+      rule.attribute_key !== 'ALL' &&
+      !!rule.attribute_value &&
+      rule.attribute_value !== 'ALL';
+
+    return !hasAttributeFilter && this.parseRuleSlugs(rule.slug).length > 0;
   }
 
   private formatRoleDisplay(roleName: string, requirements: string[]): string {
@@ -1218,6 +1264,12 @@ export class DiscordVerificationService {
 
   private shouldInlineSingleRequirement(roleName: string, requirement: string): boolean {
     const preferredInlineWidth = 88;
-    return !requirement.includes('\n') && `${roleName}: ${requirement}`.length <= preferredInlineWidth;
+    return (
+      !requirement.includes('\n') &&
+      (
+        requirement.includes('\u2228') ||
+        `${roleName}: ${requirement}`.length <= preferredInlineWidth
+      )
+    );
   }
 }
