@@ -499,7 +499,7 @@ describe('DiscordVerificationService', () => {
       expect(description).toContain('\u00A0∨ ');
     });
 
-    it('should compact multiple collection-only existing-role matches onto one line', async () => {
+    it('should aggregate multiple collection-only existing-role matches onto one line', async () => {
       const nonce = 'test-nonce';
       service.tempMessages[nonce] = mockInteraction as any;
       mockDbService.getRoleMappings.mockResolvedValueOnce([
@@ -542,9 +542,9 @@ describe('DiscordVerificationService', () => {
       const normalizedDescription = description.replace(/\u00A0/g, ' ');
 
       expect(normalizedDescription).toContain(
-        '**Test Role**: (3/1) The Test Collection ∨ (1/1) The Other Collection ∨ (2/1) The Third Collection'
+        '**Test Role**: (6/1) The Test Collection ∨ The Other Collection ∨ The Third Collection'
       );
-      expect(description).not.toContain('\n ↳ (3/1) The Test Collection');
+      expect(description).not.toContain('(3/1) The Test Collection');
     });
 
     it('should leave long trait requirements naturally wrappable without forcing visible line breaks', () => {
@@ -652,6 +652,57 @@ describe('DiscordVerificationService', () => {
       expect(description).toContain('**Second Bonus Role**: (1/1) The Other Collection');
       expect(description).toContain('**Third Bonus Role**: Own 1+ EtherPhunk with Head: Halo');
       expect(description).not.toContain('items from The Third Collection');
+    });
+
+    it('should aggregate multiple collection-only additional roles into one combined total', async () => {
+      const nonce = 'test-nonce';
+      service.tempMessages[nonce] = mockInteraction as any;
+      mockDbService.getRoleMappings.mockResolvedValue([
+        {
+          id: 1,
+          role_id: 'role-id',
+          slug: 'test-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        },
+        {
+          id: 8,
+          role_id: 'role-id-4',
+          slug: 'other-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        },
+        {
+          id: 9,
+          role_id: 'role-id-4',
+          slug: 'third-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        }
+      ]);
+      mockDataService.checkAssetOwnershipWithCriteria.mockImplementation(async (_addresses, slug, attributeKey, attributeValue) => {
+        if (slug === 'other-collection' && attributeKey === 'ALL' && attributeValue === 'ALL') return 1;
+        if (slug === 'third-collection' && attributeKey === 'ALL' && attributeValue === 'ALL') return 2;
+        return 0;
+      });
+
+      const roleResults = [
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '1', matchingCount: 1 }
+      ];
+
+      await service.sendVerificationComplete('guild-id', nonce, roleResults, '0xnewwallet');
+
+      const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
+      const description = editReplyCall.embeds[0].data.description;
+      const normalizedDescription = description.replace(/\u00A0/g, ' ');
+
+      expect(description).toContain('**🚀 Additional Roles Available:**');
+      expect(normalizedDescription).toContain('**Second Bonus Role**: (3/1) The Other Collection ∨ The Third Collection');
+      expect(description).not.toContain('(1/1) The Other Collection');
+      expect(description).not.toContain('(2/1) The Third Collection');
     });
 
     it('should keep additional roles visible when the user has partial progress toward a higher threshold', async () => {
@@ -838,6 +889,54 @@ describe('DiscordVerificationService', () => {
 
       const matches = description.match(/\*\*Test Role\*\*/g);
       expect(matches).toHaveLength(1);
+    });
+
+    it('should aggregate multiple collection-only new-role matches into one combined total', async () => {
+      const nonce = 'test-nonce';
+      service.tempMessages[nonce] = mockInteraction as any;
+      mockDbService.getRoleMappings.mockResolvedValueOnce([
+        {
+          id: 1,
+          role_id: 'role-id',
+          slug: 'test-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        },
+        {
+          id: 2,
+          role_id: 'role-id',
+          slug: 'other-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        },
+        {
+          id: 3,
+          role_id: 'role-id',
+          slug: 'third-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        }
+      ]);
+
+      const roleResults = [
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false, ruleId: '1', matchingCount: 3 },
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false, ruleId: '2', matchingCount: 1 },
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false, ruleId: '3', matchingCount: 2 }
+      ];
+
+      await service.sendVerificationComplete('guild-id', nonce, roleResults);
+
+      const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
+      const description = editReplyCall.embeds[0].data.description;
+      const normalizedDescription = description.replace(/\u00A0/g, ' ');
+
+      expect(description).toContain('**🎉 New Roles Assigned:**');
+      expect(normalizedDescription).toContain('**Test Role**: (6/1) The Test Collection ∨ The Other Collection ∨ The Third Collection');
+      expect(description).not.toContain('(3/1) The Test Collection');
+      expect(description).not.toContain('**✅ Roles You Already Have:**');
     });
 
     it('should remove verify button when sending success message', async () => {

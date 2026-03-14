@@ -203,37 +203,55 @@ export class DiscordVerificationService {
     },
     collectionNames: Record<string, CollectionDisplayName> = {}
   ): string {
-    const slugs = this.parseRuleSlugs(rule.slug);
-    if (slugs.length === 0) {
+    const labels = this.getCollectionLabels(rule, collectionNames);
+    if (labels.length === 0) {
       return '';
     }
 
     const useCollectionName =
       (!rule.attribute_key || rule.attribute_key === 'ALL') &&
       (!rule.attribute_value || rule.attribute_value === 'ALL');
-    const separator = useCollectionName && slugs.length > 1 ? '\u00A0\u2228 ' : (useCollectionName ? ' ∨ ' : ', ');
+    const separator = useCollectionName && labels.length > 1 ? '\u00A0\u2228 ' : (useCollectionName ? ' ∨ ' : ', ');
 
-    return slugs
-      .map(value => {
-        const collectionName = collectionNames[value];
-        let label = '';
-        if (!collectionName) {
-          label = this.humanizeSlug(value);
-        } else if (useCollectionName && collectionName.name) {
-          label = collectionName.name;
-        } else if (collectionName.singleName) {
-          label = collectionName.singleName;
-        } else if (collectionName.name) {
-          label = collectionName.name;
-        } else {
-          label = this.humanizeSlug(value);
-        }
+    return labels.join(separator);
+  }
 
-        return useCollectionName && slugs.length > 1
-          ? this.keepPhraseTogether(label)
-          : label;
-      })
-      .join(separator);
+  private getCollectionLabels(
+    rule: {
+      slug?: string | null;
+      attribute_key?: string | null;
+      attribute_value?: string | null;
+    },
+    collectionNames: Record<string, CollectionDisplayName> = {}
+  ): string[] {
+    const slugs = this.parseRuleSlugs(rule.slug);
+    if (slugs.length === 0) {
+      return [];
+    }
+
+    const useCollectionName =
+      (!rule.attribute_key || rule.attribute_key === 'ALL') &&
+      (!rule.attribute_value || rule.attribute_value === 'ALL');
+
+    return slugs.map(value => {
+      const collectionName = collectionNames[value];
+      let label = '';
+      if (!collectionName) {
+        label = this.humanizeSlug(value);
+      } else if (useCollectionName && collectionName.name) {
+        label = collectionName.name;
+      } else if (collectionName.singleName) {
+        label = collectionName.singleName;
+      } else if (collectionName.name) {
+        label = collectionName.name;
+      } else {
+        label = this.humanizeSlug(value);
+      }
+
+      return useCollectionName && slugs.length > 1
+        ? this.keepPhraseTogether(label)
+        : label;
+    });
   }
 
   private async getCollectionNamesForRules(
@@ -1188,18 +1206,32 @@ export class DiscordVerificationService {
       return null;
     }
 
-    const requirements = Array.from(new Set(
-      matchedRules
-        .map(({ rule, matchingCount }) => this.keepPhraseTogether(
-          this.formatRoleRequirement(rule, collectionNames, {
-            style,
-            matchingCount,
-          })
-        ))
-        .filter(requirement => requirement.length > 0)
+    const requiredCounts = Array.from(new Set(
+      matchedRules.map(({ rule }) => rule.min_items || 1)
     ));
+    if (requiredCounts.length !== 1) {
+      return null;
+    }
 
-    return requirements.length > 1 ? requirements.join('\u00A0\u2228 ') : null;
+    const matchingCounts = matchedRules.map(({ matchingCount }) => matchingCount);
+    if (matchingCounts.some(count => typeof count !== 'number')) {
+      return null;
+    }
+
+    const collectionLabels = Array.from(new Set(
+      matchedRules.flatMap(({ rule }) => this.getCollectionLabels(rule, collectionNames))
+    ));
+    if (collectionLabels.length <= 1) {
+      return null;
+    }
+
+    const totalMatchingCount = matchingCounts.reduce((sum, count) => sum + (count as number), 0);
+    const requiredCount = requiredCounts[0];
+    const combinedLabel = collectionLabels.join('\u00A0\u2228 ');
+
+    return style === 'holding'
+      ? `(${totalMatchingCount}/${requiredCount}) ${combinedLabel}`
+      : `(${totalMatchingCount}/${requiredCount}) ${combinedLabel}`;
   }
 
   private isCollectionOnlyRule(
