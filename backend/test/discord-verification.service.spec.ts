@@ -64,7 +64,26 @@ const mockUserAddressService = {
   getUserAddresses: jest.fn().mockResolvedValue(['0xexistingwallet']),
 };
 
+const mockGuildMember = {
+  id: 'user-id',
+  displayName: 'Test User',
+  user: {
+    username: 'testuser',
+    id: 'user-id'
+  },
+  roles: {
+    add: jest.fn(),
+    cache: {
+      has: jest.fn().mockReturnValue(false),
+      keys: jest.fn().mockReturnValue([]),
+    }
+  },
+};
+
 const mockFetchedGuild = {
+  members: {
+    fetch: jest.fn().mockResolvedValue(mockGuildMember),
+  },
   roles: {
     fetch: jest.fn().mockImplementation(async (roleId: string) => {
       if (roleId === 'role-id') return { id: 'role-id', name: 'Test Role' };
@@ -85,15 +104,11 @@ const mockClient = {
         name: 'Test Guild',
         members: {
           fetch: jest.fn().mockResolvedValue({
-            id: 'user-id',
-            displayName: 'Test User',
-            user: {
-              username: 'testuser',
-              id: 'user-id'
-            },
+            ...mockGuildMember,
             roles: {
-              add: jest.fn(),
+              ...mockGuildMember.roles,
               cache: {
+                ...mockGuildMember.roles.cache,
                 has: jest.fn().mockReturnValue(false), // User doesn't have the role by default
               }
             },
@@ -150,6 +165,9 @@ describe('DiscordVerificationService', () => {
     jest.clearAllMocks();
     loggerSpy.mockClear();
     loggerDebugSpy.mockClear();
+    mockGuildMember.roles.cache.has.mockReturnValue(false);
+    mockGuildMember.roles.cache.keys.mockReturnValue([]);
+    mockFetchedGuild.members.fetch.mockResolvedValue(mockGuildMember);
   });
 
   afterAll(() => {
@@ -583,6 +601,49 @@ describe('DiscordVerificationService', () => {
 
       expect(description).toContain('**🚀 Additional Roles Available:**');
       expect(description).toContain('• **Bonus Role**: Own 5+ items from The Third Collection (2/5)');
+    });
+
+    it('should still recommend a role when database history is stale but the member no longer has it in Discord', async () => {
+      const nonce = 'test-nonce';
+      service.tempMessages[nonce] = mockInteraction as any;
+      mockDbService.getUserRoleHistory.mockResolvedValueOnce([
+        { role_id: 'role-id-3', status: 'active' }
+      ]);
+      mockDbService.getRoleMappings.mockResolvedValueOnce([
+        {
+          id: 1,
+          role_id: 'role-id',
+          slug: 'test-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        },
+        {
+          id: 7,
+          role_id: 'role-id-3',
+          slug: 'third-collection',
+          min_items: 2,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        }
+      ]);
+      mockGuildMember.roles.cache.keys.mockReturnValue([]);
+      mockDataService.checkAssetOwnershipWithCriteria.mockImplementation(async (_addresses, slug, attributeKey, attributeValue) => {
+        if (slug === 'third-collection' && attributeKey === 'ALL' && attributeValue === 'ALL') return 2;
+        return 0;
+      });
+
+      const roleResults = [
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '1', matchingCount: 1 }
+      ];
+
+      await service.sendVerificationComplete('guild-id', nonce, roleResults, '0xnewwallet');
+
+      const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
+      const description = editReplyCall.embeds[0].data.description;
+
+      expect(description).toContain('**🚀 Additional Roles Available:**');
+      expect(description).toContain('• **Bonus Role**: Own 2+ items from The Third Collection (2/2)');
     });
 
     it('should keep a newly assigned role out of the existing roles section even if multiple rules match it', async () => {

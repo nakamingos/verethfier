@@ -876,14 +876,24 @@ export class DiscordVerificationService {
 
     try {
       Logger.log(`🔍 analyzePotentialRoles: Starting analysis for guild ${guildId}`);
-      
-      // Get the user's current active role assignments from the database (source of truth)
-      const userActiveAssignments = await this.dbSvc.getUserRoleHistory(userId, guildId);
-      // Filter to only active assignments
-      const activeAssignments = userActiveAssignments.filter(assignment => assignment.status === 'active');
-      const userCurrentRoleIds = activeAssignments.map(assignment => assignment.role_id);
-      const excludedRoleIds = new Set([...userCurrentRoleIds, ...assignedRoleIds]);
-      Logger.log(`👤 User currently has ${excludedRoleIds.size} excluded roles in database/current verification: ${Array.from(excludedRoleIds).join(', ')}`);
+
+      const guild = await this.client.guilds.fetch(guildId);
+
+      let excludedRoleIds = new Set(assignedRoleIds);
+      try {
+        const member = await guild.members.fetch(userId);
+        const currentDiscordRoleIds = Array.from(member.roles.cache.keys());
+        excludedRoleIds = new Set([...currentDiscordRoleIds, ...assignedRoleIds]);
+        Logger.log(`👤 User currently has ${excludedRoleIds.size} excluded roles in Discord/current verification: ${Array.from(excludedRoleIds).join(', ')}`);
+      } catch (memberError) {
+        Logger.warn(`Falling back to database role history for user ${userId} in guild ${guildId}: ${memberError.message}`);
+
+        const userActiveAssignments = await this.dbSvc.getUserRoleHistory(userId, guildId);
+        const activeAssignments = userActiveAssignments.filter(assignment => assignment.status === 'active');
+        const userCurrentRoleIds = activeAssignments.map(assignment => assignment.role_id);
+        excludedRoleIds = new Set([...userCurrentRoleIds, ...assignedRoleIds]);
+        Logger.log(`👤 User currently has ${excludedRoleIds.size} excluded roles in database/current verification: ${Array.from(excludedRoleIds).join(', ')}`);
+      }
       
       // Get all rules for this server
       const allRules = await this.dbSvc.getRoleMappings(guildId);
@@ -931,9 +941,6 @@ export class DiscordVerificationService {
 
       const groupedPotentialRoles = this.groupRulesByRole(potentialRules);
       
-      // Get guild for Discord role fetching
-      const guild = await this.client.guilds.fetch(guildId);
-
       const potentialRoles: RoleRequirementGroup[] = [];
       for (const groupedRole of groupedPotentialRoles) {
         try {
