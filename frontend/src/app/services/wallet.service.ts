@@ -12,8 +12,6 @@ import {
   disconnect,
   getAccount,
   injected,
-  reconnect,
-  signMessage,
   signTypedData,
   watchAccount,
 } from '@wagmi/core';
@@ -86,12 +84,14 @@ export class WalletService {
         onChange: (account) => this.ngZone.run(() => observer.next(account)),
       })
     );
-
-    reconnect(this.config);
   }
 
   async connect(): Promise<void> {
     try {
+      if (getAccount(this.config).isConnected) {
+        await this.disconnectWeb3();
+      }
+
       await this.modal.open();
     } catch (error) {
       // Error logging handled by the component
@@ -103,6 +103,11 @@ export class WalletService {
     if (getAccount(this.config).isConnected) {
       await disconnect(this.config);
     }
+  }
+
+  getConnectedAddress(): `0x${string}` | null {
+    const account = getAccount(this.config);
+    return account.isConnected ? (account.address as `0x${string}` | undefined) || null : null;
   }
 
   async signTypedMessage(typedData: any): Promise<{
