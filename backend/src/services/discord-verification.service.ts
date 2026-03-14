@@ -210,28 +210,27 @@ export class DiscordVerificationService {
     const useCollectionName =
       (!rule.attribute_key || rule.attribute_key === 'ALL') &&
       (!rule.attribute_value || rule.attribute_value === 'ALL');
-    const separator = useCollectionName ? ' ∨ ' : ', ';
+    const separator = useCollectionName && slugs.length > 1 ? '\u00A0\u2228 ' : (useCollectionName ? ' ∨ ' : ', ');
 
     return slugs
       .map(value => {
         const collectionName = collectionNames[value];
+        let label = '';
         if (!collectionName) {
-          return this.humanizeSlug(value);
+          label = this.humanizeSlug(value);
+        } else if (useCollectionName && collectionName.name) {
+          label = collectionName.name;
+        } else if (collectionName.singleName) {
+          label = collectionName.singleName;
+        } else if (collectionName.name) {
+          label = collectionName.name;
+        } else {
+          label = this.humanizeSlug(value);
         }
 
-        if (useCollectionName && collectionName.name) {
-          return collectionName.name;
-        }
-
-        if (collectionName.singleName) {
-          return collectionName.singleName;
-        }
-
-        if (collectionName.name) {
-          return collectionName.name;
-        }
-
-        return this.humanizeSlug(value);
+        return useCollectionName && slugs.length > 1
+          ? this.keepPhraseTogether(label)
+          : label;
       })
       .join(separator);
   }
@@ -315,7 +314,9 @@ export class DiscordVerificationService {
         requirement += ` (${matchingCount}/${minItems})`;
       }
 
-      return requirement;
+      return this.applySoftWrapHints(requirement, {
+        preferBreakAfterWith: hasAttributeFilter,
+      });
     }
 
     if (rule.attribute_key && rule.attribute_key !== 'ALL') {
@@ -328,7 +329,9 @@ export class DiscordVerificationService {
       if (shouldShowRequirementProgress) {
         requirement += ` (${matchingCount}/${minItems})`;
       }
-      return requirement;
+      return this.applySoftWrapHints(requirement, {
+        preferBreakAfterWith: true,
+      });
     }
 
     if (style === 'holding') {
@@ -339,6 +342,40 @@ export class DiscordVerificationService {
       ? ` (${matchingCount}/${minItems})`
       : '';
     return `Own ${minItems}+ NFTs from any collection${countSuffix}`;
+  }
+
+  private applySoftWrapHints(
+    text: string,
+    options: {
+      preferBreakAfterWith?: boolean;
+    } = {}
+  ): string {
+    if (!options.preferBreakAfterWith || text.length < 40) {
+      return text;
+    }
+
+    return this.preferBreakAfterWith(text);
+  }
+
+  private preferBreakAfterWith(text: string): string {
+    const marker = ' with ';
+    const markerIndex = text.lastIndexOf(marker);
+    if (markerIndex === -1) {
+      return text;
+    }
+
+    const beforeWith = text.slice(0, markerIndex);
+    const afterWith = text.slice(markerIndex + marker.length);
+    const hintedBeforeWith =
+      beforeWith.length <= 24 && !beforeWith.includes('\u2228')
+        ? this.keepPhraseTogether(beforeWith)
+        : beforeWith;
+
+    return `${hintedBeforeWith}\u00A0with ${afterWith}`;
+  }
+
+  private keepPhraseTogether(text: string): string {
+    return text.replace(/ /g, '\u00A0');
   }
 
   /**

@@ -491,10 +491,36 @@ describe('DiscordVerificationService', () => {
 
       const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
       const description = editReplyCall.embeds[0].data.description;
+      const normalizedDescription = description.replace(/\u00A0/g, ' ');
 
-      expect(description).toContain('**✅ Roles You Already Have:**');
-      expect(description).toContain('**Test Role**: (334/15) The Test Collection ∨ The Other Collection ∨ The Third Collection');
-      expect(description).not.toContain('items from');
+      expect(normalizedDescription).toContain('**✅ Roles You Already Have:**');
+      expect(normalizedDescription).toContain('**Test Role**: (334/15) The Test Collection ∨ The Other Collection ∨ The Third Collection');
+      expect(normalizedDescription).not.toContain('items from');
+      expect(description).toContain('\u00A0∨ ');
+    });
+
+    it('should add soft wrap hints for long trait requirements without forcing visible line breaks', () => {
+      const requirement = (service as any).formatRoleRequirement(
+        {
+          slug: 'test-collection',
+          min_items: 1,
+          attribute_key: 'Classification',
+          attribute_value: 'Official Rug Lord Fan Club Glasses',
+        },
+        {
+          'test-collection': {
+            name: 'The Test Collection',
+            singleName: 'Comrade',
+          },
+        },
+        {
+          style: 'requirement',
+          matchingCount: 0,
+        }
+      );
+
+      expect(requirement).toContain('\u00A0with ');
+      expect(requirement).not.toContain('\n');
     });
 
     it('should show unowned verification roles and include all matched reasons', async () => {
