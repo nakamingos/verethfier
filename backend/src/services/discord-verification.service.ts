@@ -210,6 +210,7 @@ export class DiscordVerificationService {
     const useCollectionName =
       (!rule.attribute_key || rule.attribute_key === 'ALL') &&
       (!rule.attribute_value || rule.attribute_value === 'ALL');
+    const separator = useCollectionName ? ' ∨ ' : ', ';
 
     return slugs
       .map(value => {
@@ -232,7 +233,7 @@ export class DiscordVerificationService {
 
         return this.humanizeSlug(value);
       })
-      .join(', ');
+      .join(separator);
   }
 
   private async getCollectionNamesForRules(
@@ -277,9 +278,21 @@ export class DiscordVerificationService {
       rule.attribute_key !== 'ALL' &&
       !!rule.attribute_value &&
       rule.attribute_value !== 'ALL';
+    const currentCount = typeof matchingCount === 'number' ? matchingCount : minItems;
+    const shouldShowRequirementProgress =
+      style === 'requirement' &&
+      typeof matchingCount === 'number' &&
+      (
+        minItems > 1 ||
+        (matchingCount === 0 && !hasAttributeFilter)
+      );
 
     if (collectionLabel) {
-      const quantity = style === 'holding' ? (matchingCount || minItems) : minItems;
+      if (style === 'holding' && !hasAttributeFilter) {
+        return this.applyPreferredRequirementBreaks(`(${currentCount}/${minItems}) ${collectionLabel}`);
+      }
+
+      const quantity = style === 'holding' ? currentCount : minItems;
       const collectionReference = this.formatCollectionReference(
         collectionLabel,
         quantity,
@@ -298,42 +311,56 @@ export class DiscordVerificationService {
         requirement += ` with ${this.humanizeAttributeKey(rule.attribute_key!)}: ${rule.attribute_value}`;
       }
 
-      if (
-        style === 'requirement' &&
-        typeof matchingCount === 'number' &&
-        (minItems > 1 || matchingCount === 0)
-      ) {
+      if (shouldShowRequirementProgress) {
         requirement += ` (${matchingCount}/${minItems})`;
       }
 
-      return requirement;
+      return this.applyPreferredRequirementBreaks(requirement);
     }
 
     if (rule.attribute_key && rule.attribute_key !== 'ALL') {
       let requirement = style === 'holding'
-        ? `${matchingCount || minItems} NFTs with ${this.humanizeAttributeKey(rule.attribute_key)}`
+        ? `${currentCount} NFTs with ${this.humanizeAttributeKey(rule.attribute_key)}`
         : `Own ${minItems}+ NFTs with ${this.humanizeAttributeKey(rule.attribute_key)}`;
       if (rule.attribute_value && rule.attribute_value !== 'ALL') {
         requirement += `: ${rule.attribute_value}`;
       }
-      if (
-        style === 'requirement' &&
-        typeof matchingCount === 'number' &&
-        (minItems > 1 || matchingCount === 0)
-      ) {
+      if (shouldShowRequirementProgress) {
         requirement += ` (${matchingCount}/${minItems})`;
       }
-      return requirement;
+      return this.applyPreferredRequirementBreaks(requirement);
     }
 
     if (style === 'holding') {
-      return `${matchingCount || minItems} NFTs from any collection`;
+      return `(${currentCount}/${minItems}) any collection`;
     }
 
     const countSuffix = typeof matchingCount === 'number' && (minItems > 1 || matchingCount === 0)
       ? ` (${matchingCount}/${minItems})`
       : '';
-    return `Own ${minItems}+ NFTs from any collection${countSuffix}`;
+    return this.applyPreferredRequirementBreaks(`Own ${minItems}+ NFTs from any collection${countSuffix}`);
+  }
+
+  private applyPreferredRequirementBreaks(text: string): string {
+    const preferredWrapWidth = 46;
+    if (!this.hasLineLongerThan(text, preferredWrapWidth)) {
+      return text;
+    }
+
+    let formatted = text;
+    if (formatted.includes(' ∨ ')) {
+      formatted = formatted.replace(/ ∨ /g, ' ∨\n  ');
+    }
+
+    if (this.hasLineLongerThan(formatted, preferredWrapWidth) && formatted.includes(' with ')) {
+      formatted = formatted.replace(/ with /g, ' with\n  ');
+    }
+
+    return formatted;
+  }
+
+  private hasLineLongerThan(text: string, width: number): boolean {
+    return text.split('\n').some(line => line.length > width);
   }
 
   /**
@@ -597,7 +624,7 @@ export class DiscordVerificationService {
       if (newRoles.length > 0) {
         description += `\n\n**🎉 New Roles Assigned:**\n${newRoles.map(r => {
           const requirement = this.getPrimaryRoleRequirement(r, allRules, collectionNames);
-          return requirement ? `• **${r.roleName}**: ${requirement}` : `• ${r.roleName}`;
+          return this.formatRoleDisplay(r.roleName, requirement ? [requirement] : []);
         }).join('\n')}`;
       }
       
@@ -1089,15 +1116,7 @@ export class DiscordVerificationService {
         .filter(requirement => requirement.length > 0)
     ));
 
-    if (requirements.length === 0) {
-      return `• ${role.roleName}`;
-    }
-
-    if (requirements.length === 1) {
-      return `• **${role.roleName}**: ${requirements[0]}`;
-    }
-
-    return `• **${role.roleName}**:\n${requirements.map(requirement => `↳ ${requirement}`).join('\n')}`;
+    return this.formatRoleDisplay(role.roleName, requirements);
   }
 
   private groupRulesByRole(
@@ -1192,14 +1211,14 @@ export class DiscordVerificationService {
         .filter(requirement => requirement.length > 0)
     ));
 
+    return this.formatRoleDisplay(role.roleName, requirements);
+  }
+
+  private formatRoleDisplay(roleName: string, requirements: string[]): string {
     if (requirements.length === 0) {
-      return `• ${role.roleName}`;
+      return `**${roleName}**`;
     }
 
-    if (requirements.length === 1) {
-      return `• **${role.roleName}**: ${requirements[0]}`;
-    }
-
-    return `• **${role.roleName}**:\n${requirements.map(requirement => `↳ ${requirement}`).join('\n')}`;
+    return `**${roleName}**:\n${requirements.map(requirement => `↳ ${requirement}`).join('\n')}`;
   }
 }
