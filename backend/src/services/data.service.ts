@@ -146,7 +146,7 @@ export class DataService {
 
     const { data, error } = await supabase
       .from('collections')
-      .select('slug, name')
+      .select('slug, singleName')
       .in('slug', uniqueSlugs);
 
     if (error) throw new Error(error.message);
@@ -155,8 +155,8 @@ export class DataService {
     data?.forEach(record => {
       if (!record.slug) return;
 
-      const displayName = typeof record.name === 'string' && record.name.trim().length > 0
-        ? record.name.trim()
+      const displayName = typeof record.singleName === 'string' && record.singleName.trim().length > 0
+        ? record.singleName.trim()
         : record.slug;
 
       collectionNames[record.slug] = displayName;

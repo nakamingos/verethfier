@@ -11,6 +11,29 @@ dotenv.config();
 const EXPIRY = Number(process.env.NONCE_EXPIRY);
 const REPLACED_LINK_NOTICE_TTL_MS = 10_000;
 
+type VerificationRoleResult = {
+  roleId: string;
+  roleName: string;
+  wasAlreadyAssigned: boolean;
+  ruleId?: string | null;
+};
+
+type GroupedVerificationRoleResult = {
+  roleId: string;
+  roleName: string;
+  wasAlreadyAssigned: boolean;
+  matchedRuleIds: string[];
+};
+
+type VerificationDisplayRule = {
+  id: number;
+  role_id: string;
+  slug?: string | null;
+  min_items?: number | null;
+  attribute_key?: string | null;
+  attribute_value?: string | null;
+};
+
 /**
  * DiscordVerificationService
  * 
@@ -336,7 +359,7 @@ export class DiscordVerificationService {
     guildId: string,
     nonce: string,
     ruleId?: string
-  ): Promise<{ roleId: string; roleName: string; wasAlreadyAssigned: boolean }> {
+  ): Promise<VerificationRoleResult> {
     if (!this.client) throw new Error('Discord bot not initialized');
 
     const guild = this.client.guilds.cache.get(guildId);
@@ -387,7 +410,8 @@ export class DiscordVerificationService {
     return {
       roleId,
       roleName: role.name,
-      wasAlreadyAssigned
+      wasAlreadyAssigned,
+      ruleId: ruleId || null
     };
   }
 
@@ -433,7 +457,7 @@ export class DiscordVerificationService {
   async sendVerificationComplete(
     guildId: string,
     nonce: string,
-    roleResults: Array<{ roleId: string; roleName: string; wasAlreadyAssigned: boolean }>,
+    roleResults: VerificationRoleResult[],
     userAddress?: string
   ): Promise<void> {
     if (!this.client) throw new Error('Discord bot not initialized');
@@ -447,35 +471,22 @@ export class DiscordVerificationService {
     }
 
     try {
-      // Deduplicate roles based on roleId and assignment status
-      const uniqueRoleResults = roleResults.reduce((acc, role) => {
-        const key = `${role.roleId}-${role.wasAlreadyAssigned}`;
-        if (!acc.some(r => `${r.roleId}-${r.wasAlreadyAssigned}` === key)) {
-          acc.push(role);
-        }
-        return acc;
-      }, [] as Array<{ roleId: string; roleName: string; wasAlreadyAssigned: boolean }>);
+      const groupedRoleResults = this.groupRoleResults(roleResults);
 
       // Separate roles into newly assigned and already possessed
-      const newRoles = uniqueRoleResults.filter(r => !r.wasAlreadyAssigned);
-      const existingRoles = uniqueRoleResults.filter(r => r.wasAlreadyAssigned);
+      const newRoles = groupedRoleResults.filter(r => !r.wasAlreadyAssigned);
+      const existingRoles = groupedRoleResults.filter(r => r.wasAlreadyAssigned);
       
       let description = `You have been successfully verified in ${guild.name}`;
       
       // Get rule details for all assigned roles to show requirements
       const allRules = await this.dbSvc.getRoleMappings(guildId);
       const collectionNames = await this.getCollectionNamesForRules(allRules);
-      const getRoleRequirement = (roleId: string): string => {
-        const rule = allRules.find(r => r.role_id === roleId);
-        if (!rule) return '';
-
-        return this.formatRoleRequirement(rule, collectionNames);
-      };
       
       // Add new roles section if any
       if (newRoles.length > 0) {
         description += `\n\n**🎉 New Roles Assigned:**\n${newRoles.map(r => {
-          const requirement = getRoleRequirement(r.roleId);
+          const requirement = this.getPrimaryRoleRequirement(r, allRules, collectionNames);
           return requirement ? `• **${r.roleName}**: ${requirement}` : `• ${r.roleName}`;
         }).join('\n')}`;
       }
@@ -483,8 +494,7 @@ export class DiscordVerificationService {
       // Add existing roles section if any
       if (existingRoles.length > 0) {
         description += `\n\n**✅ Roles You Already Have:**\n${existingRoles.map(r => {
-          const requirement = getRoleRequirement(r.roleId);
-          return requirement ? `• **${r.roleName}**: ${requirement}` : `• ${r.roleName}`;
+          return this.formatExistingRoleDisplay(r, allRules, collectionNames);
         }).join('\n')}`;
       }
       
@@ -492,7 +502,7 @@ export class DiscordVerificationService {
       if (userAddress && storedInteraction?.user?.id) {
         Logger.log(`🔍 Analyzing potential roles for user ${storedInteraction.user.id} with address ${userAddress}`);
         try {
-          const assignedRoleIds = uniqueRoleResults.map(r => r.roleId);
+          const assignedRoleIds = groupedRoleResults.map(r => r.roleId);
           Logger.log(`📋 Assigned role IDs: ${assignedRoleIds.join(', ')}`);
           
           const potentialRoles = await this.analyzePotentialRoles(guildId, storedInteraction.user.id, assignedRoleIds, userAddress);
@@ -817,5 +827,79 @@ export class DiscordVerificationService {
       Logger.error('❌ Error analyzing potential roles:', error);
       return [];
     }
+  }
+
+  private groupRoleResults(roleResults: VerificationRoleResult[]): GroupedVerificationRoleResult[] {
+    const groupedResults = new Map<string, GroupedVerificationRoleResult>();
+
+    roleResults.forEach(roleResult => {
+      const existing = groupedResults.get(roleResult.roleId);
+      if (!existing) {
+        groupedResults.set(roleResult.roleId, {
+          roleId: roleResult.roleId,
+          roleName: roleResult.roleName,
+          wasAlreadyAssigned: roleResult.wasAlreadyAssigned,
+          matchedRuleIds: roleResult.ruleId ? [roleResult.ruleId] : [],
+        });
+        return;
+      }
+
+      existing.wasAlreadyAssigned = existing.wasAlreadyAssigned && roleResult.wasAlreadyAssigned;
+      if (roleResult.ruleId && !existing.matchedRuleIds.includes(roleResult.ruleId)) {
+        existing.matchedRuleIds.push(roleResult.ruleId);
+      }
+    });
+
+    return Array.from(groupedResults.values());
+  }
+
+  private getMatchedRulesForRole(
+    role: GroupedVerificationRoleResult,
+    allRules: VerificationDisplayRule[]
+  ): VerificationDisplayRule[] {
+    if (role.matchedRuleIds.length > 0) {
+      const rulesById = new Map(allRules.map(rule => [rule.id.toString(), rule]));
+      const matchedRules = role.matchedRuleIds
+        .map(ruleId => rulesById.get(ruleId))
+        .filter((rule): rule is VerificationDisplayRule => !!rule);
+
+      if (matchedRules.length > 0) {
+        return matchedRules;
+      }
+    }
+
+    const fallbackRule = allRules.find(rule => rule.role_id === role.roleId);
+    return fallbackRule ? [fallbackRule] : [];
+  }
+
+  private getPrimaryRoleRequirement(
+    role: GroupedVerificationRoleResult,
+    allRules: VerificationDisplayRule[],
+    collectionNames: Record<string, string>
+  ): string {
+    const [primaryRule] = this.getMatchedRulesForRole(role, allRules);
+    return primaryRule ? this.formatRoleRequirement(primaryRule, collectionNames) : '';
+  }
+
+  private formatExistingRoleDisplay(
+    role: GroupedVerificationRoleResult,
+    allRules: VerificationDisplayRule[],
+    collectionNames: Record<string, string>
+  ): string {
+    const requirements = Array.from(new Set(
+      this.getMatchedRulesForRole(role, allRules)
+        .map(rule => this.formatRoleRequirement(rule, collectionNames))
+        .filter(requirement => requirement.length > 0)
+    ));
+
+    if (requirements.length === 0) {
+      return `• ${role.roleName}`;
+    }
+
+    if (requirements.length === 1) {
+      return `• **${role.roleName}**: ${requirements[0]}`;
+    }
+
+    return `• **${role.roleName}**:\n${requirements.map(requirement => `  - ${requirement}`).join('\n')}`;
   }
 }

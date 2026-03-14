@@ -45,6 +45,7 @@ const mockDataService = {
   getCollectionNames: jest.fn().mockResolvedValue({
     'test-collection': 'Test Collection',
     'other-collection': 'Other Collection',
+    'third-collection': 'Third Collection',
   }),
 };
 
@@ -321,8 +322,8 @@ describe('DiscordVerificationService', () => {
       service.tempMessages[nonce] = mockInteraction as any;
 
       const roleResults = [
-        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false },
-        { roleId: 'role-id-2', roleName: 'Test Role 2', wasAlreadyAssigned: true }
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false, ruleId: '1' },
+        { roleId: 'role-id-2', roleName: 'Test Role 2', wasAlreadyAssigned: true, ruleId: '2' }
       ];
 
       await service.sendVerificationComplete('guild-id', nonce, roleResults);
@@ -352,9 +353,9 @@ describe('DiscordVerificationService', () => {
 
       // Pass duplicate role IDs (same role assigned by multiple rules)
       const roleResults = [
-        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false },
-        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false },
-        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false }
+        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false, ruleId: '1' },
+        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false, ruleId: '1' },
+        { roleId: 'role-id', roleName: 'GIF Goddess', wasAlreadyAssigned: false, ruleId: '1' }
       ];
 
       await service.sendVerificationComplete('guild-id', nonce, roleResults);
@@ -376,6 +377,86 @@ describe('DiscordVerificationService', () => {
       const description = editReplyCall.embeds[0].data.description;
       const matches = description.match(/\*\*GIF Goddess\*\*/g);
       expect(matches).toHaveLength(1); // Should appear only once, not three times
+    });
+
+    it('should list all matched requirements for a role the user already has', async () => {
+      const nonce = 'test-nonce';
+      service.tempMessages[nonce] = mockInteraction as any;
+      mockDbService.getRoleMappings.mockResolvedValueOnce([
+        {
+          id: 1,
+          role_id: 'role-id',
+          slug: 'test-collection',
+          min_items: 1,
+          attribute_key: 'Eyes',
+          attribute_value: 'Laser'
+        },
+        {
+          id: 2,
+          role_id: 'role-id',
+          slug: 'other-collection',
+          min_items: 1,
+          attribute_key: 'Type',
+          attribute_value: 'Gold'
+        }
+      ]);
+
+      const roleResults = [
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '1' },
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '2' }
+      ];
+
+      await service.sendVerificationComplete('guild-id', nonce, roleResults);
+
+      const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
+      const description = editReplyCall.embeds[0].data.description;
+
+      expect(description).toContain('**✅ Roles You Already Have:**');
+      expect(description).toContain('• **Test Role**:');
+      expect(description).toContain('  - Own 1+ Test Collection with Eyes=Laser');
+      expect(description).toContain('  - Own 1+ Other Collection with Type=Gold');
+
+      const matches = description.match(/\*\*Test Role\*\*/g);
+      expect(matches).toHaveLength(1);
+    });
+
+    it('should keep a newly assigned role out of the existing roles section even if multiple rules match it', async () => {
+      const nonce = 'test-nonce';
+      service.tempMessages[nonce] = mockInteraction as any;
+      mockDbService.getRoleMappings.mockResolvedValueOnce([
+        {
+          id: 1,
+          role_id: 'role-id',
+          slug: 'test-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        },
+        {
+          id: 3,
+          role_id: 'role-id',
+          slug: 'third-collection',
+          min_items: 1,
+          attribute_key: 'Type',
+          attribute_value: 'Legendary'
+        }
+      ]);
+
+      const roleResults = [
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: false, ruleId: '1' },
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '3' }
+      ];
+
+      await service.sendVerificationComplete('guild-id', nonce, roleResults);
+
+      const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
+      const description = editReplyCall.embeds[0].data.description;
+
+      expect(description).toContain('**🎉 New Roles Assigned:**');
+      expect(description).not.toContain('**✅ Roles You Already Have:**');
+
+      const matches = description.match(/\*\*Test Role\*\*/g);
+      expect(matches).toHaveLength(1);
     });
 
     it('should remove verify button when sending success message', async () => {
