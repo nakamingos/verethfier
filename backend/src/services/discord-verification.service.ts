@@ -298,7 +298,11 @@ export class DiscordVerificationService {
         requirement += ` with ${this.humanizeAttributeKey(rule.attribute_key!)}: ${rule.attribute_value}`;
       }
 
-      if (style === 'requirement' && typeof matchingCount === 'number' && minItems > 1) {
+      if (
+        style === 'requirement' &&
+        typeof matchingCount === 'number' &&
+        (minItems > 1 || matchingCount === 0)
+      ) {
         requirement += ` (${matchingCount}/${minItems})`;
       }
 
@@ -312,7 +316,11 @@ export class DiscordVerificationService {
       if (rule.attribute_value && rule.attribute_value !== 'ALL') {
         requirement += `: ${rule.attribute_value}`;
       }
-      if (style === 'requirement' && typeof matchingCount === 'number' && minItems > 1) {
+      if (
+        style === 'requirement' &&
+        typeof matchingCount === 'number' &&
+        (minItems > 1 || matchingCount === 0)
+      ) {
         requirement += ` (${matchingCount}/${minItems})`;
       }
       return requirement;
@@ -322,7 +330,7 @@ export class DiscordVerificationService {
       return `${matchingCount || minItems} NFTs from any collection`;
     }
 
-    const countSuffix = typeof matchingCount === 'number' && minItems > 1
+    const countSuffix = typeof matchingCount === 'number' && (minItems > 1 || matchingCount === 0)
       ? ` (${matchingCount}/${minItems})`
       : '';
     return `Own ${minItems}+ NFTs from any collection${countSuffix}`;
@@ -858,11 +866,11 @@ export class DiscordVerificationService {
   }
 
   /**
-   * Analyze unassigned roles the user is making progress toward.
+   * Analyze verification roles the user does not currently have.
    *
-   * Fully-qualified roles are included, but we also keep partial progress so
-   * the success message can show concise hints like "(2/5)" instead of hiding
-   * the section entirely.
+   * This powers the "Additional Roles Available" section by showing every
+   * remaining verifier role for the server and attaching progress counts when
+   * the user has any matching holdings.
    */
   async analyzePotentialRoles(
     guildId: string, 
@@ -913,7 +921,7 @@ export class DiscordVerificationService {
         ? userAddresses
         : [...userAddresses, normalizedAddress];
 
-      const potentialRules = [];
+      const remainingRules = [];
       const ruleEvaluations: Array<Record<string, unknown>> = [];
       for (const rule of unassignedRules) {
         try {
@@ -936,12 +944,10 @@ export class DiscordVerificationService {
             matchingCount,
           });
 
-          if (matchingCount > 0) {
-            potentialRules.push({
-              ...rule,
-              matchingCount,
-            });
-          }
+          remainingRules.push({
+            ...rule,
+            matchingCount,
+          });
         } catch (error) {
           ruleEvaluations.push({
             ruleId: rule.id,
@@ -957,8 +963,8 @@ export class DiscordVerificationService {
         }
       }
 
-      Logger.log(`✅ Found ${potentialRules.length} unassigned rules with matching holdings`);
-      if (potentialRules.length === 0) {
+      Logger.log(`✅ Evaluated ${remainingRules.length} unassigned rules for additional-role messaging`);
+      if (remainingRules.length === 0) {
         Logger.warn(
           `No additional roles surfaced for user ${userId} in guild ${guildId}. ` +
           `Checked ${ruleEvaluations.length} unassigned rules across ${addressesToCheck.length} wallet(s): ` +
@@ -967,7 +973,7 @@ export class DiscordVerificationService {
         return [];
       }
 
-      const groupedPotentialRoles = this.groupRulesByRole(potentialRules);
+      const groupedPotentialRoles = this.groupRulesByRole(remainingRules);
       
       const potentialRoles: RoleRequirementGroup[] = [];
       for (const groupedRole of groupedPotentialRoles) {

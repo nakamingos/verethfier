@@ -468,7 +468,7 @@ describe('DiscordVerificationService', () => {
       expect(matches).toHaveLength(1);
     });
 
-    it('should show additional roles the user has matching holdings for and include all matched reasons', async () => {
+    it('should show unowned verification roles and include all matched reasons', async () => {
       const nonce = 'test-nonce';
       service.tempMessages[nonce] = mockInteraction as any;
       mockDbService.getRoleMappings.mockResolvedValue([
@@ -601,6 +601,51 @@ describe('DiscordVerificationService', () => {
 
       expect(description).toContain('**🚀 Additional Roles Available:**');
       expect(description).toContain('• **Bonus Role**: Own 5+ items from The Third Collection (2/5)');
+    });
+
+    it('should still show additional roles when the user has zero matching holdings for them', async () => {
+      const nonce = 'test-nonce';
+      service.tempMessages[nonce] = mockInteraction as any;
+      mockDbService.getRoleMappings.mockResolvedValue([
+        {
+          id: 1,
+          role_id: 'role-id',
+          slug: 'test-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        },
+        {
+          id: 2,
+          role_id: 'role-id-2',
+          slug: 'other-collection',
+          min_items: 1,
+          attribute_key: 'Head',
+          attribute_value: 'Crown'
+        },
+        {
+          id: 7,
+          role_id: 'role-id-3',
+          slug: 'third-collection',
+          min_items: 5,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        }
+      ]);
+      mockDataService.checkAssetOwnershipWithCriteria.mockResolvedValue(0);
+
+      const roleResults = [
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '1', matchingCount: 1 }
+      ];
+
+      await service.sendVerificationComplete('guild-id', nonce, roleResults, '0xnewwallet');
+
+      const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
+      const description = editReplyCall.embeds[0].data.description;
+
+      expect(description).toContain('**🚀 Additional Roles Available:**');
+      expect(description).toContain('• **Test Role 2**: Own 1+ Misprint with Head: Crown (0/1)');
+      expect(description).toContain('• **Bonus Role**: Own 5+ items from The Third Collection (0/5)');
     });
 
     it('should still recommend a role when database history is stale but the member no longer has it in Discord', async () => {
