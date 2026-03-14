@@ -314,9 +314,7 @@ export class DiscordVerificationService {
         requirement += ` (${matchingCount}/${minItems})`;
       }
 
-      return this.applySoftWrapHints(requirement, {
-        preferBreakAfterWith: hasAttributeFilter,
-      });
+      return requirement;
     }
 
     if (rule.attribute_key && rule.attribute_key !== 'ALL') {
@@ -329,9 +327,7 @@ export class DiscordVerificationService {
       if (shouldShowRequirementProgress) {
         requirement += ` (${matchingCount}/${minItems})`;
       }
-      return this.applySoftWrapHints(requirement, {
-        preferBreakAfterWith: true,
-      });
+      return requirement;
     }
 
     if (style === 'holding') {
@@ -342,33 +338,6 @@ export class DiscordVerificationService {
       ? ` (${matchingCount}/${minItems})`
       : '';
     return `Own ${minItems}+ NFTs from any collection${countSuffix}`;
-  }
-
-  private applySoftWrapHints(
-    text: string,
-    options: {
-      preferBreakAfterWith?: boolean;
-    } = {}
-  ): string {
-    if (!options.preferBreakAfterWith || text.length < 40) {
-      return text;
-    }
-
-    return this.preferBreakAfterWith(text);
-  }
-
-  private preferBreakAfterWith(text: string): string {
-    const marker = ' with ';
-    const markerIndex = text.lastIndexOf(marker);
-    if (markerIndex === -1) {
-      return text;
-    }
-
-    const beforeWith = text.slice(0, markerIndex);
-    const afterWith = text.slice(markerIndex + marker.length);
-    const hintedAfterWith = this.keepPhraseTogether(afterWith);
-
-    return `${beforeWith} with ${hintedAfterWith}`;
   }
 
   private keepPhraseTogether(text: string): string {
