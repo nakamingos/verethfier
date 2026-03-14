@@ -10,6 +10,10 @@
  * - Database: Connection and query timeouts
  */
 export const CONSTANTS = {
+  ERRORS: {
+    WALLET_ADDRESS_ALREADY_VERIFIED: 'This wallet address is already verified by another user.',
+  },
+
   // Discord configuration
   DISCORD_INITIALIZATION_TIMEOUT: 10000, // 10 seconds - timeout for Discord bot initialization
   

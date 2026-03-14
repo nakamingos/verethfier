@@ -3,6 +3,7 @@ import { WalletService } from '../src/services/wallet.service';
 import { NonceService } from '../src/services/nonce.service';
 import { UserAddressService } from '../src/services/user-address.service';
 import { DiscordService } from '../src/services/discord.service';
+import { CONSTANTS } from '../src/constants';
 import { DecodedData } from '../src/models/app.interface';
 import { recoverTypedDataAddress } from 'viem';
 
@@ -17,6 +18,14 @@ const mockNonceService = {
   validateNonce: jest.fn(),
   isNonceUsed: jest.fn(),
   markNonceAsUsed: jest.fn(),
+};
+
+const mockUserAddressService = {
+  addUserAddress: jest.fn(),
+};
+
+const mockDiscordService = {
+  getUser: jest.fn(),
 };
 
 const baseData: DecodedData = {
@@ -39,13 +48,15 @@ describe('WalletService', () => {
       providers: [
         WalletService,
         { provide: NonceService, useValue: mockNonceService },
-        { provide: UserAddressService, useValue: { addUserAddress: jest.fn() } },
-        { provide: DiscordService, useValue: {} } // Add mock DiscordService
+        { provide: UserAddressService, useValue: mockUserAddressService },
+        { provide: DiscordService, useValue: mockDiscordService }
       ],
     }).compile();
 
     service = module.get<WalletService>(WalletService);
     jest.clearAllMocks();
+    mockUserAddressService.addUserAddress.mockResolvedValue({ success: true, isNewAddress: true });
+    mockDiscordService.getUser.mockResolvedValue({ username: 'test-user', globalName: null });
   });
 
   describe('verifySignature', () => {
@@ -176,6 +187,19 @@ describe('WalletService', () => {
       
       expect(mockNonceService.validateNonce).toHaveBeenCalledTimes(1);
       expect(mockNonceService.validateNonce).toHaveBeenCalledWith('u', 'd', 'n');
+    });
+
+    it('throws error when wallet address is already verified by another user', async () => {
+      mockNonceService.validateNonce.mockResolvedValue(true);
+      mockRecoverTypedDataAddress.mockResolvedValue('0xabc');
+      mockUserAddressService.addUserAddress.mockResolvedValue({
+        success: false,
+        error: CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED
+      });
+
+      await expect(service.verifySignature(baseData, 'sig')).rejects.toThrow(
+        CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED
+      );
     });
   });
 });

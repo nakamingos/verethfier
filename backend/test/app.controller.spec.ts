@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { AppController } from '../src/app.controller';
 import { AppService } from '../src/app.service';
+import { CONSTANTS } from '../src/constants';
 import { VerifyService } from '../src/services/verify.service';
 import { VerifySignatureDto } from '../src/dtos/verify-signature.dto';
 import { DecodedData } from '../src/models/app.interface';
@@ -287,6 +288,19 @@ describe('AppController', () => {
 
         await expect(controller.verify(validRequestBody)).rejects.toThrow(
           new HttpException('Verification failed. Please try again.', HttpStatus.INTERNAL_SERVER_ERROR)
+        );
+      });
+
+      it('should return a bad request when the wallet address belongs to another user', async () => {
+        mockVerifyService.verifySignatureFlow.mockRejectedValue(
+          new Error(CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED)
+        );
+
+        await expect(controller.verify(validRequestBody)).rejects.toThrow(
+          new HttpException(
+            CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED,
+            HttpStatus.BAD_REQUEST
+          )
         );
       });
 

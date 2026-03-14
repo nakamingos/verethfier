@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { recoverTypedDataAddress } from 'viem';
 
+import { CONSTANTS } from '@/constants';
 import { NonceService } from '@/services/nonce.service';
 import { UserAddressService } from '@/services/user-address.service';
 import { DiscordService } from '@/services/discord.service';
@@ -138,12 +139,20 @@ export class WalletService {
 
       const result = await this.userAddressService.addUserAddress(data.userId, address, userName);
       if (!result.success) {
+        if (result.error === CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED) {
+          throw new Error(result.error);
+        }
+
         // Log warning but don't fail verification - address storage is supplementary
         Logger.warn(`Failed to store address for user ${data.userId}: ${result.error}`);
       } else {
         Logger.debug(`Successfully ${result.isNewAddress ? 'added new' : 'updated existing'} address for user ${data.userId}${userName ? ` (${userName})` : ''}`);
       }
     } catch (error) {
+      if (error instanceof Error && error.message === CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED) {
+        throw error;
+      }
+
       // Log error but don't fail verification - address storage is supplementary
       Logger.error(`Exception storing address for user ${data.userId}:`, error);
     }

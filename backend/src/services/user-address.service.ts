@@ -1,6 +1,8 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 
+import { CONSTANTS } from '@/constants';
+
 interface UserWallet {
   id: number;
   user_id: string;
@@ -74,37 +76,24 @@ export class UserAddressService {
         this.logger.debug(`Adding address ${normalizedAddress} for user: ${userId}${userName ? ` (${userName})` : ''}`);
       }
 
-      // Check if this user-address combination already exists
-      const { data: existing } = await this.supabase
-        .from('user_wallets')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('address', normalizedAddress)
-        .single();
+      const existingWalletsResult = await this.findWalletsByAddress(normalizedAddress);
+      if (!existingWalletsResult.success) {
+        return existingWalletsResult;
+      }
 
-      if (existing) {
-        // Update last_verified_at and user_name for existing address
-        const { data: updated, error: updateError } = await this.supabase
-          .from('user_wallets')
-          .update({ 
-            last_verified_at: new Date().toISOString(),
-            user_name: userName !== undefined ? userName : existing.user_name
-          })
-          .eq('user_id', userId)
-          .eq('address', normalizedAddress)
-          .select()
-          .single();
+      const existingWallets = existingWalletsResult.wallets || [];
+      const existingWalletForUser = existingWallets.find(wallet => wallet.user_id === userId);
+      const existingWalletForOtherUser = existingWallets.find(wallet => wallet.user_id !== userId);
 
-        if (updateError) {
-          this.logger.error(`Error updating existing address:`, updateError);
-          return { success: false, error: updateError.message };
-        }
+      if (existingWalletForUser) {
+        return this.updateExistingWallet(existingWalletForUser, userName);
+      }
 
-        this.logger.debug(`Updated existing address verification time and username`);
-        return { 
-          success: true, 
-          wallet: updated, 
-          isNewAddress: false 
+      if (existingWalletForOtherUser) {
+        this.logger.warn(`Rejected wallet claim for address ${normalizedAddress}; already linked to user ${existingWalletForOtherUser.user_id}`);
+        return {
+          success: false,
+          error: CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED
         };
       }
 
@@ -122,6 +111,10 @@ export class UserAddressService {
         .single();
 
       if (insertError) {
+        if (this.isUserWalletUniqueViolation(insertError)) {
+          return this.resolveInsertConflict(userId, normalizedAddress, userName);
+        }
+
         this.logger.error(`Error inserting new address:`, insertError);
         return { success: false, error: insertError.message };
       }
@@ -248,6 +241,86 @@ export class UserAddressService {
       this.logger.error(`Exception finding users with address:`, error);
       return [];
     }
+  }
+
+  private async findWalletsByAddress(address: string): Promise<AddAddressResult & { wallets?: UserWallet[] }> {
+    const { data, error } = await this.supabase
+      .from('user_wallets')
+      .select('*')
+      .eq('address', address)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      this.logger.error(`Error checking wallet ownership for ${address}:`, error);
+      return { success: false, error: error.message };
+    }
+
+    return {
+      success: true,
+      wallets: data || []
+    };
+  }
+
+  private async updateExistingWallet(existingWallet: UserWallet, userName?: string | null): Promise<AddAddressResult> {
+    const { data: updated, error: updateError } = await this.supabase
+      .from('user_wallets')
+      .update({
+        last_verified_at: new Date().toISOString(),
+        user_name: userName !== undefined ? userName : existingWallet.user_name
+      })
+      .eq('id', existingWallet.id)
+      .select()
+      .single();
+
+    if (updateError) {
+      this.logger.error(`Error updating existing address:`, updateError);
+      return { success: false, error: updateError.message };
+    }
+
+    this.logger.debug(`Updated existing address verification time and username`);
+    return {
+      success: true,
+      wallet: updated,
+      isNewAddress: false
+    };
+  }
+
+  private async resolveInsertConflict(userId: string, address: string, userName?: string | null): Promise<AddAddressResult> {
+    const existingWalletsResult = await this.findWalletsByAddress(address);
+    if (!existingWalletsResult.success) {
+      return existingWalletsResult;
+    }
+
+    const existingWallets = existingWalletsResult.wallets || [];
+    const existingWalletForUser = existingWallets.find(wallet => wallet.user_id === userId);
+
+    if (existingWalletForUser) {
+      return this.updateExistingWallet(existingWalletForUser, userName);
+    }
+
+    if (existingWallets.length > 0) {
+      this.logger.warn(`Rejected wallet claim after unique constraint conflict for address ${address}`);
+      return {
+        success: false,
+        error: CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED
+      };
+    }
+
+    return {
+      success: false,
+      error: 'Failed to store wallet address due to a conflicting wallet record.'
+    };
+  }
+
+  private isUserWalletUniqueViolation(error: unknown): boolean {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+
+    const code = 'code' in error && typeof error.code === 'string' ? error.code : '';
+    const message = 'message' in error && typeof error.message === 'string' ? error.message : '';
+
+    return code === '23505' || message.includes('duplicate key value violates unique constraint');
   }
 
 

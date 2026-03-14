@@ -1,6 +1,7 @@
 import { Body, Controller, Post, Get, HttpException, HttpStatus, Logger } from '@nestjs/common';
 
 import { AppService } from './app.service';
+import { CONSTANTS } from './constants';
 import { VerifyService } from './services/verify.service';
 import { VerifySignatureDto } from './dtos/verify-signature.dto';
 import { DecodedData } from './models/app.interface';
@@ -119,7 +120,8 @@ export class AppController {
         'No verification rules found',
         'This verification link has expired',
         'Invalid signature',
-        'Signature verification failed'
+        'Signature verification failed',
+        CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED
       ];
       
       const isUserFriendlyError = userFriendlyErrors.some(pattern => 

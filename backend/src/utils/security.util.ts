@@ -1,3 +1,5 @@
+import { CONSTANTS } from '@/constants';
+
 /**
  * Security utility functions for the application
  * Provides centralized security features and data sanitization
@@ -22,6 +24,7 @@ export class SecurityUtil {
       'This verification link has expired',
       'Invalid signature',
       'Signature verification failed',
+      CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED,
       'Not allowed by CORS',
       'Validation failed'
     ];
