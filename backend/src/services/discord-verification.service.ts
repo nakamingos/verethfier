@@ -3,6 +3,7 @@ import { ButtonInteraction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butto
 import dotenv from 'dotenv';
 import { DbService } from './db.service';
 import { NonceService } from './nonce.service';
+import { DataService } from './data.service';
 
 // Load environment variables
 dotenv.config();
@@ -51,7 +52,8 @@ export class DiscordVerificationService {
 
   constructor(
     private readonly dbSvc: DbService,
-    private readonly nonceSvc: NonceService
+    private readonly nonceSvc: NonceService,
+    private readonly dataSvc: DataService
   ) {}
 
   private getScopeKey(userId: string, guildId: string, channelId: string): string {
@@ -116,6 +118,89 @@ export class DiscordVerificationService {
 
     delete this.nonceScopes[nonce];
     delete this.tempMessages[nonce];
+  }
+
+  private parseRuleSlugs(slug?: string | null): string[] {
+    if (!slug || slug === 'ALL' || slug === 'all-collections') {
+      return [];
+    }
+
+    return slug
+      .split(',')
+      .map(value => value.trim())
+      .filter(value => value.length > 0);
+  }
+
+  private humanizeSlug(slug: string): string {
+    return slug
+      .split(/[-_]+/)
+      .filter(part => part.length > 0)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
+  private formatCollectionLabel(slug?: string | null, collectionNames: Record<string, string> = {}): string {
+    const slugs = this.parseRuleSlugs(slug);
+    if (slugs.length === 0) {
+      return '';
+    }
+
+    return slugs
+      .map(value => collectionNames[value] || this.humanizeSlug(value))
+      .join(', ');
+  }
+
+  private async getCollectionNamesForRules(
+    rules: Array<{ slug?: string | null }>
+  ): Promise<Record<string, string>> {
+    const uniqueSlugs = Array.from(new Set(
+      rules.flatMap(rule => this.parseRuleSlugs(rule.slug))
+    ));
+
+    if (uniqueSlugs.length === 0) {
+      return {};
+    }
+
+    try {
+      return await this.dataSvc.getCollectionNames(uniqueSlugs);
+    } catch (error) {
+      Logger.warn(`Failed to load collection names for verification messaging: ${error.message}`);
+      return {};
+    }
+  }
+
+  private formatRoleRequirement(
+    rule: {
+      slug?: string | null;
+      min_items?: number | null;
+      attribute_key?: string | null;
+      attribute_value?: string | null;
+    },
+    collectionNames: Record<string, string> = {}
+  ): string {
+    const minItems = rule.min_items || 1;
+    const collectionLabel = this.formatCollectionLabel(rule.slug, collectionNames);
+
+    if (collectionLabel) {
+      let requirement = `Own ${minItems}+ ${collectionLabel}`;
+
+      if (rule.attribute_key && rule.attribute_key !== 'ALL' &&
+          rule.attribute_value && rule.attribute_value !== 'ALL') {
+        requirement += ` with ${rule.attribute_key}=${rule.attribute_value}`;
+      }
+
+      return requirement;
+    }
+
+    if (rule.attribute_key && rule.attribute_key !== 'ALL') {
+      let requirement = `Own ${minItems}+ NFTs with ${rule.attribute_key}`;
+      if (rule.attribute_value && rule.attribute_value !== 'ALL') {
+        requirement += `=${rule.attribute_value}`;
+      }
+      return requirement;
+    }
+
+    return `Own ${minItems}+ NFTs from any collection`;
   }
 
   /**
@@ -379,27 +464,12 @@ export class DiscordVerificationService {
       
       // Get rule details for all assigned roles to show requirements
       const allRules = await this.dbSvc.getRoleMappings(guildId);
+      const collectionNames = await this.getCollectionNamesForRules(allRules);
       const getRoleRequirement = (roleId: string): string => {
         const rule = allRules.find(r => r.role_id === roleId);
         if (!rule) return '';
-        
-        let requirement = '';
-        if (rule.slug && rule.slug !== 'ALL') {
-          requirement = `Own ${rule.min_items || 1}+ ${rule.slug}`;
-          
-          if (rule.attribute_key && rule.attribute_key !== 'ALL' && 
-              rule.attribute_value && rule.attribute_value !== 'ALL') {
-            requirement += ` with ${rule.attribute_key}=${rule.attribute_value}`;
-          }
-        } else if (rule.attribute_key && rule.attribute_key !== 'ALL') {
-          requirement = `Own ${rule.min_items || 1}+ NFTs with ${rule.attribute_key}`;
-          if (rule.attribute_value && rule.attribute_value !== 'ALL') {
-            requirement += `=${rule.attribute_value}`;
-          }
-        } else {
-          requirement = `Own ${rule.min_items || 1}+ NFTs from any collection`;
-        }
-        return requirement;
+
+        return this.formatRoleRequirement(rule, collectionNames);
       };
       
       // Add new roles section if any
@@ -706,6 +776,7 @@ export class DiscordVerificationService {
       // Filter out rules for roles they already have (based on database, not Discord)
       const unassignedRules = allRules.filter(rule => !userCurrentRoleIds.includes(rule.role_id));
       Logger.log(`🎯 Found ${unassignedRules.length} unassigned rules after filtering out current database roles`);
+      const collectionNames = await this.getCollectionNamesForRules(unassignedRules);
       
       // Limit to a reasonable number of recommendations
       const maxRecommendations = 3;
@@ -726,27 +797,9 @@ export class DiscordVerificationService {
             continue;
           }
           
-          // Format the requirement description
-          let requirement = '';
-          if (rule.slug && rule.slug !== 'ALL') {
-            requirement = `Own ${rule.min_items || 1}+ ${rule.slug}`;
-            
-            if (rule.attribute_key && rule.attribute_key !== 'ALL' && 
-                rule.attribute_value && rule.attribute_value !== 'ALL') {
-              requirement += ` with ${rule.attribute_key}=${rule.attribute_value}`;
-            }
-          } else if (rule.attribute_key && rule.attribute_key !== 'ALL') {
-            requirement = `Own ${rule.min_items || 1}+ NFTs with ${rule.attribute_key}`;
-            if (rule.attribute_value && rule.attribute_value !== 'ALL') {
-              requirement += `=${rule.attribute_value}`;
-            }
-          } else {
-            requirement = `Own ${rule.min_items || 1}+ NFTs from any collection`;
-          }
-          
           const potentialRole = {
             roleName: role.name,
-            requirement
+            requirement: this.formatRoleRequirement(rule, collectionNames)
           };
           
           Logger.log(`✅ Added potential role: ${potentialRole.roleName} - ${potentialRole.requirement}`);

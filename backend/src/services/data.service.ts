@@ -133,6 +133,38 @@ export class DataService {
     return ['all-collections', ...uniqueSlugs];
   }
 
+  async getCollectionNames(slugs: string[]): Promise<Record<string, string>> {
+    const uniqueSlugs = Array.from(new Set(
+      slugs
+        .map(slug => slug?.trim())
+        .filter((slug): slug is string => !!slug && slug !== 'ALL' && slug !== 'all-collections')
+    ));
+
+    if (uniqueSlugs.length === 0) {
+      return {};
+    }
+
+    const { data, error } = await supabase
+      .from('collections')
+      .select('slug, name')
+      .in('slug', uniqueSlugs);
+
+    if (error) throw new Error(error.message);
+
+    const collectionNames: Record<string, string> = {};
+    data?.forEach(record => {
+      if (!record.slug) return;
+
+      const displayName = typeof record.name === 'string' && record.name.trim().length > 0
+        ? record.name.trim()
+        : record.slug;
+
+      collectionNames[record.slug] = displayName;
+    });
+
+    return collectionNames;
+  }
+
   /**
    * Get all unique attribute keys for a specific collection slug
    * @param slug - Collection slug to filter by (optional)

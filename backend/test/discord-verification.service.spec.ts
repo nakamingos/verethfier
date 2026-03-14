@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DiscordVerificationService } from '../src/services/discord-verification.service';
 import { DbService } from '../src/services/db.service';
 import { NonceService } from '../src/services/nonce.service';
+import { DataService } from '../src/services/data.service';
 import { Logger } from '@nestjs/common';
 import { MessageFlags } from 'discord.js';
 
@@ -38,6 +39,13 @@ const mockDbService = {
 
 const mockNonceService = {
   createNonce: jest.fn(),
+};
+
+const mockDataService = {
+  getCollectionNames: jest.fn().mockResolvedValue({
+    'test-collection': 'Test Collection',
+    'other-collection': 'Other Collection',
+  }),
 };
 
 const mockClient = {
@@ -102,6 +110,7 @@ describe('DiscordVerificationService', () => {
         DiscordVerificationService,
         { provide: DbService, useValue: mockDbService },
         { provide: NonceService, useValue: mockNonceService },
+        { provide: DataService, useValue: mockDataService },
       ],
     }).compile();
 
@@ -290,7 +299,7 @@ describe('DiscordVerificationService', () => {
           expect.objectContaining({
             data: expect.objectContaining({
               title: 'Verification Successful',
-              description: expect.stringContaining('• **Test Role**: Own 1+ test-collection')
+              description: expect.stringContaining('• **Test Role**: Own 1+ Test Collection')
             })
           })
         ]),
@@ -355,7 +364,7 @@ describe('DiscordVerificationService', () => {
           expect.objectContaining({
             data: expect.objectContaining({
               title: 'Verification Successful',
-              description: expect.stringContaining('• **GIF Goddess**: Own 1+ test-collection')
+              description: expect.stringContaining('• **GIF Goddess**: Own 1+ Test Collection')
             })
           })
         ]),
