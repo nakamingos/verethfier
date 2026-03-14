@@ -1,9 +1,9 @@
-import { AsyncPipe, JsonPipe, NgTemplateOutlet } from '@angular/common';
+import { AsyncPipe, NgTemplateOutlet } from '@angular/common';
 import { Component } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 
-import { BehaviorSubject, Observable, catchError, firstValueFrom, map, of, switchMap, tap } from 'rxjs';
+import { BehaviorSubject, Observable, catchError, firstValueFrom, map, of, tap } from 'rxjs';
 
 import { WalletService } from '@/services/wallet.service';
 
@@ -14,6 +14,7 @@ import { env } from 'src/env/env';
 interface State {
   walletConnecting: boolean;
   walletConnected: boolean;
+  connectedAddress: string | null;
   messageSigning: boolean;
   verificationSubmitting: boolean;
   messageSigned: boolean;
@@ -26,8 +27,6 @@ interface State {
   standalone: true,
   imports: [
     AsyncPipe,
-    JsonPipe,
-
     NgTemplateOutlet
   ],
   providers: [
@@ -43,6 +42,7 @@ export class VerifyComponent {
   state$: BehaviorSubject<State> = new BehaviorSubject<State>({
     walletConnecting: false,
     walletConnected: false,
+    connectedAddress: null,
     messageSigning: false,
     verificationSubmitting: false,
     messageSigned: false,
@@ -75,6 +75,7 @@ export class VerifyComponent {
         this.setState({
           walletConnecting: account.isConnecting,
           walletConnected: account.isConnected,
+          connectedAddress: account.isConnected ? account.address || null : null,
         });
       })
     ).subscribe();
@@ -230,6 +231,13 @@ export class VerifyComponent {
             if (errorMessage === 'Verification failed. Please try again.' && error.statusText) {
               errorMessage = error.statusText;
             }
+
+            if (
+              errorMessage.includes('already verified by another user') &&
+              this.state$.value.connectedAddress
+            ) {
+              errorMessage += ` Connected wallet: ${this.formatAddress(this.state$.value.connectedAddress)}. If that's the wrong wallet, switch wallets and try again.`;
+            }
             
             this.setState({
               verificationSubmitting: false,
@@ -264,5 +272,17 @@ export class VerifyComponent {
       ...this.state$.value,
       ...state
     });
+  }
+
+  async handleWalletConnect(): Promise<void> {
+    await this.walletSvc.connect();
+  }
+
+  formatAddress(address: string | null): string {
+    if (!address) {
+      return '';
+    }
+
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
   }
 }
