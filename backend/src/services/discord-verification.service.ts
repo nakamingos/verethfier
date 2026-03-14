@@ -291,22 +291,25 @@ export class DiscordVerificationService {
     const matchingCount = options.matchingCount;
     const collectionLabel = this.formatCollectionLabel(rule, collectionNames);
     const slugCount = this.parseRuleSlugs(rule.slug).length;
-    const hasAttributeFilter =
+    const hasAttributeKey =
       !!rule.attribute_key &&
-      rule.attribute_key !== 'ALL' &&
+      rule.attribute_key !== 'ALL';
+    const hasSpecificAttributeValue =
       !!rule.attribute_value &&
       rule.attribute_value !== 'ALL';
+    const hasAttributeCriteria = hasAttributeKey || hasSpecificAttributeValue;
+    const isCollectionOnly = !hasAttributeCriteria;
     const currentCount = typeof matchingCount === 'number' ? matchingCount : minItems;
     const shouldShowRequirementProgress =
       style === 'requirement' &&
       typeof matchingCount === 'number' &&
       (
         minItems > 1 ||
-        !hasAttributeFilter
+        isCollectionOnly
       );
 
     if (collectionLabel) {
-      if (style === 'holding' && !hasAttributeFilter) {
+      if (style === 'holding' && isCollectionOnly) {
         return `(${currentCount}/${minItems}) ${collectionLabel}`;
       }
 
@@ -316,17 +319,20 @@ export class DiscordVerificationService {
         quantity,
         style,
         {
-          prefersDirectNoun: hasAttributeFilter && slugCount === 1,
+          prefersDirectNoun: hasAttributeCriteria && slugCount === 1,
           isMultiCollection: slugCount > 1,
-          isCollectionOnly: !hasAttributeFilter,
+          isCollectionOnly,
         }
       );
       let requirement = style === 'holding'
         ? `${quantity} ${collectionReference}`
         : `Own ${minItems}+ ${collectionReference}`;
 
-      if (hasAttributeFilter) {
-        requirement += ` with ${this.humanizeAttributeKey(rule.attribute_key!)}: ${rule.attribute_value}`;
+      if (hasAttributeKey) {
+        requirement += ` with ${this.humanizeAttributeKey(rule.attribute_key!)}`;
+        if (hasSpecificAttributeValue) {
+          requirement += `: ${rule.attribute_value}`;
+        }
       }
 
       if (shouldShowRequirementProgress) {
@@ -1237,13 +1243,11 @@ export class DiscordVerificationService {
   private isCollectionOnlyRule(
     rule: Pick<VerificationDisplayRule, 'slug' | 'attribute_key' | 'attribute_value'>
   ): boolean {
-    const hasAttributeFilter =
-      !!rule.attribute_key &&
-      rule.attribute_key !== 'ALL' &&
-      !!rule.attribute_value &&
-      rule.attribute_value !== 'ALL';
+    const hasAttributeCriteria =
+      (!!rule.attribute_key && rule.attribute_key !== 'ALL') ||
+      (!!rule.attribute_value && rule.attribute_value !== 'ALL');
 
-    return !hasAttributeFilter && this.parseRuleSlugs(rule.slug).length > 0;
+    return !hasAttributeCriteria && this.parseRuleSlugs(rule.slug).length > 0;
   }
 
   private formatRoleDisplay(roleName: string, requirements: string[]): string {

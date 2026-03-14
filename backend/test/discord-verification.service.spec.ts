@@ -572,6 +572,55 @@ describe('DiscordVerificationService', () => {
       expect(requirement).not.toContain('\n');
     });
 
+    it('should format category-only rules as attribute requirements instead of collection-only rules', () => {
+      const requirement = (service as any).formatRoleRequirement(
+        {
+          slug: 'test-collection',
+          min_items: 1,
+          attribute_key: 'Head',
+          attribute_value: 'ALL',
+        },
+        {
+          'test-collection': {
+            name: 'The Test Collection',
+            singleName: 'Comrade',
+          },
+        },
+        {
+          style: 'requirement',
+          matchingCount: 0,
+        }
+      );
+
+      expect(requirement).toBe('Own 1+ Comrade with Head');
+      expect(requirement).not.toContain('(0/1) The Test Collection');
+      expect(requirement).not.toContain('(0/1)');
+    });
+
+    it('should format owned category-only rules using the collection noun with the attribute category', () => {
+      const requirement = (service as any).formatRoleRequirement(
+        {
+          slug: 'test-collection',
+          min_items: 1,
+          attribute_key: 'Head',
+          attribute_value: 'ALL',
+        },
+        {
+          'test-collection': {
+            name: 'The Test Collection',
+            singleName: 'Comrade',
+          },
+        },
+        {
+          style: 'holding',
+          matchingCount: 3,
+        }
+      );
+
+      expect(requirement).toBe('3 Comrades with Head');
+      expect(requirement).not.toContain('(3/1) The Test Collection');
+    });
+
     it('should show unowned verification roles and include all matched reasons', async () => {
       const nonce = 'test-nonce';
       service.tempMessages[nonce] = mockInteraction as any;

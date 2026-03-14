@@ -27,6 +27,13 @@ const supabase = createClient(
 @Injectable()
 export class DataService {
   private readonly logger = new Logger(DataService.name);
+
+  private hasAttributeCriteria(attributeKey?: string, attributeValue?: string): boolean {
+    return (
+      (!!attributeKey && attributeKey !== 'ALL') ||
+      (!!attributeValue && attributeValue !== 'ALL')
+    );
+  }
   
   /**
    * Checks basic asset ownership for an address.
@@ -506,8 +513,10 @@ export class DataService {
     Logger.log(`🎯 DETAILED CHECK - Criteria: slug=${slug} (${slugs.length} collection${slugs.length > 1 ? 's' : ''}), attribute=${attributeKey}=${attributeValue}, minItems=${minItems}`);
 
     // Early return for simple ownership check (no attribute filtering)
-    const hasAttributeFilter = attributeValue && attributeValue !== 'ALL';
-    Logger.log(`🔍 DETAILED CHECK - Has attribute filter: ${hasAttributeFilter} (attributeValue="${attributeValue}")`);
+    const hasAttributeFilter = this.hasAttributeCriteria(attributeKey, attributeValue);
+    Logger.log(
+      `🔍 DETAILED CHECK - Has attribute filter: ${hasAttributeFilter} (attributeKey="${attributeKey}", attributeValue="${attributeValue}")`
+    );
     
     if (!hasAttributeFilter) {
       Logger.log(`🔍 DETAILED CHECK - Using simple ownership check (no attribute filter)`);
@@ -652,7 +661,7 @@ export class DataService {
     const attributeCriteria: Array<{ index: number; criteria: any }> = [];
 
     criteriaList.forEach((criteria, index) => {
-      const hasAttributeFilter = criteria.attributeValue && criteria.attributeValue !== 'ALL';
+      const hasAttributeFilter = this.hasAttributeCriteria(criteria.attributeKey, criteria.attributeValue);
       if (!hasAttributeFilter) {
         simpleCriteria.push({ index, criteria });
       } else {
