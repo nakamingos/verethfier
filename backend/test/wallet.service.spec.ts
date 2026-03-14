@@ -84,7 +84,7 @@ describe('WalletService', () => {
       const result = await service.verifySignature(baseData, 'sig');
       
       expect(result).toBe('0xabc');
-      expect(mockNonceService.validateNonce).toHaveBeenCalledWith('u', 'n');
+      expect(mockNonceService.validateNonce).toHaveBeenCalledWith('u', 'd', 'n');
     });
 
     it('uses correct EIP-712 typed data structure', async () => {
@@ -142,7 +142,7 @@ describe('WalletService', () => {
       const result = await service.verifySignature(minimalData, 'sig');
       
       expect(result).toBe('0x123');
-      expect(mockNonceService.validateNonce).toHaveBeenCalledWith('user1', 'nonce1');
+      expect(mockNonceService.validateNonce).toHaveBeenCalledWith('user1', 'guild1', 'nonce1');
     });
 
     it('handles verification with complete data', async () => {
@@ -164,7 +164,7 @@ describe('WalletService', () => {
       const result = await service.verifySignature(completeData, 'valid_sig');
       
       expect(result).toBe('0x456');
-      expect(mockNonceService.validateNonce).toHaveBeenCalledWith('user2', 'nonce2');
+      expect(mockNonceService.validateNonce).toHaveBeenCalledWith('user2', 'guild2', 'nonce2');
       expect(mockNonceService.validateNonce).toHaveBeenCalledTimes(1);
     });
 
@@ -175,7 +175,7 @@ describe('WalletService', () => {
       await service.verifySignature(baseData, 'sig');
       
       expect(mockNonceService.validateNonce).toHaveBeenCalledTimes(1);
-      expect(mockNonceService.validateNonce).toHaveBeenCalledWith('u', 'n');
+      expect(mockNonceService.validateNonce).toHaveBeenCalledWith('u', 'd', 'n');
     });
   });
 });

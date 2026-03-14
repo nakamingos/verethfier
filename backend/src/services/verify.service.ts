@@ -48,11 +48,11 @@ export class VerifyService {
     const address = await this.walletSvc.verifySignature(payload, signature);
     
     // Get the message data associated with the nonce for message-based verification
-    const { messageId, channelId } = await this.nonceSvc.getNonceData(payload.userId);
+    const { messageId, channelId } = await this.nonceSvc.getNonceData(payload.userId, payload.nonce);
     
     // Invalidate the nonce after retrieving the data to prevent replay attacks
-    await this.nonceSvc.invalidateNonce(payload.userId);
-    Logger.debug(`Nonce deleted for userId: ${payload.userId}`);
+    await this.nonceSvc.invalidateNonce(payload.nonce);
+    Logger.debug(`Nonce deleted: ${payload.nonce} for userId: ${payload.userId}`);
 
     // --- Channel-based verification (simplified approach) ---
     // Get all rules for the channel where the verification button was clicked

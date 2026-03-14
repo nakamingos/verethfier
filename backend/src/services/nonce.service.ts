@@ -13,11 +13,15 @@ const NONCE_EXPIRY = Number(process.env.NONCE_EXPIRY) || CONSTANTS.DEFAULT_NONCE
  * Interface for nonce data stored in cache
  * 
  * @interface NonceData
+ * @property userId - Discord user ID associated with the nonce
+ * @property guildId - Discord guild ID associated with the verification request
  * @property nonce - The cryptographic nonce string
  * @property messageId - Optional Discord message ID for verification context
  * @property channelId - Optional Discord channel ID for verification context
  */
 export interface NonceData {
+  userId: string;
+  guildId: string;
   nonce: string;
   messageId?: string;
   channelId?: string;
@@ -50,6 +54,14 @@ export class NonceService {
     @Inject(CACHE_MANAGER) private cache: Cache
   ) {}
 
+  private getCacheKey(nonce: string): string {
+    return `nonce_${nonce}`;
+  }
+
+  private getLatestNonceKey(userId: string, guildId: string, channelId?: string): string {
+    return `latest_nonce_${userId}_${guildId}_${channelId || 'global'}`;
+  }
+
   /**
    * Creates a cryptographically secure nonce for wallet verification.
    * 
@@ -58,6 +70,7 @@ export class NonceService {
    * in cache with automatic expiry.
    * 
    * @param userId - Discord user ID for nonce association
+   * @param guildId - Discord guild ID for verification context
    * @param messageId - Optional Discord message ID for verification context
    * @param channelId - Optional Discord channel ID for verification context
    * @returns Promise<string> - The generated nonce string
@@ -69,13 +82,19 @@ export class NonceService {
    * ```
    */
   public async createNonce(
-    userId: string, 
+    userId: string,
+    guildId: string,
     messageId?: string, 
     channelId?: string
   ): Promise<string> {
     const nonce = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    const data: NonceData = { nonce, messageId, channelId };
-    await this.cache.set(`nonce_${userId}`, data, NONCE_EXPIRY);
+    const data: NonceData = { userId, guildId, nonce, messageId, channelId };
+    await this.cache.set(this.getCacheKey(nonce), data, NONCE_EXPIRY);
+    await this.cache.set(
+      this.getLatestNonceKey(userId, guildId, channelId),
+      nonce,
+      NONCE_EXPIRY
+    );
     return nonce;
   }
 
@@ -87,6 +106,7 @@ export class NonceService {
    * verification request is legitimate and timely.
    * 
    * @param userId - Discord user ID to validate nonce for
+   * @param guildId - Discord guild ID to validate nonce context for
    * @param nonce - The nonce string to validate
    * @returns Promise<boolean> - True if nonce is valid and not expired
    * 
@@ -100,20 +120,30 @@ export class NonceService {
    */
   async validateNonce(
     userId: string,
+    guildId: string,
     nonce: string
   ): Promise<boolean> {
-    const data = await this.cache.get<NonceData>(`nonce_${userId}`);
-    return data?.nonce === nonce;
+    const data = await this.cache.get<NonceData>(this.getCacheKey(nonce));
+    if (!data || data.nonce !== nonce || data.userId !== userId || data.guildId !== guildId) {
+      return false;
+    }
+
+    const latestNonce = await this.cache.get<string>(
+      this.getLatestNonceKey(data.userId, data.guildId, data.channelId)
+    );
+
+    return latestNonce === nonce;
   }
 
   /**
-   * Gets the message and channel IDs associated with a user's nonce.
-   * @param userId - The ID of the user.
-   * @returns A Promise that resolves to the message and channel IDs, if they exist.
+   * Gets the message and channel IDs associated with a specific nonce.
+   * @param userId - The ID of the user attempting verification.
+   * @param nonce - The nonce from the verification payload.
+   * @returns A Promise that resolves to the message and channel IDs, if they exist and belong to the user.
    */
-  async getNonceData(userId: string): Promise<{ messageId?: string; channelId?: string }> {
-    const data = await this.cache.get<NonceData>(`nonce_${userId}`);
-    if (!data) return {};
+  async getNonceData(userId: string, nonce: string): Promise<{ messageId?: string; channelId?: string }> {
+    const data = await this.cache.get<NonceData>(this.getCacheKey(nonce));
+    if (!data || data.userId !== userId) return {};
     return { 
       messageId: data.messageId,
       channelId: data.channelId
@@ -121,11 +151,20 @@ export class NonceService {
   }
 
   /**
-   * Invalidates the nonce for a given user.
-   * @param userId - The ID of the user.
+   * Invalidates the nonce for a given verification request.
+   * @param nonce - The nonce to invalidate.
    * @returns A Promise that resolves when the nonce is invalidated.
    */
-  async invalidateNonce(userId: string): Promise<void> {
-    await this.cache.del(`nonce_${userId}`);
+  async invalidateNonce(nonce: string): Promise<void> {
+    const data = await this.cache.get<NonceData>(this.getCacheKey(nonce));
+    if (data) {
+      const latestNonceKey = this.getLatestNonceKey(data.userId, data.guildId, data.channelId);
+      const latestNonce = await this.cache.get<string>(latestNonceKey);
+      if (latestNonce === nonce) {
+        await this.cache.del(latestNonceKey);
+      }
+    }
+
+    await this.cache.del(this.getCacheKey(nonce));
   }
 }

@@ -106,6 +106,13 @@ export class AppController {
       }
       
       // Check if this is a user-friendly verification error that should be shown to the user
+      if (errorMessage.includes('Invalid or expired nonce.')) {
+        throw new HttpException(
+          'This verification link is no longer active. Please return to Discord and request a new one.',
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
       const userFriendlyErrors = [
         'does not own the required assets',
         'does not own any assets',

@@ -15,6 +15,7 @@ interface State {
   walletConnecting: boolean;
   walletConnected: boolean;
   messageSigning: boolean;
+  verificationSubmitting: boolean;
   messageSigned: boolean;
   messageVerified: boolean;
   errorMessage: string | null;
@@ -43,6 +44,7 @@ export class VerifyComponent {
     walletConnecting: false,
     walletConnected: false,
     messageSigning: false,
+    verificationSubmitting: false,
     messageSigned: false,
     messageVerified: false,
     errorMessage: null,
@@ -123,7 +125,13 @@ export class VerifyComponent {
 
     try {
       // Set signing state
-      this.setState({ messageSigning: true, errorMessage: null });
+      this.setState({
+        messageSigning: true,
+        verificationSubmitting: false,
+        messageSigned: false,
+        messageVerified: false,
+        errorMessage: null,
+      });
 
       // Create message to sign
       const domain = {
@@ -161,12 +169,22 @@ export class VerifyComponent {
 
       const { signature, address } = await this.walletSvc.signTypedMessage(typedData);
       
-      // Update state after signing
-      this.setState({ messageSigning: false, messageSigned: true });
-      
       if (!signature) {
-        return this.setState({ errorMessage: 'Failed to sign message' });
+        return this.setState({
+          messageSigning: false,
+          verificationSubmitting: false,
+          messageSigned: false,
+          messageVerified: false,
+          errorMessage: 'Failed to sign message'
+        });
       }
+
+      // Keep the action locked while the verification request is in flight.
+      this.setState({
+        messageSigning: false,
+        verificationSubmitting: true,
+        messageSigned: true,
+      });
 
       await firstValueFrom(
         this.http.post(env.apiUrl + '/verify-signature', {
@@ -178,11 +196,19 @@ export class VerifyComponent {
         }).pipe(
           map((res: any) => {
             if (res.error) {
-              this.setState({ errorMessage: res.error });
+              this.setState({
+                verificationSubmitting: false,
+                messageVerified: false,
+                errorMessage: res.error
+              });
               return;
             }
 
-            this.setState({ messageVerified: true });
+            this.setState({
+              verificationSubmitting: false,
+              messageVerified: true,
+              errorMessage: null
+            });
             return;
           }),
           catchError((error) => {
@@ -205,7 +231,11 @@ export class VerifyComponent {
               errorMessage = error.statusText;
             }
             
-            this.setState({ errorMessage });
+            this.setState({
+              verificationSubmitting: false,
+              messageVerified: false,
+              errorMessage
+            });
             return of(null);
           })
         )
@@ -215,6 +245,8 @@ export class VerifyComponent {
       const errorMessage = error instanceof Error ? error.message : 'Failed to sign message with wallet';
       this.setState({ 
         messageSigning: false,
+        verificationSubmitting: false,
+        messageVerified: false,
         errorMessage
       });
     }

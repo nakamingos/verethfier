@@ -101,6 +101,7 @@ export class DiscordVerificationService {
       const expiry = Math.floor((Date.now() + EXPIRY) / 1000);
       const nonce = await this.nonceSvc.createNonce(
         interaction.user.id,
+        interaction.guild.id,
         interaction.message.id,
         channel.id
       );

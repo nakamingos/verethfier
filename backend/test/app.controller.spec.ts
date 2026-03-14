@@ -270,6 +270,17 @@ describe('AppController', () => {
         );
       });
 
+      it('should return an actionable message for invalid or expired nonce errors', async () => {
+        mockVerifyService.verifySignatureFlow.mockRejectedValue(new Error('Invalid or expired nonce.'));
+
+        await expect(controller.verify(validRequestBody)).rejects.toThrow(
+          new HttpException(
+            'This verification link is no longer active. Please return to Discord and request a new one.',
+            HttpStatus.BAD_REQUEST
+          )
+        );
+      });
+
       it('should convert generic errors to 500 status with sanitized message', async () => {
         const genericError = new Error('Database connection failed with secret info');
         mockVerifyService.verifySignatureFlow.mockRejectedValue(genericError);

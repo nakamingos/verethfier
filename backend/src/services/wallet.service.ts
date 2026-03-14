@@ -53,8 +53,8 @@ export class WalletService {
     Logger.debug('Input data:', JSON.stringify(data, null, 2));
     Logger.debug('Input signature:', signature);
 
-    // Fetch the nonce for the user
-    const userNonce = await this.nonceSvc.validateNonce(data.userId, data.nonce);
+    // Fetch the nonce for the verification context
+    const userNonce = await this.nonceSvc.validateNonce(data.userId, data.discordId, data.nonce);
     if (!userNonce) throw new Error('Invalid or expired nonce.');
 
     // Check if verification has expired

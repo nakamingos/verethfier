@@ -128,6 +128,7 @@ describe('DiscordVerificationService', () => {
       expect(mockDbService.getRulesByChannel).toHaveBeenCalledWith('guild-id', 'channel-id');
       expect(mockNonceService.createNonce).toHaveBeenCalledWith(
         'user-id',
+        'guild-id',
         'message-id',
         'channel-id'
       );

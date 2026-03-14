@@ -132,6 +132,8 @@ describe('VerifyService', () => {
     const payload = { userId: 'u', discordId: 'g', nonce: 'n' };
     await service.verifySignatureFlow(payload as any, 'sig');
     expect(mockVerificationService.getAllRulesForServer).toHaveBeenCalled();
+    expect(mockNonceService.getNonceData).toHaveBeenCalledWith('u', 'n');
+    expect(mockNonceService.invalidateNonce).toHaveBeenCalledWith('n');
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledTimes(2);
   });
 
@@ -181,6 +183,8 @@ describe('VerifyService', () => {
     
     const result = await service.verifySignatureFlow(payload as any, 'sig');
     
+    expect(mockNonceService.getNonceData).toHaveBeenCalledWith('user123', 'nonce123');
+    expect(mockNonceService.invalidateNonce).toHaveBeenCalledWith('nonce123');
     expect(mockVerificationService.getRulesForChannel).toHaveBeenCalledWith('guild123', 'ch-456');
     expect(mockVerificationService.verifyUserBulk).toHaveBeenCalledWith('user123', [1], '0xabc');
     expect(mockDiscordVerificationService.addUserRole).toHaveBeenCalledWith('user123', 'role-123', 'guild123', 'nonce123', '1');

@@ -54,7 +54,7 @@
       <div
         class="step-2 step"
         [class.active]="state.walletConnected && !state.messageVerified"
-        [class.disabled]="state.messageSigning">
+        [class.disabled]="state.messageSigning || state.verificationSubmitting">
 
         <div class="label">
           <span>2</span>
@@ -65,9 +65,11 @@
           <div class="actions">
             <button 
               (click)="verify(data)"
-              [disabled]="state.messageSigning">
+              [disabled]="state.messageSigning || state.verificationSubmitting || state.messageVerified">
               @if (state.messageSigning) {
                 Signing...
+              } @else if (state.verificationSubmitting) {
+                Verifying...
               } @else if (state.messageVerified) {
                 Verified
               } @else {
