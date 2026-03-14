@@ -289,7 +289,7 @@ export class DiscordVerificationService {
 
     if (collectionLabel) {
       if (style === 'holding' && !hasAttributeFilter) {
-        return this.applyPreferredRequirementBreaks(`(${currentCount}/${minItems}) ${collectionLabel}`);
+        return `(${currentCount}/${minItems}) ${collectionLabel}`;
       }
 
       const quantity = style === 'holding' ? currentCount : minItems;
@@ -315,7 +315,7 @@ export class DiscordVerificationService {
         requirement += ` (${matchingCount}/${minItems})`;
       }
 
-      return this.applyPreferredRequirementBreaks(requirement);
+      return requirement;
     }
 
     if (rule.attribute_key && rule.attribute_key !== 'ALL') {
@@ -328,7 +328,7 @@ export class DiscordVerificationService {
       if (shouldShowRequirementProgress) {
         requirement += ` (${matchingCount}/${minItems})`;
       }
-      return this.applyPreferredRequirementBreaks(requirement);
+      return requirement;
     }
 
     if (style === 'holding') {
@@ -338,29 +338,7 @@ export class DiscordVerificationService {
     const countSuffix = typeof matchingCount === 'number' && (minItems > 1 || matchingCount === 0)
       ? ` (${matchingCount}/${minItems})`
       : '';
-    return this.applyPreferredRequirementBreaks(`Own ${minItems}+ NFTs from any collection${countSuffix}`);
-  }
-
-  private applyPreferredRequirementBreaks(text: string): string {
-    const preferredWrapWidth = 46;
-    if (!this.hasLineLongerThan(text, preferredWrapWidth)) {
-      return text;
-    }
-
-    let formatted = text;
-    if (formatted.includes(' ∨ ')) {
-      formatted = formatted.replace(/ ∨ /g, ' ∨\n  ');
-    }
-
-    if (this.hasLineLongerThan(formatted, preferredWrapWidth) && formatted.includes(' with ')) {
-      formatted = formatted.replace(/ with /g, ' with\n  ');
-    }
-
-    return formatted;
-  }
-
-  private hasLineLongerThan(text: string, width: number): boolean {
-    return text.split('\n').some(line => line.length > width);
+    return `Own ${minItems}+ NFTs from any collection${countSuffix}`;
   }
 
   /**
@@ -1219,6 +1197,15 @@ export class DiscordVerificationService {
       return `**${roleName}**`;
     }
 
-    return `**${roleName}**:\n${requirements.map(requirement => `↳ ${requirement}`).join('\n')}`;
+    if (requirements.length === 1 && this.shouldInlineSingleRequirement(roleName, requirements[0])) {
+      return `**${roleName}**: ${requirements[0]}`;
+    }
+
+    return `**${roleName}**:\n${requirements.map(requirement => ` ↳ ${requirement}`).join('\n')}`;
+  }
+
+  private shouldInlineSingleRequirement(roleName: string, requirement: string): boolean {
+    const preferredInlineWidth = 88;
+    return !requirement.includes('\n') && `${roleName}: ${requirement}`.length <= preferredInlineWidth;
   }
 }

@@ -348,7 +348,7 @@ describe('DiscordVerificationService', () => {
           expect.objectContaining({
               data: expect.objectContaining({
                 title: 'Verification Successful',
-                description: expect.stringContaining('**Test Role**:\n↳ Own 1+ item from The Test Collection')
+                description: expect.stringContaining('**Test Role**: Own 1+ item from The Test Collection')
               })
             })
           ]),
@@ -413,7 +413,7 @@ describe('DiscordVerificationService', () => {
           expect.objectContaining({
               data: expect.objectContaining({
                 title: 'Verification Successful',
-                description: expect.stringContaining('**GIF Goddess**:\n↳ Own 1+ item from The Test Collection')
+                description: expect.stringContaining('**GIF Goddess**: Own 1+ item from The Test Collection')
               })
             })
           ]),
@@ -461,8 +461,8 @@ describe('DiscordVerificationService', () => {
 
       expect(description).toContain('**✅ Roles You Already Have:**');
       expect(description).toContain('**Test Role**:');
-      expect(description).toContain('↳ 3 Comrades with Eyes: Laser');
-      expect(description).toContain('↳ 1 Misprint with Type: Gold');
+      expect(description).toContain(' ↳ 3 Comrades with Eyes: Laser');
+      expect(description).toContain(' ↳ 1 Misprint with Type: Gold');
       expect(description).not.toContain('• **');
 
       const matches = description.match(/\*\*Test Role\*\*/g);
@@ -493,10 +493,7 @@ describe('DiscordVerificationService', () => {
       const description = editReplyCall.embeds[0].data.description;
 
       expect(description).toContain('**✅ Roles You Already Have:**');
-      expect(description).toContain('**Test Role**:');
-      expect(description).toContain('↳ (334/15) The Test Collection ∨');
-      expect(description).toContain('  The Other Collection ∨');
-      expect(description).toContain('  The Third Collection');
+      expect(description).toContain('**Test Role**: (334/15) The Test Collection ∨ The Other Collection ∨ The Third Collection');
       expect(description).not.toContain('items from');
     });
 
@@ -574,11 +571,11 @@ describe('DiscordVerificationService', () => {
       expect(mockUserAddressService.getUserAddresses).toHaveBeenCalledWith('user-id');
       expect(description).toContain('**🚀 Additional Roles Available:**');
       expect(description).toContain('**Test Role 2**:');
-      expect(description).toContain('↳ Own 1+ Misprint with Head: Crown');
-      expect(description).toContain('↳ Own 1+ EtherPhunk with Type: Legendary');
-      expect(description).toContain('**Bonus Role**:\n↳ Own 2+ items from The Third Collection (2/2)');
-      expect(description).toContain('**Second Bonus Role**:\n↳ Own 1+ item from The Other Collection');
-      expect(description).toContain('**Third Bonus Role**:\n↳ Own 1+ EtherPhunk with Head: Halo');
+      expect(description).toContain(' ↳ Own 1+ Misprint with Head: Crown');
+      expect(description).toContain(' ↳ Own 1+ EtherPhunk with Type: Legendary');
+      expect(description).toContain('**Bonus Role**: Own 2+ items from The Third Collection (2/2)');
+      expect(description).toContain('**Second Bonus Role**: Own 1+ item from The Other Collection');
+      expect(description).toContain('**Third Bonus Role**: Own 1+ EtherPhunk with Head: Halo');
     });
 
     it('should keep additional roles visible when the user has partial progress toward a higher threshold', async () => {
@@ -632,7 +629,7 @@ describe('DiscordVerificationService', () => {
       const description = editReplyCall.embeds[0].data.description;
 
       expect(description).toContain('**🚀 Additional Roles Available:**');
-      expect(description).toContain('**Bonus Role**:\n↳ Own 5+ items from The Third Collection (2/5)');
+      expect(description).toContain('**Bonus Role**: Own 5+ items from The Third Collection (2/5)');
     });
 
     it('should still show additional roles when the user has zero matching holdings for them', async () => {
@@ -676,9 +673,9 @@ describe('DiscordVerificationService', () => {
       const description = editReplyCall.embeds[0].data.description;
 
       expect(description).toContain('**🚀 Additional Roles Available:**');
-      expect(description).toContain('**Test Role 2**:\n↳ Own 1+ Misprint with Head: Crown');
+      expect(description).toContain('**Test Role 2**: Own 1+ Misprint with Head: Crown');
       expect(description).not.toContain('Own 1+ Misprint with Head: Crown (0/1)');
-      expect(description).toContain('**Bonus Role**:\n↳ Own 5+ items from The Third Collection (0/5)');
+      expect(description).toContain('**Bonus Role**: Own 5+ items from The Third Collection (0/5)');
     });
 
     it('should still recommend a role when database history is stale but the member no longer has it in Discord', async () => {
@@ -721,7 +718,7 @@ describe('DiscordVerificationService', () => {
       const description = editReplyCall.embeds[0].data.description;
 
       expect(description).toContain('**🚀 Additional Roles Available:**');
-      expect(description).toContain('**Bonus Role**:\n↳ Own 2+ items from The Third Collection (2/2)');
+      expect(description).toContain('**Bonus Role**: Own 2+ items from The Third Collection (2/2)');
     });
 
     it('should keep a newly assigned role out of the existing roles section even if multiple rules match it', async () => {
