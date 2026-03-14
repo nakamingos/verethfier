@@ -450,7 +450,7 @@ describe('DiscordVerificationService', () => {
       expect(matches).toHaveLength(1);
     });
 
-    it('should only show additional roles the user currently qualifies for and include all matched reasons', async () => {
+    it('should show additional roles the user has matching holdings for and include all matched reasons', async () => {
       const nonce = 'test-nonce';
       service.tempMessages[nonce] = mockInteraction as any;
       mockDbService.getRoleMappings.mockResolvedValue([
@@ -529,6 +529,60 @@ describe('DiscordVerificationService', () => {
       expect(description).toContain('• **Bonus Role**: Own 2+ items from The Third Collection (2/2)');
       expect(description).toContain('• **Second Bonus Role**: Own 1+ item from The Other Collection');
       expect(description).toContain('• **Third Bonus Role**: Own 1+ EtherPhunk with Head: Halo');
+    });
+
+    it('should keep additional roles visible when the user has partial progress toward a higher threshold', async () => {
+      const nonce = 'test-nonce';
+      service.tempMessages[nonce] = mockInteraction as any;
+      mockDbService.getRoleMappings.mockResolvedValue([
+        {
+          id: 1,
+          role_id: 'role-id',
+          slug: 'test-collection',
+          min_items: 1,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        },
+        {
+          id: 7,
+          role_id: 'role-id-3',
+          slug: 'third-collection',
+          min_items: 5,
+          attribute_key: 'ALL',
+          attribute_value: 'ALL'
+        }
+      ]);
+      mockDataService.checkAssetOwnershipWithCriteria.mockImplementation(async (_addresses, slug, attributeKey, attributeValue) => {
+        if (slug === 'third-collection' && attributeKey === 'ALL' && attributeValue === 'ALL') return 2;
+        return 0;
+      });
+
+      const roleResults = [
+        { roleId: 'role-id', roleName: 'Test Role', wasAlreadyAssigned: true, ruleId: '1', matchingCount: 1 }
+      ];
+
+      const potentialRoles = await (service as any).analyzePotentialRoles(
+        'guild-id',
+        'user-id',
+        ['role-id'],
+        '0xnewwallet'
+      );
+
+      expect(potentialRoles).toEqual([
+        {
+          roleId: 'role-id-3',
+          roleName: 'Bonus Role',
+          matchedRules: [{ ruleId: '7', matchingCount: 2 }],
+        }
+      ]);
+
+      await service.sendVerificationComplete('guild-id', nonce, roleResults, '0xnewwallet');
+
+      const editReplyCall = mockInteraction.editReply.mock.calls[0][0];
+      const description = editReplyCall.embeds[0].data.description;
+
+      expect(description).toContain('**🚀 Additional Roles Available:**');
+      expect(description).toContain('• **Bonus Role**: Own 5+ items from The Third Collection (2/5)');
     });
 
     it('should keep a newly assigned role out of the existing roles section even if multiple rules match it', async () => {

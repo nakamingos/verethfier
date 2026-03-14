@@ -857,7 +857,11 @@ export class DiscordVerificationService {
   }
 
   /**
-   * Analyze potential roles a user could earn but didn't qualify for
+   * Analyze unassigned roles the user is making progress toward.
+   *
+   * Fully-qualified roles are included, but we also keep partial progress so
+   * the success message can show concise hints like "(2/5)" instead of hiding
+   * the section entirely.
    */
   async analyzePotentialRoles(
     guildId: string, 
@@ -898,7 +902,7 @@ export class DiscordVerificationService {
         ? userAddresses
         : [...userAddresses, normalizedAddress];
 
-      const qualifyingRules = [];
+      const potentialRules = [];
       for (const rule of unassignedRules) {
         try {
           const matchingCount = await this.dataSvc.checkAssetOwnershipWithCriteria(
@@ -910,26 +914,22 @@ export class DiscordVerificationService {
           );
 
           if (matchingCount > 0) {
-            const requiredCount = rule.min_items || 1;
-            if (matchingCount >= requiredCount) {
-              qualifyingRules.push({
-                ...rule,
-                matchingCount,
-              });
-            }
+            potentialRules.push({
+              ...rule,
+              matchingCount,
+            });
           }
         } catch (error) {
           Logger.error(`❌ Error checking availability for rule ${rule.id}:`, error);
         }
       }
 
-      Logger.log(`✅ Found ${qualifyingRules.length} qualifying unassigned rules based on current holdings`);
-      if (qualifyingRules.length === 0) {
+      Logger.log(`✅ Found ${potentialRules.length} unassigned rules with matching holdings`);
+      if (potentialRules.length === 0) {
         return [];
       }
 
-      const collectionNames = await this.getCollectionNamesForRules(qualifyingRules);
-      const groupedPotentialRoles = this.groupRulesByRole(qualifyingRules);
+      const groupedPotentialRoles = this.groupRulesByRole(potentialRules);
       
       // Get guild for Discord role fetching
       const guild = await this.client.guilds.fetch(guildId);
