@@ -23,17 +23,16 @@ interface State {
 };
 
 @Component({
-  selector: 'app-verify',
-  standalone: true,
-  imports: [
-    AsyncPipe,
-    NgTemplateOutlet
-  ],
-  providers: [
-    WalletService
-  ],
-  templateUrl: './verify.component.html',
-  styleUrl: './verify.component.scss'
+    selector: 'app-verify',
+    imports: [
+        AsyncPipe,
+        NgTemplateOutlet
+    ],
+    providers: [
+        WalletService
+    ],
+    templateUrl: './verify.component.html',
+    styleUrl: './verify.component.scss'
 })
 export class VerifyComponent {
 

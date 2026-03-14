@@ -3,7 +3,7 @@ import { Injectable, NgZone } from '@angular/core';
 import { Address, PublicClient, createPublicClient, getAddress, http } from 'viem';
 import { mainnet } from 'viem/chains';
 
-import { Web3Modal, createWeb3Modal } from '@web3modal/wagmi';
+import { createWeb3Modal } from '@web3modal/wagmi';
 import { coinbaseWallet, walletConnect } from '@wagmi/connectors';
 import {
   Config,
@@ -44,7 +44,7 @@ export class WalletService {
 
   client!: PublicClient;
   config!: Config;
-  modal!: Web3Modal;
+  modal!: ReturnType<typeof createWeb3Modal>;
 
   constructor(private ngZone: NgZone) {
     this.client = createPublicClient({
