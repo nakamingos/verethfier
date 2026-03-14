@@ -348,7 +348,7 @@ describe('DiscordVerificationService', () => {
           expect.objectContaining({
               data: expect.objectContaining({
                 title: 'Verification Successful',
-                description: expect.stringContaining('**Test Role**: Own 1+ item from The Test Collection')
+                description: expect.stringContaining('**Test Role**: Own 1+ item from The Test Collection (1/1)')
               })
             })
           ]),
@@ -413,7 +413,7 @@ describe('DiscordVerificationService', () => {
           expect.objectContaining({
               data: expect.objectContaining({
                 title: 'Verification Successful',
-                description: expect.stringContaining('**GIF Goddess**: Own 1+ item from The Test Collection')
+                description: expect.stringContaining('**GIF Goddess**: Own 1+ item from The Test Collection (1/1)')
               })
             })
           ]),
@@ -601,7 +601,7 @@ describe('DiscordVerificationService', () => {
       expect(description).toContain(' ↳ Own 1+ Misprint with Head: Crown');
       expect(description).toContain(' ↳ Own 1+ EtherPhunk with Type: Legendary');
       expect(description).toContain('**Bonus Role**: Own 2+ items from The Third Collection (2/2)');
-      expect(description).toContain('**Second Bonus Role**: Own 1+ item from The Other Collection');
+      expect(description).toContain('**Second Bonus Role**: Own 1+ item from The Other Collection (1/1)');
       expect(description).toContain('**Third Bonus Role**: Own 1+ EtherPhunk with Head: Halo');
     });
 

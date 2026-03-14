@@ -30,6 +30,7 @@ type GroupedVerificationRoleResult = {
   roleName: string;
   wasAlreadyAssigned: boolean;
   matchedRules: RuleMatchSummary[];
+  fallbackMatchingCount?: number;
 };
 
 type RoleRequirementGroup = {
@@ -283,7 +284,7 @@ export class DiscordVerificationService {
       typeof matchingCount === 'number' &&
       (
         minItems > 1 ||
-        (matchingCount === 0 && !hasAttributeFilter)
+        !hasAttributeFilter
       );
 
     if (collectionLabel) {
@@ -1025,6 +1026,7 @@ export class DiscordVerificationService {
           roleId: roleResult.roleId,
           roleName: roleResult.roleName,
           wasAlreadyAssigned: roleResult.wasAlreadyAssigned,
+          fallbackMatchingCount: roleResult.ruleId ? undefined : roleResult.matchingCount,
           matchedRules: roleResult.ruleId ? [{
             ruleId: roleResult.ruleId,
             matchingCount: roleResult.matchingCount,
@@ -1034,6 +1036,13 @@ export class DiscordVerificationService {
       }
 
       existing.wasAlreadyAssigned = existing.wasAlreadyAssigned && roleResult.wasAlreadyAssigned;
+      if (
+        !roleResult.ruleId &&
+        typeof roleResult.matchingCount === 'number' &&
+        typeof existing.fallbackMatchingCount !== 'number'
+      ) {
+        existing.fallbackMatchingCount = roleResult.matchingCount;
+      }
       if (roleResult.ruleId && !existing.matchedRules.some(match => match.ruleId === roleResult.ruleId)) {
         existing.matchedRules.push({
           ruleId: roleResult.ruleId,
@@ -1046,7 +1055,7 @@ export class DiscordVerificationService {
   }
 
   private getMatchedRulesForRole(
-    role: { roleId: string; matchedRules: RuleMatchSummary[] },
+    role: { roleId: string; matchedRules: RuleMatchSummary[]; fallbackMatchingCount?: number },
     allRules: VerificationDisplayRule[]
   ): Array<{ rule: VerificationDisplayRule; matchingCount?: number }> {
     if (role.matchedRules.length > 0) {
@@ -1062,7 +1071,7 @@ export class DiscordVerificationService {
     }
 
     const fallbackRule = allRules.find(rule => rule.role_id === role.roleId);
-    return fallbackRule ? [{ rule: fallbackRule }] : [];
+    return fallbackRule ? [{ rule: fallbackRule, matchingCount: role.fallbackMatchingCount }] : [];
   }
 
   private getPrimaryRoleRequirement(
