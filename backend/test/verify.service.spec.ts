@@ -113,7 +113,7 @@ describe('VerifyService', () => {
   it('handles multi-rule path', async () => {
     // Mock empty nonce data to trigger multi-rule path
     mockNonceService.getNonceData.mockResolvedValue({ messageId: null, channelId: null });
-    mockWalletService.verifySignature.mockResolvedValue('0xabc');
+    mockWalletService.verifySignature.mockResolvedValue({ address: '0xabc', walletOwnershipTransferred: false });
     
     // Mock verification service to return rules and successful verification
     mockVerificationService.getAllRulesForServer.mockResolvedValue([
@@ -140,7 +140,7 @@ describe('VerifyService', () => {
   it('throws error if no match', async () => {
     // Mock empty nonce data to trigger multi-rule path, but no matching assets
     mockNonceService.getNonceData.mockResolvedValue({ messageId: null, channelId: null });
-    mockWalletService.verifySignature.mockResolvedValue('0xabc');
+    mockWalletService.verifySignature.mockResolvedValue({ address: '0xabc', walletOwnershipTransferred: false });
     
     // Mock verification service to return empty rules  
     mockVerificationService.getAllRulesForServer.mockResolvedValue([]);
@@ -156,7 +156,7 @@ describe('VerifyService', () => {
       messageId: 'msg-123', 
       channelId: 'ch-456' 
     });
-    mockWalletService.verifySignature.mockResolvedValue('0xabc');
+    mockWalletService.verifySignature.mockResolvedValue({ address: '0xabc', walletOwnershipTransferred: true });
     
     const mockRules = [{
       id: 1,
@@ -196,6 +196,7 @@ describe('VerifyService', () => {
     }], '0xabc');
     expect(result.message).toContain('message-based');
     expect(result.assignedRoles).toEqual(['test-role-id']);
+    expect(result.walletOwnershipTransferred).toBe(true);
   });
 
   it('handles message-based verification with multiple rules', async () => {
@@ -203,7 +204,7 @@ describe('VerifyService', () => {
       messageId: 'msg-123', 
       channelId: 'ch-456' 
     });
-    mockWalletService.verifySignature.mockResolvedValue('0xabc');
+    mockWalletService.verifySignature.mockResolvedValue({ address: '0xabc', walletOwnershipTransferred: false });
     
     const mockRules = [
       {
@@ -255,7 +256,7 @@ describe('VerifyService', () => {
       messageId: 'msg-123', 
       channelId: 'ch-456' 
     });
-    mockWalletService.verifySignature.mockResolvedValue('0xabc');
+    mockWalletService.verifySignature.mockResolvedValue({ address: '0xabc', walletOwnershipTransferred: false });
     
     // Mock verification service to return empty rules
     mockVerificationService.getRulesForChannel.mockResolvedValue([]);
@@ -277,7 +278,7 @@ describe('VerifyService', () => {
       messageId: 'msg-123', 
       channelId: 'ch-456' 
     });
-    mockWalletService.verifySignature.mockResolvedValue('0xabc');
+    mockWalletService.verifySignature.mockResolvedValue({ address: '0xabc', walletOwnershipTransferred: false });
     
     const mockRules = [{
       id: 1,
@@ -314,7 +315,7 @@ describe('VerifyService', () => {
       messageId: 'msg-123', 
       channelId: 'ch-456' 
     });
-    mockWalletService.verifySignature.mockResolvedValue('0xabc');
+    mockWalletService.verifySignature.mockResolvedValue({ address: '0xabc', walletOwnershipTransferred: false });
     
     const mockRules = [
       {
@@ -362,7 +363,7 @@ describe('VerifyService', () => {
       messageId: 'msg-123', 
       channelId: 'ch-456' 
     });
-    mockWalletService.verifySignature.mockResolvedValue('0xabc');
+    mockWalletService.verifySignature.mockResolvedValue({ address: '0xabc', walletOwnershipTransferred: false });
     
     const mockRules = [{
       id: 1,
@@ -399,7 +400,7 @@ describe('VerifyService', () => {
       messageId: 'msg-123', 
       channelId: 'ch-456' 
     });
-    mockWalletService.verifySignature.mockResolvedValue('0xabc');
+    mockWalletService.verifySignature.mockResolvedValue({ address: '0xabc', walletOwnershipTransferred: false });
     
     const mockRules = [
       {
@@ -465,7 +466,7 @@ describe('VerifyService', () => {
     const mockChannelId = 'channel123';
 
     // Mock the wallet verification
-    mockWalletService.verifySignature.mockResolvedValue(mockAddress);
+    mockWalletService.verifySignature.mockResolvedValue({ address: mockAddress, walletOwnershipTransferred: false });
     
     // Mock nonce service
     mockNonceService.getNonceData.mockResolvedValue({

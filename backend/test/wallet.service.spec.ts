@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WalletService } from '../src/services/wallet.service';
+import { DynamicRoleService } from '../src/services/dynamic-role.service';
 import { NonceService } from '../src/services/nonce.service';
 import { UserAddressService } from '../src/services/user-address.service';
 import { DiscordService } from '../src/services/discord.service';
-import { CONSTANTS } from '../src/constants';
 import { DecodedData } from '../src/models/app.interface';
 import { recoverTypedDataAddress } from 'viem';
 
@@ -28,6 +28,10 @@ const mockDiscordService = {
   getUser: jest.fn(),
 };
 
+const mockDynamicRoleService = {
+  reverifyUser: jest.fn(),
+};
+
 const baseData: DecodedData = {
   address: '0xabc',
   userId: 'u',
@@ -49,7 +53,8 @@ describe('WalletService', () => {
         WalletService,
         { provide: NonceService, useValue: mockNonceService },
         { provide: UserAddressService, useValue: mockUserAddressService },
-        { provide: DiscordService, useValue: mockDiscordService }
+        { provide: DiscordService, useValue: mockDiscordService },
+        { provide: DynamicRoleService, useValue: mockDynamicRoleService }
       ],
     }).compile();
 
@@ -57,6 +62,7 @@ describe('WalletService', () => {
     jest.clearAllMocks();
     mockUserAddressService.addUserAddress.mockResolvedValue({ success: true, isNewAddress: true });
     mockDiscordService.getUser.mockResolvedValue({ username: 'test-user', globalName: null });
+    mockDynamicRoleService.reverifyUser.mockResolvedValue({ verified: 0, revoked: 0 });
   });
 
   describe('verifySignature', () => {
@@ -94,7 +100,10 @@ describe('WalletService', () => {
       
       const result = await service.verifySignature(baseData, 'sig');
       
-      expect(result).toBe('0xabc');
+      expect(result).toEqual({
+        address: '0xabc',
+        walletOwnershipTransferred: false,
+      });
       expect(mockNonceService.validateNonce).toHaveBeenCalledWith('u', 'd', 'n');
     });
 
@@ -152,7 +161,10 @@ describe('WalletService', () => {
 
       const result = await service.verifySignature(minimalData, 'sig');
       
-      expect(result).toBe('0x123');
+      expect(result).toEqual({
+        address: '0x123',
+        walletOwnershipTransferred: false,
+      });
       expect(mockNonceService.validateNonce).toHaveBeenCalledWith('user1', 'guild1', 'nonce1');
     });
 
@@ -174,7 +186,10 @@ describe('WalletService', () => {
 
       const result = await service.verifySignature(completeData, 'valid_sig');
       
-      expect(result).toBe('0x456');
+      expect(result).toEqual({
+        address: '0x456',
+        walletOwnershipTransferred: false,
+      });
       expect(mockNonceService.validateNonce).toHaveBeenCalledWith('user2', 'guild2', 'nonce2');
       expect(mockNonceService.validateNonce).toHaveBeenCalledTimes(1);
     });
@@ -189,17 +204,21 @@ describe('WalletService', () => {
       expect(mockNonceService.validateNonce).toHaveBeenCalledWith('u', 'd', 'n');
     });
 
-    it('throws error when wallet address is already verified by another user', async () => {
+    it('transfers wallet ownership and re-verifies the previous owner when another user previously owned the wallet', async () => {
       mockNonceService.validateNonce.mockResolvedValue(true);
       mockRecoverTypedDataAddress.mockResolvedValue('0xabc');
       mockUserAddressService.addUserAddress.mockResolvedValue({
-        success: false,
-        error: CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED
+        success: true,
+        isNewAddress: false,
+        wasTransferred: true,
+        previousUserId: 'previous-user',
       });
 
-      await expect(service.verifySignature(baseData, 'sig')).rejects.toThrow(
-        CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED
-      );
+      await expect(service.verifySignature(baseData, 'sig')).resolves.toEqual({
+        address: '0xabc',
+        walletOwnershipTransferred: true,
+      });
+      expect(mockDynamicRoleService.reverifyUser).toHaveBeenCalledWith('previous-user');
     });
   });
 });

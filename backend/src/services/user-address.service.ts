@@ -1,8 +1,6 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 
-import { CONSTANTS } from '@/constants';
-
 interface UserWallet {
   id: number;
   user_id: string;
@@ -17,6 +15,9 @@ interface AddAddressResult {
   wallet?: UserWallet;
   error?: string;
   isNewAddress?: boolean;
+  wasTransferred?: boolean;
+  previousUserId?: string;
+  previousUserName?: string | null;
 }
 
 interface UserAddressSummary {
@@ -66,7 +67,10 @@ export class UserAddressService {
   }
 
   /**
-   * Add a new address for a user (after successful verification)
+   * Add or claim an address for a user after successful verification.
+   *
+   * If the address is already linked to a different user, ownership is moved
+   * to the newly verified user instead of being rejected.
    */
   async addUserAddress(userId: string, address: string, userName?: string | null): Promise<AddAddressResult> {
     try {
@@ -90,14 +94,7 @@ export class UserAddressService {
       }
 
       if (existingWalletForOtherUser) {
-        this.logger.warn(
-          `Rejected wallet claim for address ${normalizedAddress}; ` +
-          `attempted user=${userId}, existing user=${existingWalletForOtherUser.user_id}`
-        );
-        return {
-          success: false,
-          error: CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED
-        };
+        return this.transferWallet(existingWalletForOtherUser, userId, userName);
       }
 
       // Insert new address
@@ -288,6 +285,44 @@ export class UserAddressService {
     };
   }
 
+  private async transferWallet(
+    existingWallet: UserWallet,
+    newUserId: string,
+    userName?: string | null
+  ): Promise<AddAddressResult> {
+    const { data: updated, error: updateError } = await this.supabase
+      .from('user_wallets')
+      .update({
+        user_id: newUserId,
+        user_name: userName !== undefined ? userName : existingWallet.user_name,
+        last_verified_at: new Date().toISOString()
+      })
+      .eq('id', existingWallet.id)
+      .select()
+      .single();
+
+    if (updateError) {
+      this.logger.error(
+        `Error transferring address ${existingWallet.address} from user ${existingWallet.user_id} to ${newUserId}:`,
+        updateError
+      );
+      return { success: false, error: updateError.message };
+    }
+
+    this.logger.log(
+      `Transferred wallet ${existingWallet.address} from user ${existingWallet.user_id} to user ${newUserId}`
+    );
+
+    return {
+      success: true,
+      wallet: updated,
+      isNewAddress: false,
+      wasTransferred: true,
+      previousUserId: existingWallet.user_id,
+      previousUserName: existingWallet.user_name,
+    };
+  }
+
   private async resolveInsertConflict(userId: string, address: string, userName?: string | null): Promise<AddAddressResult> {
     const existingWalletsResult = await this.findWalletsByAddress(address);
     if (!existingWalletsResult.success) {
@@ -302,15 +337,7 @@ export class UserAddressService {
     }
 
     if (existingWallets.length > 0) {
-      const existingUserIds = existingWallets.map(wallet => wallet.user_id).join(', ');
-      this.logger.warn(
-        `Rejected wallet claim after unique constraint conflict for address ${address}; ` +
-        `attempted user=${userId}, existing user(s)=${existingUserIds}`
-      );
-      return {
-        success: false,
-        error: CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED
-      };
+      return this.transferWallet(existingWallets[0], userId, userName);
     }
 
     this.logger.error(

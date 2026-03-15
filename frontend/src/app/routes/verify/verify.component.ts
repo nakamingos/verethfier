@@ -19,6 +19,7 @@ interface State {
   verificationSubmitting: boolean;
   messageSigned: boolean;
   messageVerified: boolean;
+  successMessage: string | null;
   errorMessage: string | null;
 };
 
@@ -46,6 +47,7 @@ export class VerifyComponent {
     verificationSubmitting: false,
     messageSigned: false,
     messageVerified: false,
+    successMessage: null,
     errorMessage: null,
   });
 
@@ -130,6 +132,7 @@ export class VerifyComponent {
         verificationSubmitting: false,
         messageSigned: false,
         messageVerified: false,
+        successMessage: null,
         errorMessage: null,
       });
 
@@ -175,6 +178,7 @@ export class VerifyComponent {
           verificationSubmitting: false,
           messageSigned: false,
           messageVerified: false,
+          successMessage: null,
           errorMessage: 'Failed to sign message'
         });
       }
@@ -199,6 +203,7 @@ export class VerifyComponent {
               this.setState({
                 verificationSubmitting: false,
                 messageVerified: false,
+                successMessage: null,
                 errorMessage: res.error
               });
               return;
@@ -207,6 +212,9 @@ export class VerifyComponent {
             this.setState({
               verificationSubmitting: false,
               messageVerified: true,
+              successMessage: res?.walletOwnershipTransferred
+                ? 'This wallet was previously linked to another Discord account and has now been moved to this account.'
+                : null,
               errorMessage: null
             });
             return;
@@ -241,6 +249,7 @@ export class VerifyComponent {
             this.setState({
               verificationSubmitting: false,
               messageVerified: false,
+              successMessage: null,
               errorMessage
             });
             return of(null);
@@ -254,6 +263,7 @@ export class VerifyComponent {
         messageSigning: false,
         verificationSubmitting: false,
         messageVerified: false,
+        successMessage: null,
         errorMessage
       });
     }

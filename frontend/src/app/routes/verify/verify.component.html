@@ -94,6 +94,9 @@
         </div>
         <div class="content">
           <div class="title">You've been verified! You can safely close this window & return to discord.</div>
+          @if (state.successMessage) {
+            <div class="sub success">{{ state.successMessage }}</div>
+          }
         </div>
       </div>
     </div>

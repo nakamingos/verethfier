@@ -132,6 +132,10 @@
       .pink {
         color: rgba(var(--pink), 1);
       }
+
+      &.success {
+        color: rgba(var(--transferred-color), 1);
+      }
     }
 
     .actions {

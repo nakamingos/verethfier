@@ -43,7 +43,8 @@ export class VerifyService {
     signature: string
   ) {
     // Verify the wallet signature and extract the signing address
-    const address = await this.walletSvc.verifySignature(payload, signature);
+    const walletVerification = await this.walletSvc.verifySignature(payload, signature);
+    const { address, walletOwnershipTransferred } = walletVerification;
     
     // Get the message data associated with the nonce for message-based verification
     const { messageId, channelId } = await this.nonceSvc.getNonceData(payload.userId, payload.nonce);
@@ -144,6 +145,7 @@ export class VerifyService {
       return { 
         message: `Verification successful (message-based) - ${newlyAssigned} new roles assigned, ${totalAssigned - newlyAssigned} existing roles`, 
         address,
+        walletOwnershipTransferred,
         assignedRoles: roleResults.map(r => r.roleId)
       };
     }
@@ -221,7 +223,8 @@ export class VerifyService {
     Logger.log(`Verification completed (${newlyAssigned} new roles, ${totalAssigned - newlyAssigned} existing roles)`);
     return { 
       message: `Verification successful - ${newlyAssigned} new roles assigned, ${totalAssigned - newlyAssigned} existing roles`, 
-      address, 
+      address,
+      walletOwnershipTransferred,
       assignedRoles: roleResults.map(r => r.roleId)
     };
   }

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { recoverTypedDataAddress } from 'viem';
 
-import { CONSTANTS } from '@/constants';
+import { DynamicRoleService } from '@/services/dynamic-role.service';
 import { NonceService } from '@/services/nonce.service';
 import { UserAddressService } from '@/services/user-address.service';
 import { DiscordService } from '@/services/discord.service';
@@ -26,7 +26,8 @@ export class WalletService {
   constructor(
     private nonceSvc: NonceService,
     private userAddressService: UserAddressService,
-    private discordService: DiscordService
+    private discordService: DiscordService,
+    private dynamicRoleService: DynamicRoleService
   ) {}
   
   /**
@@ -41,13 +42,13 @@ export class WalletService {
    * 
    * @param data - The decoded verification data containing user and server info
    * @param signature - The EIP-712 signature to verify
-   * @returns Promise<string> - The verified wallet address
+   * @returns Promise<{ address: string; walletOwnershipTransferred: boolean }> - The verified wallet result
    * @throws Error if nonce is invalid/expired, verification expired, or signature invalid
    */
   async verifySignature(
     data: DecodedData,
     signature: string
-  ): Promise<string> {
+  ): Promise<{ address: string; walletOwnershipTransferred: boolean }> {
 
     // Debug logging to investigate signature verification issues
     Logger.debug('=== WALLET SERVICE DEBUG ===');
@@ -121,6 +122,8 @@ export class WalletService {
 
     if (!address) throw new Error('Invalid signature.');
     
+    let walletOwnershipTransferred = false;
+
     // Store the verified address in user_wallets table
     // CRITICAL: Wait for this to complete before returning to prevent race condition
     // where verification queries getUserAddresses() before INSERT completes
@@ -139,28 +142,47 @@ export class WalletService {
 
       const result = await this.userAddressService.addUserAddress(data.userId, address, userName);
       if (!result.success) {
-        if (result.error === CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED) {
-          Logger.warn(
-            `Wallet ownership conflict during verification: ` +
-            `user=${data.userId}, guild=${data.discordId}, submitted=${data.address}, recovered=${address}`
-          );
-          throw new Error(result.error);
-        }
-
         // Log warning but don't fail verification - address storage is supplementary
         Logger.warn(`Failed to store address for user ${data.userId}: ${result.error}`);
       } else {
+        walletOwnershipTransferred = result.wasTransferred === true;
         Logger.debug(`Successfully ${result.isNewAddress ? 'added new' : 'updated existing'} address for user ${data.userId}${userName ? ` (${userName})` : ''}`);
+
+        if (walletOwnershipTransferred && result.previousUserId) {
+          Logger.log(
+            `Wallet ${address} moved from Discord user ${result.previousUserId} to ${data.userId}`
+          );
+          this.schedulePreviousOwnerReverification(result.previousUserId, data.userId, address);
+        }
       }
     } catch (error) {
-      if (error instanceof Error && error.message === CONSTANTS.ERRORS.WALLET_ADDRESS_ALREADY_VERIFIED) {
-        throw error;
-      }
-
       // Log error but don't fail verification - address storage is supplementary
       Logger.error(`Exception storing address for user ${data.userId}:`, error);
     }
     
-    return address;
+    return {
+      address,
+      walletOwnershipTransferred,
+    };
+  }
+
+  private schedulePreviousOwnerReverification(
+    previousUserId: string,
+    currentUserId: string,
+    address: string
+  ): void {
+    void this.dynamicRoleService.reverifyUser(previousUserId)
+      .then(({ verified, revoked }) => {
+        Logger.log(
+          `Completed post-transfer reverification for previous wallet owner ${previousUserId} ` +
+          `after moving ${address} to ${currentUserId}: ${verified} verified, ${revoked} revoked`
+        );
+      })
+      .catch((error) => {
+        Logger.error(
+          `Failed to reverify previous wallet owner ${previousUserId} after moving ${address} to ${currentUserId}:`,
+          error
+        );
+      });
   }
 }
