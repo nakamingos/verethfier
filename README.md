@@ -1,98 +1,106 @@
 # Verethier
 
-A Discord bot for Ethscriptions-based role verification using wallet connections and collection ownership.
+Discord-based wallet verification for Ethscriptions communities.
 
-## 🚀 Features
+Verethier is split into two deployable apps:
+- `backend/`: a NestJS API and Discord bot
+- `frontend/`: an Angular verification app used by Discord users when they follow a verify link
 
-- 🔗 **Wallet Verification** - Connect Ethereum wallets to Discord accounts  
-- 🎨 **Collection Role Assignment** - Assign roles based on Ethscriptions ownership
-- ⚡ **Attribute Filtering** - Filter by specific traits and properties
-- 📊 **Minimum Holdings** - Set minimum token requirements
-- 🔄 **Dynamic Role Management** - Automatic role assignment/removal
-- 🔒 **Secure Authentication** - Wallet signature verification
+## Features
 
-## 🏗️ Tech Stack
+- Wallet verification with EIP-712 signatures
+- Collection-level, category-level, and trait-level verification rules
+- Wallet stacking across multiple verified addresses
+- Dynamic role re-verification and revocation
+- Rich Discord verification result messages
 
-- **Backend**: NestJS + TypeScript + Supabase
-- **Frontend**: Angular + TypeScript  
-- **Database**: PostgreSQL (Supabase)
-- **APIs**: Discord API + Ethscriptions Marketplace
+## Requirements
 
-## 📁 Project Structure
+- Node.js `20.19+` or `22.12+`
+- Yarn `1.22.x`
+- Supabase CLI for local database work
+- A Discord application/bot and Supabase project(s)
 
-```
+## Project Layout
+
+```text
 verethier/
-├── backend/           # NestJS API server
-├── frontend/          # Angular web app
-├── docs/              # Documentation
-└── README.md          # This file
+├── backend/    # NestJS API, Discord bot, Supabase migrations, tests
+├── frontend/   # Angular verification app
+└── README.md
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
-### Prerequisites
-- Node.js 18+
-- Yarn
-- Supabase account
-- Discord bot
+### 1. Backend
 
-### Setup
 ```bash
-# 1. Backend
 cd backend
 yarn install
 cp env.example .env
-# Edit .env with your credentials
-yarn start:dev
+```
 
-# 2. Frontend  
+Fill in `backend/.env` using [backend/env.example](backend/env.example).
+
+If you want the checked-in frontend dev config to work without changes, run the backend on port `3200`:
+
+```bash
+PORT=3200 yarn start:dev
+```
+
+If `PORT` is unset, the backend defaults to `3000`.
+
+### 2. Frontend
+
+```bash
 cd frontend
 yarn install
-yarn start
+yarn ng serve
+```
 
-# 3. Database
+The Angular dev server runs on `http://localhost:4200`.
+
+The checked-in dev environment file, [env.dev.ts](frontend/src/env/env.dev.ts), currently points to `http://localhost:3200/api`.
+
+### 3. Local Supabase
+
+Migrations live in [backend/supabase/migrations](backend/supabase/migrations).
+
+For a fresh local database:
+
+```bash
 cd backend
 npx supabase start
-npx supabase migration up
+npx supabase db reset
 ```
 
-## ⚙️ Environment Variables
+## Environment Overview
 
-Copy `backend/env.example` to `backend/.env` and configure:
+- Backend runtime config is documented in [backend/env.example](backend/env.example) and [backend/.env.production.example](backend/.env.production.example).
+- Frontend API/RPC settings live in [env.ts](frontend/src/env/env.ts) and [env.dev.ts](frontend/src/env/env.dev.ts).
 
-```bash
-SUPABASE_URL=your_supabase_url
-SUPABASE_KEY=your_supabase_key
-DISCORD_TOKEN=your_discord_token
-DISCORD_CLIENT_ID=your_discord_client_id
-```
-
-## 📜 Scripts
-
-```bash
-# Backend
-yarn start:dev        # Development server
-yarn test             # Run tests
-yarn build            # Build for production
-
-# Frontend  
-yarn start            # Development server
-yarn build            # Build for production
-```
-
-## 📚 Documentation
-
-- [Backend README](backend/README.md) - API and backend documentation
-- [Frontend README](frontend/README.md) - Frontend setup and usage
-- [Documentation](docs/) - Additional guides and documentation
-
-## � Testing
+## Testing
 
 ```bash
 cd backend
-yarn test             # Run all tests
+yarn test
+
+cd ../frontend
+yarn test --watch=false --browsers=ChromeHeadless
 ```
 
-## 📄 License
+## Deployment Notes
 
-[CC0 1.0 Universal](LICENSE) - Public Domain
+- Backend and frontend deploy separately.
+- The frontend is built output plus static serving: `yarn build` then `yarn start`.
+- On Railway, prefer `Railpack` for both services.
+- The frontend `start` script serves `dist/frontend/browser` and expects a build to exist first.
+
+## Docs
+
+- [Backend README](backend/README.md)
+- [Frontend README](frontend/README.md)
+
+## License
+
+[CC0 1.0 Universal](LICENSE)
